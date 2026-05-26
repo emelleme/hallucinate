@@ -1919,12 +1919,33 @@ function updateCharacterMesh(time: number) {
   }
 
   updateNpcHairInstances()
-  const data = new Float32Array(target.flat())
+  const data = flattenVertices(target)
 
   gl.bindBuffer(gl.ARRAY_BUFFER, characterBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
 
   return data.length / vertexSize
+}
+
+function flattenVertices(target: Vertex[]) {
+  const data = new Float32Array(target.length * vertexSize)
+  let offset = 0
+
+  for (const vertex of target) {
+    data[offset++] = vertex[0]
+    data[offset++] = vertex[1]
+    data[offset++] = vertex[2]
+    data[offset++] = vertex[3]
+    data[offset++] = vertex[4]
+    data[offset++] = vertex[5]
+    data[offset++] = vertex[6]
+    data[offset++] = vertex[7]
+    data[offset++] = vertex[8]
+    data[offset++] = vertex[9]
+    data[offset++] = vertex[10]
+  }
+
+  return data
 }
 
 function drawNpcHair(camera: ReturnType<typeof getCamera>, width: number, height: number, outside: boolean) {
@@ -1978,24 +1999,28 @@ function addRenderedCharacter(
 ) {
   const pose = sampleCharacterPose(characterRig!, time, player, basePose)
   const style = playerStyle(player.style)
+  const localReflection = detailedHair
 
   for (const part of characterParts) {
     if (style.bottomMode === 'pants' || !part.bottom) {
-      addCharacterPart(target, pose, part, player, style)
+      addCharacterPart(target, pose, part, player, style, localReflection)
     }
   }
 
   if (style.bottomMode === 'skirt') {
-    addCharacterSkirt(target, pose, player, style)
+    addCharacterSkirt(target, pose, player, style, localReflection)
   }
 
   if (style.topMode === 'chest') {
-    addCharacterChest(target, pose, player)
+    addCharacterChest(target, pose, player, localReflection)
   }
 
   const hair = playerHair(player.style.hairIndex)
 
-  if (hair && characterHairMeshes.length > 0) {
+  if (hair && detailedHair) {
+    addCharacterHair(target, pose, hair, player, style.hairColor)
+  }
+  else if (hair && characterHairMeshes.length > 0) {
     addNpcHairInstance(pose, hair, player, style.hairColor)
   }
 }
@@ -2130,6 +2155,7 @@ function addCharacterPart(
   part: CharacterPart,
   player: { turn: number },
   style: ReturnType<typeof playerStyle>,
+  localReflection: boolean,
 ) {
   const from = pose.get(part.from)!
   const to = pose.get(part.to)!
@@ -2157,7 +2183,8 @@ function addCharacterPart(
     b = add(b, offset)
   }
 
-  addCharacterBox(target, a, b, part.width, part.depth, characterPartColor(part, style), part.glow ?? 0.02)
+  addCharacterBox(target, a, b, part.width, part.depth, characterPartColor(part, style), part.glow ?? 0.02, player.turn,
+    localReflection)
 }
 
 function characterPartColor(part: CharacterPart, style: ReturnType<typeof playerStyle>) {
@@ -2180,7 +2207,12 @@ function characterPartColor(part: CharacterPart, style: ReturnType<typeof player
   return part.color
 }
 
-function addCharacterChest(target: Vertex[], pose: Map<string, Vec3>, player: { turn: number }) {
+function addCharacterChest(
+  target: Vertex[],
+  pose: Map<string, Vec3>,
+  player: { turn: number },
+  localReflection: boolean,
+) {
   const spine = pose.get('mixamorig:Spine2')!
   const neck = pose.get('mixamorig:Neck')!
   const center = add(spine, scale(subtract(neck, spine), 0.32))
@@ -2191,7 +2223,7 @@ function addCharacterChest(target: Vertex[], pose: Map<string, Vec3>, player: { 
     const a = add(add(center, scale(side, offset)), scale(forward, 0.06))
     const b = add(add(center, scale(side, offset)), scale(forward, 0.13))
 
-    addCharacterBox(target, a, b, 0.065, 0.06, skin, 0.02)
+    addCharacterBox(target, a, b, 0.065, 0.06, skin, 0.02, player.turn, localReflection)
   }
 }
 
@@ -2200,6 +2232,7 @@ function addCharacterSkirt(
   pose: Map<string, Vec3>,
   player: { turn: number },
   style: ReturnType<typeof playerStyle>,
+  localReflection: boolean,
 ) {
   const hips = pose.get('mixamorig:Hips')!
   const leftUp = pose.get('mixamorig:LeftUpLeg')!
@@ -2223,11 +2256,11 @@ function addCharacterSkirt(
   const g = add(add(bottomCenter, scale(side, bottomWidth)), scale(forward, bottomDepth))
   const h = add(add(bottomCenter, scale(side, -bottomWidth)), scale(forward, bottomDepth))
 
-  addLitQuad(target, a, b, f, e, style.pants, 0.02)
-  addLitQuad(target, b, c, g, f, scale(style.pants, 0.88), 0.02)
-  addLitQuad(target, c, d, h, g, scale(style.pants, 0.78), 0.02)
-  addLitQuad(target, d, a, e, h, scale(style.pants, 0.88), 0.02)
-  addLitQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02)
+  addCharacterQuad(target, a, b, f, e, style.pants, 0.02, localReflection)
+  addCharacterQuad(target, b, c, g, f, scale(style.pants, 0.88), 0.02, localReflection)
+  addCharacterQuad(target, c, d, h, g, scale(style.pants, 0.78), 0.02, localReflection)
+  addCharacterQuad(target, d, a, e, h, scale(style.pants, 0.88), 0.02, localReflection)
+  addCharacterQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02, localReflection)
 }
 
 function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh, player: { turn: number }, color: Vec3) {
@@ -2316,15 +2349,17 @@ function addCharacterBox(
   depth: number,
   color: Vec3,
   glow: number,
+  turn: number,
+  localReflection: boolean,
   strobe = 0,
 ) {
   const direction = normalize(subtract(b, a))
   const vertical = Math.abs(direction[1]) > 0.82
   const side = vertical
-    ? scale([Math.cos(characterTurn), 0, -Math.sin(characterTurn)], width * 0.5)
+    ? scale([Math.cos(turn), 0, -Math.sin(turn)], width * 0.5)
     : scale(normalize(cross(direction, [0, 1, 0])), width * 0.5)
   const up = vertical
-    ? scale([Math.sin(characterTurn), 0, Math.cos(characterTurn)], depth * 0.5)
+    ? scale([Math.sin(turn), 0, Math.cos(turn)], depth * 0.5)
     : scale(normalize(cross(side, direction)), depth * 0.5)
   const a0 = subtract(subtract(a, side), up)
   const a1 = add(subtract(a, up), side)
@@ -2337,12 +2372,30 @@ function addCharacterBox(
   const shadeA = scale(color, 0.65)
   const shadeB = scale(color, 0.82)
 
-  addLitQuad(target, a0, a1, b1, b0, shadeA, glow)
-  addLitQuad(target, a1, a2, b2, b1, color, glow)
-  addLitQuad(target, a2, a3, b3, b2, shadeB, glow)
-  addLitQuad(target, a3, a0, b0, b3, shadeA, glow)
-  addLitQuad(target, a3, a2, a1, a0, shadeB, glow)
-  addLitQuad(target, b0, b1, b2, b3, shadeB, glow)
+  addCharacterQuad(target, a0, a1, b1, b0, shadeA, glow, localReflection)
+  addCharacterQuad(target, a1, a2, b2, b1, color, glow, localReflection)
+  addCharacterQuad(target, a2, a3, b3, b2, shadeB, glow, localReflection)
+  addCharacterQuad(target, a3, a0, b0, b3, shadeA, glow, localReflection)
+  addCharacterQuad(target, a3, a2, a1, a0, shadeB, glow, localReflection)
+  addCharacterQuad(target, b0, b1, b2, b3, shadeB, glow, localReflection)
+}
+
+function addCharacterQuad(
+  target: Vertex[],
+  a: Vec3,
+  b: Vec3,
+  c: Vec3,
+  d: Vec3,
+  color: Vec3,
+  glow: number,
+  localReflection: boolean,
+) {
+  if (localReflection) {
+    addLitQuad(target, a, b, c, d, color, glow)
+  }
+  else {
+    addQuad(target, a, b, c, d, color, glow)
+  }
 }
 
 function addLitQuad(
@@ -2372,24 +2425,34 @@ function addLocalReflection(color: Vec3, point: Vec3, normal: Vec3): Vec3 {
 }
 
 function redReflection(point: Vec3, normal: Vec3) {
-  let amount = 0
-
   if (Math.abs(normal[0]) > Math.abs(normal[2])) {
     const x = normal[0] > 0 ? 6.98 : -6.98
+    const z = nearestValue(wallLightZ, point[2])
 
-    for (const z of wallLightZ) {
-      amount = Math.max(amount, redLightAmount(point, normal, x, point[1], z))
-    }
-  }
-  else {
-    const z = normal[2] > 0 ? 3.98 : -23.98
-
-    for (const x of backLightX) {
-      amount = Math.max(amount, redLightAmount(point, normal, x, point[1], z))
-    }
+    return redLightAmount(point, normal, x, point[1], z)
   }
 
-  return amount
+  const z = normal[2] > 0 ? 3.98 : -23.98
+  const x = nearestValue(backLightX, point[0])
+
+  return redLightAmount(point, normal, x, point[1], z)
+}
+
+function nearestValue(values: number[], target: number) {
+  let next = values[0]!
+  let distance = Math.abs(target - next)
+
+  for (let i = 1; i < values.length; i++) {
+    const value = values[i]!
+    const nextDistance = Math.abs(target - value)
+
+    if (nextDistance < distance) {
+      next = value
+      distance = nextDistance
+    }
+  }
+
+  return next
 }
 
 function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
@@ -2401,7 +2464,7 @@ function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: numb
   const facing = Math.max(0, (normal[0] * dx + normal[1] * dy + normal[2] * dz) / length)
   const height = 0.8 + Math.max(0, point[1] + 1.95) * 0.18
 
-  return Math.exp(-distance * 0.95) * Math.pow(facing, 1.35) * height * 1.65
+  return Math.exp(-distance * 0.95) * facing * Math.sqrt(facing) * height * 1.65
 }
 
 function strobeReflection(point: Vec3, normal: Vec3) {
@@ -2458,7 +2521,7 @@ function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, target
   const facing = Math.max(0, (normal[0] * lx + normal[1] * ly + normal[2] * lz) / length)
   const inside = Math.pow(1 - cone, 0.45)
 
-  return inside * Math.pow(facing, 0.78) * 7.2
+  return inside * Math.sqrt(facing) * 7.2
 }
 
 function strobeRandom(id: number, frame: number) {
