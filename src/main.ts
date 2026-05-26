@@ -122,6 +122,29 @@ type CharacterPart = {
   bottom?: true
 }
 
+type PlayerStyle = {
+  topStyleIndex: number
+  bottomStyleIndex: number
+  hairIndex: number
+  hairColorIndex: number
+}
+
+type PlayerDestination = {
+  position: Vec3
+  lookAt?: Vec3
+}
+
+type Player = {
+  position: Vec3
+  turn: number
+  motionBlend: number
+  input: Vec3
+  nextDecision: number
+  destination: PlayerDestination
+  style: PlayerStyle
+  seed: number
+}
+
 type StrobeLight = {
   id: number
   x: number
@@ -169,6 +192,23 @@ type CircleBounds = {
   x: number
   z: number
   radius: number
+}
+
+type HairRenderMesh = {
+  array: WebGLVertexArrayObject
+  vertexBuffer: WebGLBuffer
+  instanceBuffer: WebGLBuffer
+  vertexCount: number
+  instanceCount: number
+}
+
+type HairInstance = {
+  meshIndex: number
+  center: Vec3
+  side: Vec3
+  up: Vec3
+  forward: Vec3
+  color: Vec3
 }
 
 type ClubGlobal = typeof globalThis & {
@@ -458,6 +498,89 @@ void main() {
 }
 `
 
+const hairVertex = `#version 300 es
+precision highp float;
+
+layout(location = 0) in vec3 localPosition;
+layout(location = 1) in vec3 instanceCenter;
+layout(location = 2) in vec3 instanceSide;
+layout(location = 3) in vec3 instanceUp;
+layout(location = 4) in vec3 instanceForward;
+layout(location = 5) in vec3 instanceColor;
+
+uniform vec2 resolution;
+uniform vec3 cameraEye;
+uniform vec3 cameraCenter;
+
+out vec3 shade;
+out vec3 worldPosition;
+
+mat4 perspective(float fov, float aspect, float near, float far) {
+  float f = 1.0 / tan(fov * 0.5);
+
+  return mat4(
+    f / aspect, 0.0, 0.0, 0.0,
+    0.0, f, 0.0, 0.0,
+    0.0, 0.0, (far + near) / (near - far), -1.0,
+    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
+  );
+}
+
+mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
+  vec3 z = normalize(eye - center);
+  vec3 x = normalize(cross(up, z));
+  vec3 y = cross(z, x);
+
+  return mat4(
+    x.x, y.x, z.x, 0.0,
+    x.y, y.y, z.y, 0.0,
+    x.z, y.z, z.z, 0.0,
+    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
+  );
+}
+
+void main() {
+  vec3 position = instanceCenter
+    + instanceSide * localPosition.x
+    + instanceUp * localPosition.y
+    + instanceForward * localPosition.z;
+  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
+  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
+
+  gl_Position = projection * camera * vec4(position, 1.0);
+  shade = instanceColor;
+  worldPosition = position;
+}
+`
+
+const hairFragment = `#version 300 es
+precision highp float;
+
+uniform int renderZone;
+
+in vec3 shade;
+in vec3 worldPosition;
+
+out vec4 pixel;
+
+bool sceneVisible() {
+  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool door = abs(worldPosition.z - 4.0) < 0.22
+    && worldPosition.x > -5.75 && worldPosition.x < -3.75
+    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
+
+  return renderZone == 0 ? (!outsidePoint || door) : (outsidePoint || door);
+}
+
+void main() {
+  if (!sceneVisible()) {
+    discard;
+  }
+
+  pixel = vec4(shade, 1.0);
+}
+`
+
 const smokeVertex = `#version 300 es
 precision highp float;
 
@@ -649,6 +772,8 @@ let characterHair: HairMesh | undefined
 let characterHairIndex = 0
 let characterHairColorIndex = 0
 let characterHairMeshes: HairMesh[] = []
+let hairRenderMeshes: HairRenderMesh[] = []
+let hairInstances: HairInstance[] = []
 let characterMode: CharacterMode = 'stand'
 let characterRigLoad: Promise<CharacterRig> | undefined
 let frameId = 0
@@ -719,6 +844,7 @@ let lightPoints = new Float32Array(lights.flat())
 const smokePoints = new Float32Array(smoke.flat())
 const program = createProgram(gl, vertex, fragment)
 const lightProgram = createProgram(gl, vertex, lightFragment)
+const hairProgram = createProgram(gl, hairVertex, hairFragment)
 const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
 const postProgram = createProgram(gl, postVertex, postFragment)
 const smokeMap = createSmokeMap(gl)
@@ -734,6 +860,10 @@ const lightRenderZone = gl.getUniformLocation(lightProgram, 'renderZone')
 const lightResolution = gl.getUniformLocation(lightProgram, 'resolution')
 const lightCameraEye = gl.getUniformLocation(lightProgram, 'cameraEye')
 const lightCameraCenter = gl.getUniformLocation(lightProgram, 'cameraCenter')
+const hairResolution = gl.getUniformLocation(hairProgram, 'resolution')
+const hairCameraEye = gl.getUniformLocation(hairProgram, 'cameraEye')
+const hairCameraCenter = gl.getUniformLocation(hairProgram, 'cameraCenter')
+const hairRenderZone = gl.getUniformLocation(hairProgram, 'renderZone')
 const roomSmokeTime = gl.getUniformLocation(smokeProgram, 'time')
 const roomSmokeMap = gl.getUniformLocation(smokeProgram, 'smokeMap')
 const roomSmokeResolution = gl.getUniformLocation(smokeProgram, 'resolution')
@@ -757,8 +887,8 @@ const bloomTarget = createTarget(gl, 1, 1)
 const stride = vertexSize * Float32Array.BYTES_PER_ELEMENT
 
 if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !lightTime || !lightSmokeMap
-  || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !roomSmokeTime || !roomSmokeMap
-  || !roomSmokeResolution
+  || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !hairResolution || !hairCameraEye
+  || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
   || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution || !array
   || !buffer || !lightArray || !lightBuffer || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !postArray || !postBuffer)
@@ -961,6 +1091,7 @@ const draw = (stamp: number) => {
   lastStamp = stamp
   resize()
   updateCharacter(delta)
+  updatePlayers(delta, stamp * 0.001)
   updateCamera(delta)
   updateSave(delta)
   const camera = getCamera()
@@ -1000,6 +1131,7 @@ const draw = (stamp: number) => {
     gl.bindVertexArray(characterArray)
     gl.drawArrays(gl.TRIANGLES, 0, characterCount)
   }
+  drawNpcHair(camera, canvas.width, canvas.height, outside)
 
   drawRoomDepth(camera, canvas.width, canvas.height, outside)
   gl.enable(gl.BLEND)
@@ -1040,6 +1172,7 @@ const draw = (stamp: number) => {
     gl.bindVertexArray(characterArray)
     gl.drawArrays(gl.TRIANGLES, 0, characterCount)
   }
+  drawNpcHair(camera, bloomTarget.width, bloomTarget.height, outside)
 
   drawRoomDepth(camera, bloomTarget.width, bloomTarget.height, outside)
   gl.colorMask(true, true, true, true)
@@ -1232,6 +1365,7 @@ loadYouTubePlayer()
 const wallLightZ = [-2, -6, -10, -14, -18, -22]
 const backLightX = [-4.5, 0, 4.5]
 const strobeLights = createStrobeLights()
+const players = createPlayers(100)
 let lightFrame = 0
 const characterParts: CharacterPart[] = [
   { from: 'mixamorig:Hips', to: 'mixamorig:Neck', width: 0.26, depth: 0.16, color: shirtLight, start: -0.06, end: 1.02,
@@ -1280,6 +1414,7 @@ async function loadCharacterRig(): Promise<CharacterRig> {
 
   validateCharacterRig(rig.root)
   characterHairMeshes = [...createHairMeshes(manHair, 'man'), ...createHairMeshes(womanHair, 'woman')]
+  hairRenderMeshes = createHairRenderMeshes(characterHairMeshes)
   characterHairIndex = normalizeIndex(characterHairIndex, characterHairMeshes.length + 1)
   setCharacterHair()
   logCurrentHair()
@@ -1573,6 +1708,92 @@ function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
   }
 }
 
+function createHairRenderMeshes(meshes: HairMesh[]) {
+  return meshes.map(mesh => createHairRenderMesh(mesh))
+}
+
+function createHairRenderMesh(mesh: HairMesh): HairRenderMesh {
+  const array = gl.createVertexArray()
+  const vertexBuffer = gl.createBuffer()
+  const instanceBuffer = gl.createBuffer()
+
+  if (!array || !vertexBuffer || !instanceBuffer) {
+    throw new Error('Failed to create hair render mesh')
+  }
+
+  const data: number[] = []
+
+  for (const face of mesh.faces) {
+    const a = hairLocalPoint(mesh.points[face[0]!]!)
+    const b = hairLocalPoint(mesh.points[face[1]!]!)
+    const c = hairLocalPoint(mesh.points[face[2]!]!)
+
+    data.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
+  }
+
+  gl.bindVertexArray(array)
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW)
+  gl.enableVertexAttribArray(0)
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0)
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW)
+
+  for (let i = 0; i < 5; i++) {
+    const location = i + 1
+
+    gl.enableVertexAttribArray(location)
+    gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 15 * Float32Array.BYTES_PER_ELEMENT,
+      i * 3 * Float32Array.BYTES_PER_ELEMENT)
+    gl.vertexAttribDivisor(location, 1)
+  }
+
+  gl.bindVertexArray(null)
+
+  return {
+    array,
+    vertexBuffer,
+    instanceBuffer,
+    vertexCount: data.length / 3,
+    instanceCount: 0,
+  }
+}
+
+function hairLocalPoint(point: Vec3): Vec3 {
+  const scaleAmount = 1.4
+  const x = point[0] * scaleAmount
+  const z = -(point[2] - 0.02) * scaleAmount - 0.055
+  const y = (point[1] + 0.08) * scaleAmount - Math.max(0, z) * 0.28
+
+  return [x, y, z]
+}
+
+function updateNpcHairInstances() {
+  const grouped = Array.from({ length: hairRenderMeshes.length }, () => [] as number[])
+
+  for (const instance of hairInstances) {
+    const data = grouped[instance.meshIndex]!
+
+    data.push(
+      instance.center[0], instance.center[1], instance.center[2],
+      instance.side[0], instance.side[1], instance.side[2],
+      instance.up[0], instance.up[1], instance.up[2],
+      instance.forward[0], instance.forward[1], instance.forward[2],
+      instance.color[0], instance.color[1], instance.color[2],
+    )
+  }
+
+  for (let i = 0; i < hairRenderMeshes.length; i++) {
+    const mesh = hairRenderMeshes[i]!
+    const data = grouped[i]!
+
+    mesh.instanceCount = data.length / 15
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.instanceBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW)
+  }
+}
+
 function normalizeHairPoints(points: Vec3[], turnRightSideForward: boolean): Vec3[] {
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
@@ -1663,26 +1884,28 @@ function updateCharacterMesh(time: number) {
   }
 
   const target: Vertex[] = []
-  const pose = sampleCharacterPose(characterRig, time)
+  hairInstances = []
+  addRenderedCharacter(target, {
+    position: characterPosition,
+    turn: characterTurn,
+    motionBlend: characterMotionBlend,
+    style: {
+      topStyleIndex,
+      bottomStyleIndex,
+      hairIndex: characterHairIndex,
+      hairColorIndex: characterHairColorIndex,
+    },
+  }, time, true)
 
-  for (const part of characterParts) {
-    if (bottomMode === 'pants' || !part.bottom) {
-      addCharacterPart(target, pose, part)
+  const view = playerView()
+
+  for (const player of players) {
+    if (playerInView(player, view)) {
+      addRenderedCharacter(target, player, time + player.seed * 0.37, false)
     }
   }
 
-  if (bottomMode === 'skirt') {
-    addCharacterSkirt(target, pose)
-  }
-
-  if (topMode === 'chest') {
-    addCharacterChest(target, pose)
-  }
-
-  if (characterHair) {
-    addCharacterHair(target, pose, characterHair)
-  }
-
+  updateNpcHairInstances()
   const data = new Float32Array(target.flat())
 
   gl.bindBuffer(gl.ARRAY_BUFFER, characterBuffer)
@@ -1691,7 +1914,97 @@ function updateCharacterMesh(time: number) {
   return data.length / vertexSize
 }
 
-function sampleCharacterPose(rig: CharacterRig, time: number) {
+function drawNpcHair(camera: ReturnType<typeof getCamera>, width: number, height: number, outside: boolean) {
+  gl.useProgram(hairProgram)
+  gl.uniform2f(hairResolution, width, height)
+  gl.uniform3f(hairCameraEye, camera.eye[0], camera.eye[1], camera.eye[2])
+  gl.uniform3f(hairCameraCenter, camera.center[0], camera.center[1], camera.center[2])
+  gl.uniform1i(hairRenderZone, outside ? 1 : 0)
+
+  for (const mesh of hairRenderMeshes) {
+    if (mesh.instanceCount > 0) {
+      gl.bindVertexArray(mesh.array)
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, mesh.vertexCount, mesh.instanceCount)
+    }
+  }
+
+  gl.bindVertexArray(null)
+}
+
+function playerView() {
+  const eye = cameraPosition
+  const forward = normalize(subtract(cameraTarget, eye))
+  const right = normalize(cross(forward, [0, 1, 0]))
+  const up = cross(right, forward)
+
+  return { eye, forward, right, up }
+}
+
+function playerInView(player: Player, view: ReturnType<typeof playerView>) {
+  const center: Vec3 = [player.position[0], player.position[1] + 0.85, player.position[2]]
+  const toPlayer = subtract(center, view.eye)
+  const depth = dot(toPlayer, view.forward)
+  const radius = 1.2
+
+  if (depth < -radius || depth > 45) {
+    return false
+  }
+
+  const vertical = Math.tan(1.08 / 2) * Math.max(depth, 0.1) + radius
+  const horizontal = vertical * (canvas.width / canvas.height) + radius
+
+  return Math.abs(dot(toPlayer, view.right)) < horizontal && Math.abs(dot(toPlayer, view.up)) < vertical
+}
+
+function addRenderedCharacter(
+  target: Vertex[],
+  player: { position: Vec3; turn: number; motionBlend: number; style: PlayerStyle },
+  time: number,
+  detailedHair: boolean,
+) {
+  const pose = sampleCharacterPose(characterRig!, time, player)
+  const style = playerStyle(player.style)
+
+  for (const part of characterParts) {
+    if (style.bottomMode === 'pants' || !part.bottom) {
+      addCharacterPart(target, pose, part, player, style)
+    }
+  }
+
+  if (style.bottomMode === 'skirt') {
+    addCharacterSkirt(target, pose, player, style)
+  }
+
+  if (style.topMode === 'chest') {
+    addCharacterChest(target, pose, player)
+  }
+
+  const hair = playerHair(player.style.hairIndex)
+
+  if (hair && detailedHair) {
+    addCharacterHair(target, pose, hair, player, style.hairColor)
+  }
+  else if (hair && characterHairMeshes.length > 0) {
+    addNpcHairInstance(pose, hair, player, style.hairColor)
+  }
+}
+
+function addNpcHairInstance(pose: Map<string, Vec3>, hair: HairMesh, player: { turn: number }, color: Vec3) {
+  const head = pose.get('mixamorig:Head')!
+  const top = pose.get('mixamorig:HeadTop_End')!
+  const up = normalize(subtract(top, head))
+  const center = add(head, scale(up, -0.035))
+  hairInstances.push({
+    meshIndex: characterHairMeshes.indexOf(hair),
+    center,
+    side: [Math.cos(player.turn), 0, -Math.sin(player.turn)],
+    up,
+    forward: [Math.sin(player.turn), 0, Math.cos(player.turn)],
+    color,
+  })
+}
+
+function sampleCharacterPose(rig: CharacterRig, time: number, player: { position: Vec3; turn: number; motionBlend: number }) {
   const stand = sampleClipPose(rig, rig.clips.stand, time)
   const run = sampleClipPose(rig, rig.clips.run, time)
   const pose = new Map<string, Vec3>()
@@ -1700,13 +2013,13 @@ function sampleCharacterPose(rig: CharacterRig, time: number) {
     const next = run.get(name)!
 
     pose.set(name, [
-      mix(point[0], next[0], characterMotionBlend),
-      mix(point[1], next[1], characterMotionBlend),
-      mix(point[2], next[2], characterMotionBlend),
+      mix(point[0], next[0], player.motionBlend),
+      mix(point[1], next[1], player.motionBlend),
+      mix(point[2], next[2], player.motionBlend),
     ])
   }
 
-  return placeCharacterPose(pose)
+  return placeCharacterPose(pose, player.position, player.turn)
 }
 
 function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number) {
@@ -1789,7 +2102,13 @@ function sampleQuat(keys: [number, Quat][] | undefined, tick: number, fallback: 
   return normalizeQuat(keys[keys.length - 1]![1])
 }
 
-function addCharacterPart(target: Vertex[], pose: Map<string, Vec3>, part: CharacterPart) {
+function addCharacterPart(
+  target: Vertex[],
+  pose: Map<string, Vec3>,
+  part: CharacterPart,
+  player: { turn: number },
+  style: ReturnType<typeof playerStyle>,
+) {
   const from = pose.get(part.from)!
   const to = pose.get(part.to)!
   const start = part.start ?? 0
@@ -1801,7 +2120,7 @@ function addCharacterPart(target: Vertex[], pose: Map<string, Vec3>, part: Chara
   if (part.armOffset) {
     const center = scale(add(a, b), 0.5)
     const torso = pose.get('mixamorig:Spine2')!
-    const side: Vec3 = [Math.cos(characterTurn), 0, -Math.sin(characterTurn)]
+    const side: Vec3 = [Math.cos(player.turn), 0, -Math.sin(player.turn)]
     const amount = Math.sign(dot(subtract(center, torso), side)) * part.armOffset
     const offset = scale(side, amount)
 
@@ -1816,27 +2135,35 @@ function addCharacterPart(target: Vertex[], pose: Map<string, Vec3>, part: Chara
     b = add(b, offset)
   }
 
-  addCharacterBox(target, a, b, part.width, part.depth, characterPartColor(part), part.glow ?? 0.02)
+  addCharacterBox(target, a, b, part.width, part.depth, characterPartColor(part, style), part.glow ?? 0.02)
 }
 
-function characterPartColor(part: CharacterPart) {
+function characterPartColor(part: CharacterPart, style: ReturnType<typeof playerStyle>) {
   if (part.top === 'torso') {
-    return topMode === 'shirt' || topMode === 'sleeveless' ? shirtLight : skin
+    return style.topMode === 'shirt' || style.topMode === 'sleeveless' ? style.shirtLight : skin
   }
 
   if (part.top === 'sleeve') {
-    return topMode === 'shirt' ? shirt : skin
+    return style.topMode === 'shirt' ? style.shirt : skin
+  }
+
+  if (part.bottom) {
+    return style.pants
+  }
+
+  if (part.color === shoe) {
+    return style.shoe
   }
 
   return part.color
 }
 
-function addCharacterChest(target: Vertex[], pose: Map<string, Vec3>) {
+function addCharacterChest(target: Vertex[], pose: Map<string, Vec3>, player: { turn: number }) {
   const spine = pose.get('mixamorig:Spine2')!
   const neck = pose.get('mixamorig:Neck')!
   const center = add(spine, scale(subtract(neck, spine), 0.32))
-  const side: Vec3 = [Math.cos(characterTurn), 0, -Math.sin(characterTurn)]
-  const forward: Vec3 = [Math.sin(characterTurn), 0, Math.cos(characterTurn)]
+  const side: Vec3 = [Math.cos(player.turn), 0, -Math.sin(player.turn)]
+  const forward: Vec3 = [Math.sin(player.turn), 0, Math.cos(player.turn)]
 
   for (const offset of [-0.055, 0.055]) {
     const a = add(add(center, scale(side, offset)), scale(forward, 0.06))
@@ -1846,7 +2173,12 @@ function addCharacterChest(target: Vertex[], pose: Map<string, Vec3>) {
   }
 }
 
-function addCharacterSkirt(target: Vertex[], pose: Map<string, Vec3>) {
+function addCharacterSkirt(
+  target: Vertex[],
+  pose: Map<string, Vec3>,
+  player: { turn: number },
+  style: ReturnType<typeof playerStyle>,
+) {
   const hips = pose.get('mixamorig:Hips')!
   const leftUp = pose.get('mixamorig:LeftUpLeg')!
   const rightUp = pose.get('mixamorig:RightUpLeg')!
@@ -1854,8 +2186,8 @@ function addCharacterSkirt(target: Vertex[], pose: Map<string, Vec3>) {
   const rightLeg = pose.get('mixamorig:RightLeg')!
   const topCenter = scale(add(add(hips, leftUp), rightUp), 1 / 3)
   const bottomCenter = scale(add(leftLeg, rightLeg), 0.5)
-  const side: Vec3 = [Math.cos(characterTurn), 0, -Math.sin(characterTurn)]
-  const forward: Vec3 = [Math.sin(characterTurn), 0, Math.cos(characterTurn)]
+  const side: Vec3 = [Math.cos(player.turn), 0, -Math.sin(player.turn)]
+  const forward: Vec3 = [Math.sin(player.turn), 0, Math.cos(player.turn)]
   const topWidth = 0.09
   const bottomWidth = 0.15
   const topDepth = 0.11
@@ -1869,21 +2201,20 @@ function addCharacterSkirt(target: Vertex[], pose: Map<string, Vec3>) {
   const g = add(add(bottomCenter, scale(side, bottomWidth)), scale(forward, bottomDepth))
   const h = add(add(bottomCenter, scale(side, -bottomWidth)), scale(forward, bottomDepth))
 
-  addLitQuad(target, a, b, f, e, pants, 0.02)
-  addLitQuad(target, b, c, g, f, scale(pants, 0.88), 0.02)
-  addLitQuad(target, c, d, h, g, scale(pants, 0.78), 0.02)
-  addLitQuad(target, d, a, e, h, scale(pants, 0.88), 0.02)
-  addLitQuad(target, e, f, g, h, scale(pants, 0.68), 0.02)
+  addLitQuad(target, a, b, f, e, style.pants, 0.02)
+  addLitQuad(target, b, c, g, f, scale(style.pants, 0.88), 0.02)
+  addLitQuad(target, c, d, h, g, scale(style.pants, 0.78), 0.02)
+  addLitQuad(target, d, a, e, h, scale(style.pants, 0.88), 0.02)
+  addLitQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02)
 }
 
-function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh) {
+function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh, player: { turn: number }, color: Vec3) {
   const head = pose.get('mixamorig:Head')!
   const top = pose.get('mixamorig:HeadTop_End')!
   const up = normalize(subtract(top, head))
-  const side: Vec3 = [Math.cos(characterTurn), 0, -Math.sin(characterTurn)]
-  const forward: Vec3 = [Math.sin(characterTurn), 0, Math.cos(characterTurn)]
+  const side: Vec3 = [Math.cos(player.turn), 0, -Math.sin(player.turn)]
+  const forward: Vec3 = [Math.sin(player.turn), 0, Math.cos(player.turn)]
   const center = add(head, scale(up, -0.035))
-  const color = hairPalette[characterHairColorIndex]!
 
   for (const face of mesh.faces) {
     const a = hairPoint(center, side, up, forward, mesh.points[face[0]!]!)
@@ -2164,11 +2495,11 @@ function outsideStrobeTarget(light: StrobeLight, time: number): Vec3 {
   return [clamp(x, light.minX, light.maxX), light.floor, clamp(z, light.minZ, light.maxZ)]
 }
 
-function placeCharacterPose(pose: Map<string, Vec3>) {
+function placeCharacterPose(pose: Map<string, Vec3>, position: Vec3, turn: number) {
   const ground = Math.min(...characterGroundJoints.map(name => pose.get(name)![1]))
   const next = new Map<string, Vec3>()
-  const sin = Math.sin(characterTurn)
-  const cos = Math.cos(characterTurn)
+  const sin = Math.sin(turn)
+  const cos = Math.cos(turn)
 
   for (const [name, point] of pose) {
     const x = point[0] * characterScale
@@ -2176,9 +2507,9 @@ function placeCharacterPose(pose: Map<string, Vec3>) {
     const z = point[2] * characterScale
 
     next.set(name, [
-      characterPosition[0] + x * cos + z * sin,
-      characterPosition[1] + y,
-      characterPosition[2] - x * sin + z * cos,
+      position[0] + x * cos + z * sin,
+      position[1] + y,
+      position[2] - x * sin + z * cos,
     ])
   }
 
@@ -2515,6 +2846,160 @@ function updateCharacter(delta: number) {
   collideRoom(characterPosition)
 }
 
+function createPlayers(count: number) {
+  const next: Player[] = []
+
+  for (let i = 0; i < count; i++) {
+    const seed = i + 1
+    const destination = playerDestination(seed, 0)
+    const position: Vec3 = [
+      destination.position[0] + seededRange(seed, 10, -1.2, 1.2),
+      characterFloor,
+      destination.position[2] + seededRange(seed, 11, -1.2, 1.2),
+    ]
+
+    next.push({
+      position,
+      turn: seededRange(seed, 12, -Math.PI, Math.PI),
+      motionBlend: 0,
+      input: [0, 0, 0],
+      nextDecision: seededRange(seed, 13, 0.3, 2.8),
+      destination,
+      style: {
+        topStyleIndex: Math.floor(seededRange(seed, 14, 0, jewelPalette.length * 2 + 2)),
+        bottomStyleIndex: Math.floor(seededRange(seed, 15, 0, jewelPalette.length * 2)),
+        hairIndex: Math.floor(seededRange(seed, 16, 0, 19)),
+        hairColorIndex: Math.floor(seededRange(seed, 17, 0, hairPalette.length)),
+      },
+      seed,
+    })
+  }
+
+  return next
+}
+
+function updatePlayers(delta: number, time: number) {
+  for (const player of players) {
+    const destination = activePlayerDestination(player)
+    const distance = Math.hypot(
+      destination.position[0] - player.position[0],
+      destination.position[2] - player.position[2],
+    )
+
+    if (distance < 0.55 && destination === player.destination) {
+      player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed))
+      player.nextDecision = time
+    }
+
+    if (time >= player.nextDecision) {
+      choosePlayerInput(player, time)
+      player.nextDecision = time + seededRange(player.seed, Math.floor(time * 3.1), 0.45, 2.4)
+    }
+
+    const moving = lengthSq(player.input) > 0
+
+    player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-7 * delta))
+
+    if (moving) {
+      const direction = normalize([...player.input])
+
+      player.position[0] += direction[0] * delta * 2.55
+      player.position[2] += direction[2] * delta * 2.55
+      collideRoom(player.position)
+      player.turn = smoothAngle(player.turn, Math.atan2(direction[0], direction[2]), 8, delta)
+    }
+    else if (destination.lookAt) {
+      const dx = destination.lookAt[0] - player.position[0]
+      const dz = destination.lookAt[2] - player.position[2]
+
+      player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
+    }
+
+    player.position[1] = characterFloor
+  }
+}
+
+function choosePlayerInput(player: Player, time: number) {
+  const random = seededRandom(player.seed, Math.floor(time * 7.7))
+
+  if (random < 0.22) {
+    player.input = [0, 0, 0]
+    return
+  }
+
+  const destination = activePlayerDestination(player)
+  const dx = destination.position[0] - player.position[0]
+  const dz = destination.position[2] - player.position[2]
+  const angle = Math.atan2(dx, dz) + seededRange(player.seed, Math.floor(time * 5.3), -0.75, 0.75)
+  const directions: Vec3[] = [
+    [0, 0, 1],
+    [1, 0, 1],
+    [-1, 0, 1],
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 0, -1],
+    [1, 0, -1],
+    [-1, 0, -1],
+  ]
+  const index = normalizeIndex(Math.round(angle / (Math.PI / 4)), directions.length)
+
+  player.input = [...directions[index]!]
+}
+
+function activePlayerDestination(player: Player): PlayerDestination {
+  const outside = isOutside(player.position)
+  const destinationOutside = isOutside(player.destination.position)
+
+  if (outside === destinationOutside) {
+    return player.destination
+  }
+
+  return {
+    position: [backDoor.x, characterFloor, outside ? roomBounds.front - 0.75 : roomBounds.front + 0.75],
+  }
+}
+
+function playerDestination(seed: number, step: number): PlayerDestination {
+  const choice = Math.floor(seededRange(seed, step + 100, 0, 6))
+  const jitterX = seededRange(seed, step + 101, -1.8, 1.8)
+  const jitterZ = seededRange(seed, step + 102, -1.4, 1.4)
+
+  if (choice === 0) {
+    return { position: [jitterX, characterFloor, djBooth.z + 2.2 + jitterZ], lookAt: [djBooth.x, characterFloor, djBooth.z] }
+  }
+
+  if (choice === 1) {
+    return { position: [bartenderBar.x + jitterX, characterFloor, bartenderBar.z - 1.55 + jitterZ * 0.35] }
+  }
+
+  if (choice === 2) {
+    return { position: [backDoor.x + jitterX * 0.35, characterFloor, roomBounds.front - 1.3 + jitterZ * 0.3] }
+  }
+
+  if (choice === 3) {
+    return { position: [outsideTree.x + jitterX, characterFloor, outsideTree.z - 2.4 + jitterZ], lookAt: [outsideTree.x,
+      characterFloor, outsideTree.z] }
+  }
+
+  if (choice === 4) {
+    return { position: [outsideDjBooth.x + jitterX, characterFloor, outsideDjBooth.z - 2.6 + jitterZ],
+      lookAt: [outsideDjBooth.x, characterFloor, outsideDjBooth.z] }
+  }
+
+  return { position: [seededRange(seed, step + 103, roomBounds.left + 1.2, roomBounds.right - 1.2), characterFloor,
+    seededRange(seed, step + 104, roomBounds.back + 2.2, roomBounds.front - 2.0)] }
+}
+
+function seededRange(seed: number, salt: number, min: number, max: number) {
+  return mix(min, max, seededRandom(seed, salt))
+}
+
+function seededRandom(seed: number, salt: number) {
+  const value = Math.sin(seed * 127.1 + salt * 311.7) * 43758.5453123
+
+  return value - Math.floor(value)
+}
+
 function updateCamera(delta: number) {
   getInput()
   const moving = lengthSq(input) > 0
@@ -2669,6 +3154,43 @@ function setBottomStyle() {
   pantsColorIndex = bottomStyleIndex % jewelPalette.length
   setVec3(pants, jewelPalette[pantsColorIndex]!)
   setVec3(shoe, scale(jewelPalette[pantsColorIndex]!, 0.72))
+}
+
+function playerStyle(style: PlayerStyle) {
+  const topIndex = normalizeIndex(style.topStyleIndex, jewelPalette.length * 2 + 2)
+  const bottomIndex = normalizeIndex(style.bottomStyleIndex, jewelPalette.length * 2)
+  const shirtIndex = topIndex < jewelPalette.length
+    ? topIndex
+    : topIndex < jewelPalette.length * 2
+      ? topIndex - jewelPalette.length
+      : 0
+  const topMode = topIndex < jewelPalette.length
+    ? 'shirt'
+    : topIndex < jewelPalette.length * 2
+      ? 'sleeveless'
+      : topIndex === jewelPalette.length * 2
+        ? 'skin'
+        : 'chest'
+  const bottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
+  const pantsColor = jewelPalette[bottomIndex % jewelPalette.length]!
+
+  return {
+    topMode: topMode as TopMode,
+    bottomMode: bottomMode as BottomMode,
+    shirt: jewelPalette[shirtIndex]!,
+    shirtLight: scale(jewelPalette[shirtIndex]!, 1.35),
+    pants: pantsColor,
+    shoe: scale(pantsColor, 0.72),
+    hairColor: hairPalette[normalizeIndex(style.hairColorIndex, hairPalette.length)]!,
+  }
+}
+
+function playerHair(index: number) {
+  if (index === 0 || characterHairMeshes.length === 0) {
+    return undefined
+  }
+
+  return characterHairMeshes[normalizeIndex(index - 1, characterHairMeshes.length)]!
 }
 
 function updateChatOverlay(camera: ReturnType<typeof getCamera>, stamp: number) {
