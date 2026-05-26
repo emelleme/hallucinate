@@ -145,6 +145,11 @@ type Player = {
   seed: number
 }
 
+type SampledPose = {
+  stand: Map<string, Vec3>
+  run: Map<string, Vec3>
+}
+
 type StrobeLight = {
   id: number
   x: number
@@ -1898,10 +1903,11 @@ function updateCharacterMesh(time: number) {
   }, time, true)
 
   const view = playerView()
+  const npcPose = sampleBasePose(characterRig, Math.floor(time * 12) / 12)
 
   for (const player of players) {
     if (playerInView(player, view)) {
-      addRenderedCharacter(target, player, time + player.seed * 0.37, false)
+      addRenderedCharacter(target, player, time, false, npcPose)
     }
   }
 
@@ -1961,8 +1967,9 @@ function addRenderedCharacter(
   player: { position: Vec3; turn: number; motionBlend: number; style: PlayerStyle },
   time: number,
   detailedHair: boolean,
+  basePose?: SampledPose,
 ) {
-  const pose = sampleCharacterPose(characterRig!, time, player)
+  const pose = sampleCharacterPose(characterRig!, time, player, basePose)
   const style = playerStyle(player.style)
 
   for (const part of characterParts) {
@@ -2004,9 +2011,13 @@ function addNpcHairInstance(pose: Map<string, Vec3>, hair: HairMesh, player: { t
   })
 }
 
-function sampleCharacterPose(rig: CharacterRig, time: number, player: { position: Vec3; turn: number; motionBlend: number }) {
-  const stand = sampleClipPose(rig, rig.clips.stand, time)
-  const run = sampleClipPose(rig, rig.clips.run, time)
+function sampleCharacterPose(
+  rig: CharacterRig,
+  time: number,
+  player: { position: Vec3; turn: number; motionBlend: number },
+  basePose = sampleBasePose(rig, time),
+) {
+  const { stand, run } = basePose
   const pose = new Map<string, Vec3>()
 
   for (const [name, point] of stand) {
@@ -2020,6 +2031,13 @@ function sampleCharacterPose(rig: CharacterRig, time: number, player: { position
   }
 
   return placeCharacterPose(pose, player.position, player.turn)
+}
+
+function sampleBasePose(rig: CharacterRig, time: number): SampledPose {
+  return {
+    stand: sampleClipPose(rig, rig.clips.stand, time),
+    run: sampleClipPose(rig, rig.clips.run, time),
+  }
 }
 
 function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number) {
@@ -2352,23 +2370,31 @@ function addLocalReflection(color: Vec3, point: Vec3, normal: Vec3): Vec3 {
 function redReflection(point: Vec3, normal: Vec3) {
   let amount = 0
 
-  for (const z of wallLightZ) {
-    amount = Math.max(amount, redLightAmount(point, normal, [-6.98, point[1], z]))
-    amount = Math.max(amount, redLightAmount(point, normal, [6.98, point[1], z]))
-  }
+  if (Math.abs(normal[0]) > Math.abs(normal[2])) {
+    const x = normal[0] > 0 ? 6.98 : -6.98
 
-  for (const x of backLightX) {
-    amount = Math.max(amount, redLightAmount(point, normal, [x, point[1], -23.98]))
-    amount = Math.max(amount, redLightAmount(point, normal, [x, point[1], 3.98]))
+    for (const z of wallLightZ) {
+      amount = Math.max(amount, redLightAmount(point, normal, x, point[1], z))
+    }
+  }
+  else {
+    const z = normal[2] > 0 ? 3.98 : -23.98
+
+    for (const x of backLightX) {
+      amount = Math.max(amount, redLightAmount(point, normal, x, point[1], z))
+    }
   }
 
   return amount
 }
 
-function redLightAmount(point: Vec3, normal: Vec3, light: Vec3) {
-  const toLight = subtract(light, point)
-  const distance = Math.hypot(toLight[0], toLight[2])
-  const facing = Math.max(0, dot(normal, normalize(toLight)))
+function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
+  const dx = x - point[0]
+  const dy = y - point[1]
+  const dz = z - point[2]
+  const distance = Math.hypot(dx, dz)
+  const length = Math.hypot(dx, dy, dz)
+  const facing = Math.max(0, (normal[0] * dx + normal[1] * dy + normal[2] * dz) / length)
   const height = 0.8 + Math.max(0, point[1] + 1.95) * 0.18
 
   return Math.exp(-distance * 0.95) * Math.pow(facing, 1.35) * height * 1.65
