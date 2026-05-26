@@ -163,6 +163,11 @@ type SampledPose = {
 
 type PoseBlendCache = Map<number, Map<string, Vec3>>
 
+type CharacterBoxGeometry = {
+  data: Float32Array
+  count: number
+}
+
 type StrobeLight = {
   id: number
   x: number
@@ -353,6 +358,113 @@ void main() {
   hazeAmount = haze;
   worldPosition = position;
   strobeId = strobe;
+}
+`
+
+const characterBoxVertex = `#version 300 es
+precision highp float;
+
+layout(location = 0) in vec3 boxPosition;
+layout(location = 1) in float boxShade;
+layout(location = 2) in vec3 instanceA;
+layout(location = 3) in vec3 instanceB;
+layout(location = 4) in vec3 instanceSide;
+layout(location = 5) in vec3 instanceUp;
+layout(location = 6) in vec3 instanceColor;
+layout(location = 7) in float instanceGlow;
+layout(location = 8) in float instanceStrobe;
+
+uniform vec2 resolution;
+uniform vec3 cameraEye;
+uniform vec3 cameraCenter;
+
+out vec3 shade;
+out float light;
+out vec2 patternUv;
+out float hazeAmount;
+out vec3 worldPosition;
+flat out float strobeId;
+
+mat4 perspective(float fov, float aspect, float near, float far) {
+  float f = 1.0 / tan(fov * 0.5);
+
+  return mat4(
+    f / aspect, 0.0, 0.0, 0.0,
+    0.0, f, 0.0, 0.0,
+    0.0, 0.0, (far + near) / (near - far), -1.0,
+    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
+  );
+}
+
+mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
+  vec3 z = normalize(eye - center);
+  vec3 x = normalize(cross(up, z));
+  vec3 y = cross(z, x);
+
+  return mat4(
+    x.x, y.x, z.x, 0.0,
+    x.y, y.y, z.y, 0.0,
+    x.z, y.z, z.z, 0.0,
+    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
+  );
+}
+
+void main() {
+  vec3 along = mix(instanceA, instanceB, boxPosition.z);
+  vec3 position = along + instanceSide * boxPosition.x + instanceUp * boxPosition.y;
+  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
+  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
+  vec4 view = camera * vec4(position, 1.0);
+
+  gl_Position = projection * view;
+  shade = instanceColor * boxShade;
+  light = instanceGlow;
+  patternUv = vec2(0.0);
+  hazeAmount = 0.0;
+  worldPosition = position;
+  strobeId = instanceStrobe;
+}
+`
+
+const characterBoxFragment = `#version 300 es
+precision highp float;
+
+uniform int renderZone;
+
+in vec3 shade;
+in float light;
+in vec2 patternUv;
+in float hazeAmount;
+in vec3 worldPosition;
+flat in float strobeId;
+
+out vec4 pixel;
+
+bool sceneVisible() {
+  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool shell = (
+    abs(worldPosition.z - 4.0) < 0.18
+    || abs(worldPosition.z + 24.0) < 0.18
+    || abs(worldPosition.x - 7.0) < 0.18
+    || abs(worldPosition.x + 7.0) < 0.18
+  ) && worldPosition.y > -2.15 && worldPosition.y < 5.15;
+  bool door = abs(worldPosition.z - 4.0) < 0.22
+    && worldPosition.x > -5.75 && worldPosition.x < -3.75
+    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
+
+  if (renderZone == 0) {
+    return !outsidePoint || door;
+  }
+
+  return outsidePoint || (shell && light < 0.12) || door;
+}
+
+void main() {
+  if (!sceneVisible()) {
+    discard;
+  }
+
+  pixel = vec4(shade + shade * light * 2.2, 1.0);
 }
 `
 
@@ -867,6 +979,7 @@ let lightPoints = new Float32Array(lights.flat())
 const smokePoints = new Float32Array(smoke.flat())
 const program = createProgram(gl, vertex, fragment)
 const lightProgram = createProgram(gl, vertex, lightFragment)
+const characterBoxProgram = createProgram(gl, characterBoxVertex, characterBoxFragment)
 const hairProgram = createProgram(gl, hairVertex, hairFragment)
 const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
 const postProgram = createProgram(gl, postVertex, postFragment)
@@ -877,6 +990,10 @@ const cameraEye = gl.getUniformLocation(program, 'cameraEye')
 const cameraCenter = gl.getUniformLocation(program, 'cameraCenter')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
+const characterBoxResolution = gl.getUniformLocation(characterBoxProgram, 'resolution')
+const characterBoxCameraEye = gl.getUniformLocation(characterBoxProgram, 'cameraEye')
+const characterBoxCameraCenter = gl.getUniformLocation(characterBoxProgram, 'cameraCenter')
+const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
 const lightTime = gl.getUniformLocation(lightProgram, 'time')
 const lightSmokeMap = gl.getUniformLocation(lightProgram, 'smokeMap')
 const lightRenderZone = gl.getUniformLocation(lightProgram, 'renderZone')
@@ -903,18 +1020,27 @@ const smokeArray = gl.createVertexArray()
 const smokeBuffer = gl.createBuffer()
 const characterArray = gl.createVertexArray()
 const characterBuffer = gl.createBuffer()
+const characterBoxArray = gl.createVertexArray()
+const characterBoxGeometryBuffer = gl.createBuffer()
+const characterBoxInstanceBuffer = gl.createBuffer()
 const postArray = gl.createVertexArray()
 const postBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
 const bloomTarget = createTarget(gl, 1, 1)
 const stride = vertexSize * Float32Array.BYTES_PER_ELEMENT
+const characterBoxGeometry = createCharacterBoxGeometry()
+const characterBoxInstanceSize = 17
+const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
+let characterBoxInstances: number[] = []
+let characterBoxInstanceCount = 0
 
-if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !lightTime || !lightSmokeMap
+if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !characterBoxResolution
+  || !characterBoxCameraEye || !characterBoxCameraCenter || !characterBoxRenderZone || !lightTime || !lightSmokeMap
   || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !hairResolution || !hairCameraEye
   || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
   || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution || !array
   || !buffer || !lightArray || !lightBuffer || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
-  || !postArray || !postBuffer)
+  || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
 }
@@ -991,6 +1117,31 @@ gl.enableVertexAttribArray(4)
 gl.vertexAttribPointer(4, 2, gl.FLOAT, false, stride, 8 * Float32Array.BYTES_PER_ELEMENT)
 gl.enableVertexAttribArray(5)
 gl.vertexAttribPointer(5, 1, gl.FLOAT, false, stride, 10 * Float32Array.BYTES_PER_ELEMENT)
+gl.bindVertexArray(null)
+
+gl.bindVertexArray(characterBoxArray)
+gl.bindBuffer(gl.ARRAY_BUFFER, characterBoxGeometryBuffer)
+gl.bufferData(gl.ARRAY_BUFFER, characterBoxGeometry.data, gl.STATIC_DRAW)
+gl.enableVertexAttribArray(0)
+gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 4 * Float32Array.BYTES_PER_ELEMENT, 0)
+gl.enableVertexAttribArray(1)
+gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 4 * Float32Array.BYTES_PER_ELEMENT, 3 * Float32Array.BYTES_PER_ELEMENT)
+gl.bindBuffer(gl.ARRAY_BUFFER, characterBoxInstanceBuffer)
+gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW)
+for (let i = 0; i < 5; i++) {
+  const location = 2 + i
+
+  gl.enableVertexAttribArray(location)
+  gl.vertexAttribPointer(location, 3, gl.FLOAT, false, characterBoxInstanceStride,
+    i * 3 * Float32Array.BYTES_PER_ELEMENT)
+  gl.vertexAttribDivisor(location, 1)
+}
+gl.enableVertexAttribArray(7)
+gl.vertexAttribPointer(7, 1, gl.FLOAT, false, characterBoxInstanceStride, 15 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(7, 1)
+gl.enableVertexAttribArray(8)
+gl.vertexAttribPointer(8, 1, gl.FLOAT, false, characterBoxInstanceStride, 16 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(8, 1)
 gl.bindVertexArray(null)
 
 gl.bindVertexArray(postArray)
@@ -1154,6 +1305,7 @@ const draw = (stamp: number) => {
     gl.bindVertexArray(characterArray)
     gl.drawArrays(gl.TRIANGLES, 0, characterCount)
   }
+  drawCharacterBoxes(camera, canvas.width, canvas.height, outside)
   drawNpcHair(camera, canvas.width, canvas.height, outside)
 
   drawRoomDepth(camera, canvas.width, canvas.height, outside)
@@ -1195,6 +1347,7 @@ const draw = (stamp: number) => {
     gl.bindVertexArray(characterArray)
     gl.drawArrays(gl.TRIANGLES, 0, characterCount)
   }
+  drawCharacterBoxes(camera, bloomTarget.width, bloomTarget.height, outside)
   drawNpcHair(camera, bloomTarget.width, bloomTarget.height, outside)
 
   drawRoomDepth(camera, bloomTarget.width, bloomTarget.height, outside)
@@ -1925,6 +2078,7 @@ function updateCharacterMesh(time: number) {
   }
 
   const target: Vertex[] = []
+  characterBoxInstances = []
   hairInstances = []
   addRenderedCharacter(target, {
     position: characterPosition,
@@ -1949,12 +2103,34 @@ function updateCharacterMesh(time: number) {
   }
 
   updateNpcHairInstances()
+  updateCharacterBoxInstances()
   const data = flattenVertices(target)
 
   gl.bindBuffer(gl.ARRAY_BUFFER, characterBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
 
   return data.length / vertexSize
+}
+
+function updateCharacterBoxInstances() {
+  characterBoxInstanceCount = characterBoxInstances.length / characterBoxInstanceSize
+  gl.bindBuffer(gl.ARRAY_BUFFER, characterBoxInstanceBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(characterBoxInstances), gl.DYNAMIC_DRAW)
+}
+
+function drawCharacterBoxes(camera: ReturnType<typeof getCamera>, width: number, height: number, outside: boolean) {
+  if (characterBoxInstanceCount === 0) {
+    return
+  }
+
+  gl.useProgram(characterBoxProgram)
+  gl.uniform2f(characterBoxResolution, width, height)
+  gl.uniform3f(characterBoxCameraEye, camera.eye[0], camera.eye[1], camera.eye[2])
+  gl.uniform3f(characterBoxCameraCenter, camera.center[0], camera.center[1], camera.center[2])
+  gl.uniform1i(characterBoxRenderZone, outside ? 1 : 0)
+  gl.bindVertexArray(characterBoxArray)
+  gl.drawArraysInstanced(gl.TRIANGLES, 0, characterBoxGeometry.count, characterBoxInstanceCount)
+  gl.bindVertexArray(null)
 }
 
 function flattenVertices(target: Vertex[]) {
@@ -2454,6 +2630,11 @@ function addCharacterBox(
   upY *= depth * 0.5
   upZ *= depth * 0.5
 
+  if (!localReflection) {
+    addCharacterBoxInstance(a, b, [sideX, sideY, sideZ], [upX, upY, upZ], color, glow, strobe)
+    return
+  }
+
   const a0: Vec3 = [a[0] - sideX - upX, a[1] - sideY - upY, a[2] - sideZ - upZ]
   const a1: Vec3 = [a[0] + sideX - upX, a[1] + sideY - upY, a[2] + sideZ - upZ]
   const a2: Vec3 = [a[0] + sideX + upX, a[1] + sideY + upY, a[2] + sideZ + upZ]
@@ -2471,6 +2652,26 @@ function addCharacterBox(
   addCharacterQuad(target, a3, a0, b0, b3, shadeA, glow, localReflection)
   addCharacterQuad(target, a3, a2, a1, a0, shadeB, glow, localReflection)
   addCharacterQuad(target, b0, b1, b2, b3, shadeB, glow, localReflection)
+}
+
+function addCharacterBoxInstance(
+  a: Vec3,
+  b: Vec3,
+  side: Vec3,
+  up: Vec3,
+  color: Vec3,
+  glow: number,
+  strobe: number,
+) {
+  characterBoxInstances.push(
+    a[0], a[1], a[2],
+    b[0], b[1], b[2],
+    side[0], side[1], side[2],
+    up[0], up[1], up[2],
+    color[0], color[1], color[2],
+    glow,
+    strobe,
+  )
 }
 
 function addCharacterQuad(
@@ -4659,6 +4860,40 @@ function packSmoke(
   v: number,
 ): Vertex {
   return [center[0], center[1], center[2], x, y, opacity, 0, seed, u, v, 0]
+}
+
+function createCharacterBoxGeometry(): CharacterBoxGeometry {
+  const vertices: number[] = []
+  const add = (a: Vec3, b: Vec3, c: Vec3, d: Vec3, shade: number) => {
+    vertices.push(
+      a[0], a[1], a[2], shade,
+      b[0], b[1], b[2], shade,
+      c[0], c[1], c[2], shade,
+      a[0], a[1], a[2], shade,
+      c[0], c[1], c[2], shade,
+      d[0], d[1], d[2], shade,
+    )
+  }
+  const a0: Vec3 = [-1, -1, 0]
+  const a1: Vec3 = [1, -1, 0]
+  const a2: Vec3 = [1, 1, 0]
+  const a3: Vec3 = [-1, 1, 0]
+  const b0: Vec3 = [-1, -1, 1]
+  const b1: Vec3 = [1, -1, 1]
+  const b2: Vec3 = [1, 1, 1]
+  const b3: Vec3 = [-1, 1, 1]
+
+  add(a0, a1, b1, b0, 0.65)
+  add(a1, a2, b2, b1, 1)
+  add(a2, a3, b3, b2, 0.82)
+  add(a3, a0, b0, b3, 0.65)
+  add(a3, a2, a1, a0, 0.82)
+  add(b0, b1, b2, b3, 0.82)
+
+  return {
+    data: new Float32Array(vertices),
+    count: vertices.length / 4,
+  }
 }
 
 function createProgram(context: WebGL2RenderingContext, sourceVertex: string, sourceFragment: string) {
