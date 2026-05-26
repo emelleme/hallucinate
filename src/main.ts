@@ -976,6 +976,7 @@ addRoomSmoke(smoke)
 
 let points = new Float32Array(vertices.flat())
 let lightPoints = new Float32Array(lights.flat())
+const dynamicLights = lights.slice()
 const smokePoints = new Float32Array(smoke.flat())
 const program = createProgram(gl, vertex, fragment)
 const lightProgram = createProgram(gl, vertex, lightFragment)
@@ -1458,10 +1459,10 @@ function useLightProgram(
 }
 
 function updateLightBuffer(time: number) {
-  const next = [...lights]
+  dynamicLights.length = lights.length
 
-  addCeilingBeams(next, time)
-  lightPoints = new Float32Array(next.flat())
+  addCeilingBeams(dynamicLights, time)
+  lightPoints = flattenVertices(dynamicLights)
   gl.bindBuffer(gl.ARRAY_BUFFER, lightBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, lightPoints, gl.DYNAMIC_DRAW)
 
