@@ -278,6 +278,14 @@ void main() {
     density = smokeDensity(patternUv);
   }
 
+  if (strobeId > 700.0) {
+    float pulse = 0.66 + sin(time * 7.3) * 0.22 + sin(time * 13.7 + patternUv.x * 4.0) * 0.14;
+
+    if (patternUv.y > pulse) {
+      discard;
+    }
+  }
+
   pixel = vec4(shade + shade * light * 2.2 * strobe * density, clamp(light * strobe * density, 0.0, 1.0));
 }
 `

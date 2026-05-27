@@ -124,6 +124,8 @@ function addOutsideLounges(target: Vertex[], floor: number) {
   for (const couch of outsideCouches) {
     addLowPolyCouch(target, couch, floor)
   }
+
+  addBonfireBase(target, floor)
 }
 
 function addLowPolyCouch(
@@ -157,6 +159,42 @@ function addLowPolyCouch(
   }
 
   addBox(target, couch.x, floor + 0.08, couch.z, width * 0.72, 0.08, depth * 0.72, trim, 0)
+}
+
+function outsideBonfireCenter(): Vec3 {
+  const couches = outsideCouches.slice(1, 3)
+  const couchX = couches.reduce((total, couch) => total + couch.x, 0) / couches.length
+  const x = couchX - 2.85
+  const z = couches.reduce((total, couch) => total + couch.z, 0) / couches.length
+
+  return [x, characterFloor + 0.02, z]
+}
+
+function addBonfireBase(target: Vertex[], floor: number) {
+  const center = outsideBonfireCenter()
+
+  addDisc(target, [center[0], floor + 0.03, center[2]], 0.72, 0.72, 'y', [0.32, 0.32, 0.34], 0)
+}
+
+function addBonfireFlame(target: Vertex[]) {
+  const center = outsideBonfireCenter()
+  const color: Vec3 = [1, 0.78, 0.05]
+  const apex: Vec3 = [center[0], center[1] + 1.15, center[2]]
+  const segments = 7
+  const strobe = 777
+
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2
+    const b = ((i + 1) / segments) * Math.PI * 2
+    const pointA: Vec3 = [center[0] + Math.cos(a) * 0.34, center[1], center[2] + Math.sin(a) * 0.34]
+    const pointB: Vec3 = [center[0] + Math.cos(b) * 0.34, center[1], center[2] + Math.sin(b) * 0.34]
+
+    target.push(
+      pack(pointA, color, 3.4, strobe, 0, 0),
+      pack(pointB, color, 3.4, strobe, 1, 0),
+      pack(apex, color, 3.4, strobe, 0.5, 1),
+    )
+  }
 }
 
 function addOpenAirHut(target: Vertex[], floor: number) {
@@ -341,6 +379,7 @@ export function addWallStrips(target: Vertex[]) {
   addBartenderBarStrip(target)
   addOutsideHutBarStrip(target)
   addOutsideHutRoofStrips(target)
+  addBonfireFlame(target)
   addBartenderBottleGlow(target)
 }
 
