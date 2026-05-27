@@ -725,6 +725,74 @@ void main() {
 }
 `
 
+const strobeVertex = `#version 300 es
+precision highp float;
+
+layout(location = 0) in vec4 local;
+layout(location = 1) in vec4 paint;
+layout(location = 2) in vec3 instanceTop;
+layout(location = 3) in vec3 instanceHit;
+layout(location = 4) in vec3 instanceBeamRadius;
+layout(location = 5) in vec3 instanceColor;
+layout(location = 6) in vec2 instanceMeta;
+
+uniform vec2 resolution;
+uniform vec3 cameraEye;
+uniform vec3 cameraCenter;
+
+out vec3 shade;
+out float light;
+out vec2 patternUv;
+out float hazeAmount;
+out vec3 worldPosition;
+flat out float strobeId;
+
+mat4 perspective(float fov, float aspect, float near, float far) {
+  float f = 1.0 / tan(fov * 0.5);
+
+  return mat4(
+    f / aspect, 0.0, 0.0, 0.0,
+    0.0, f, 0.0, 0.0,
+    0.0, 0.0, (far + near) / (near - far), -1.0,
+    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
+  );
+}
+
+mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
+  vec3 z = normalize(eye - center);
+  vec3 x = normalize(cross(up, z));
+  vec3 y = cross(z, x);
+
+  return mat4(
+    x.x, y.x, z.x, 0.0,
+    x.y, y.y, z.y, 0.0,
+    x.z, y.z, z.z, 0.0,
+    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
+  );
+}
+
+void main() {
+  float pool = step(0.5, local.w);
+  vec3 beamTop = instanceTop + vec3(local.x * instanceBeamRadius.x, 0.0, local.y * instanceBeamRadius.x);
+  vec3 beamBottom = instanceHit + vec3(local.x * instanceBeamRadius.y, 0.0, local.y * instanceBeamRadius.z);
+  vec3 beamPosition = mix(beamTop, beamBottom, local.z);
+  vec3 poolPosition = instanceHit + vec3(local.x, 0.02, local.y);
+  vec3 position = mix(beamPosition, poolPosition, pool);
+  float glow = mix(instanceMeta.y * paint.z, paint.z, pool);
+  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
+  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
+  vec4 view = camera * vec4(position, 1.0);
+
+  gl_Position = projection * view;
+  shade = instanceColor;
+  light = glow;
+  patternUv = paint.xy;
+  hazeAmount = paint.w;
+  worldPosition = position;
+  strobeId = instanceMeta.x;
+}
+`
+
 const smokeVertex = `#version 300 es
 precision highp float;
 
@@ -975,6 +1043,8 @@ let velocityY = 0
 let lastStamp = 0
 let saveTime = 0
 let chatHideAt = 0
+let chatOverlayX = Number.NaN
+let chatOverlayY = Number.NaN
 const videoPlayers: Partial<Record<VideoZone, YouTubePlayer>> = {}
 const videoPlayersReady: Partial<Record<VideoZone, boolean>> = {}
 let videoZone: VideoZone = isOutside(characterPosition) ? 'outside' : 'inside'
@@ -985,10 +1055,10 @@ addRoomSmoke(smoke)
 
 let points = new Float32Array(vertices.flat())
 let lightPoints = new Float32Array(lights.flat())
-const dynamicLights = lights.slice()
 const smokePoints = new Float32Array(smoke.flat())
 const program = createProgram(gl, vertex, fragment)
 const lightProgram = createProgram(gl, vertex, lightFragment)
+const strobeProgram = createProgram(gl, strobeVertex, lightFragment)
 const characterBoxProgram = createProgram(gl, characterBoxVertex, characterBoxFragment)
 const hairProgram = createProgram(gl, hairVertex, hairFragment)
 const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
@@ -1010,6 +1080,12 @@ const lightRenderZone = gl.getUniformLocation(lightProgram, 'renderZone')
 const lightResolution = gl.getUniformLocation(lightProgram, 'resolution')
 const lightCameraEye = gl.getUniformLocation(lightProgram, 'cameraEye')
 const lightCameraCenter = gl.getUniformLocation(lightProgram, 'cameraCenter')
+const strobeTime = gl.getUniformLocation(strobeProgram, 'time')
+const strobeSmokeMap = gl.getUniformLocation(strobeProgram, 'smokeMap')
+const strobeRenderZone = gl.getUniformLocation(strobeProgram, 'renderZone')
+const strobeResolution = gl.getUniformLocation(strobeProgram, 'resolution')
+const strobeCameraEye = gl.getUniformLocation(strobeProgram, 'cameraEye')
+const strobeCameraCenter = gl.getUniformLocation(strobeProgram, 'cameraCenter')
 const hairResolution = gl.getUniformLocation(hairProgram, 'resolution')
 const hairCameraEye = gl.getUniformLocation(hairProgram, 'cameraEye')
 const hairCameraCenter = gl.getUniformLocation(hairProgram, 'cameraCenter')
@@ -1026,6 +1102,9 @@ const array = gl.createVertexArray()
 const buffer = gl.createBuffer()
 const lightArray = gl.createVertexArray()
 const lightBuffer = gl.createBuffer()
+const strobeArray = gl.createVertexArray()
+const strobeGeometryBuffer = gl.createBuffer()
+const strobeInstanceBuffer = gl.createBuffer()
 const smokeArray = gl.createVertexArray()
 const smokeBuffer = gl.createBuffer()
 const characterArray = gl.createVertexArray()
@@ -1038,18 +1117,25 @@ const postBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
 const bloomTarget = createTarget(gl, 1, 1)
 const stride = vertexSize * Float32Array.BYTES_PER_ELEMENT
+const strobeGeometry = createStrobeGeometry()
+const strobeInstanceSize = 14
+const strobeInstanceStride = strobeInstanceSize * Float32Array.BYTES_PER_ELEMENT
 const characterBoxGeometry = createCharacterBoxGeometry()
 const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 let characterBoxInstances: number[] = []
 let characterBoxInstanceCount = 0
+let strobeInstances: number[] = []
+let strobeInstanceCount = 0
 
 if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !characterBoxResolution
   || !characterBoxCameraEye || !characterBoxCameraCenter || !characterBoxRenderZone || !lightTime || !lightSmokeMap
-  || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !hairResolution || !hairCameraEye
+  || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !strobeTime || !strobeSmokeMap
+  || !strobeRenderZone || !strobeResolution || !strobeCameraEye || !strobeCameraCenter || !hairResolution || !hairCameraEye
   || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
   || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution || !array
-  || !buffer || !lightArray || !lightBuffer || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
+  || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
+  || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
@@ -1093,6 +1179,32 @@ gl.enableVertexAttribArray(4)
 gl.vertexAttribPointer(4, 2, gl.FLOAT, false, stride, 8 * Float32Array.BYTES_PER_ELEMENT)
 gl.enableVertexAttribArray(5)
 gl.vertexAttribPointer(5, 1, gl.FLOAT, false, stride, 10 * Float32Array.BYTES_PER_ELEMENT)
+gl.bindVertexArray(null)
+
+gl.bindVertexArray(strobeArray)
+gl.bindBuffer(gl.ARRAY_BUFFER, strobeGeometryBuffer)
+gl.bufferData(gl.ARRAY_BUFFER, strobeGeometry.data, gl.STATIC_DRAW)
+gl.enableVertexAttribArray(0)
+gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 0)
+gl.enableVertexAttribArray(1)
+gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 4 * Float32Array.BYTES_PER_ELEMENT)
+gl.bindBuffer(gl.ARRAY_BUFFER, strobeInstanceBuffer)
+gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW)
+gl.enableVertexAttribArray(2)
+gl.vertexAttribPointer(2, 3, gl.FLOAT, false, strobeInstanceStride, 0)
+gl.vertexAttribDivisor(2, 1)
+gl.enableVertexAttribArray(3)
+gl.vertexAttribPointer(3, 3, gl.FLOAT, false, strobeInstanceStride, 3 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(3, 1)
+gl.enableVertexAttribArray(4)
+gl.vertexAttribPointer(4, 3, gl.FLOAT, false, strobeInstanceStride, 6 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(4, 1)
+gl.enableVertexAttribArray(5)
+gl.vertexAttribPointer(5, 3, gl.FLOAT, false, strobeInstanceStride, 9 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(5, 1)
+gl.enableVertexAttribArray(6)
+gl.vertexAttribPointer(6, 2, gl.FLOAT, false, strobeInstanceStride, 12 * Float32Array.BYTES_PER_ELEMENT)
+gl.vertexAttribDivisor(6, 1)
 gl.bindVertexArray(null)
 
 gl.bindVertexArray(smokeArray)
@@ -1331,6 +1443,7 @@ const draw = (stamp: number) => {
   useLightProgram(camera, canvas.width, canvas.height, frame)
   gl.bindVertexArray(lightArray)
   gl.drawArrays(gl.TRIANGLES, 0, lightCount)
+  drawStrobes(camera, canvas.width, canvas.height, frame)
   gl.depthMask(true)
   gl.disable(gl.BLEND)
 
@@ -1368,6 +1481,7 @@ const draw = (stamp: number) => {
   useLightProgram(camera, bloomTarget.width, bloomTarget.height, frame)
   gl.bindVertexArray(lightArray)
   gl.drawArrays(gl.TRIANGLES, 0, lightCount)
+  drawStrobes(camera, bloomTarget.width, bloomTarget.height, frame)
   gl.depthMask(true)
   gl.disable(gl.BLEND)
 
@@ -1467,15 +1581,62 @@ function useLightProgram(
   gl.uniform1i(lightSmokeMap, 2)
 }
 
-function updateLightBuffer(time: number) {
-  dynamicLights.length = lights.length
+function useStrobeProgram(
+  camera: { eye: [number, number, number]; center: [number, number, number] },
+  width: number,
+  height: number,
+  frame: number,
+) {
+  gl.useProgram(strobeProgram)
+  gl.uniform1f(strobeTime, frame)
+  gl.uniform1i(strobeRenderZone, isOutside(characterPosition) ? 1 : 0)
+  gl.uniform2f(strobeResolution, width, height)
+  gl.uniform3f(strobeCameraEye, camera.eye[0], camera.eye[1], camera.eye[2])
+  gl.uniform3f(strobeCameraCenter, camera.center[0], camera.center[1], camera.center[2])
+  gl.activeTexture(gl.TEXTURE2)
+  gl.bindTexture(gl.TEXTURE_2D, smokeMap)
+  gl.uniform1i(strobeSmokeMap, 2)
+}
 
-  addCeilingBeams(dynamicLights, time)
-  lightPoints = flattenVertices(dynamicLights)
-  gl.bindBuffer(gl.ARRAY_BUFFER, lightBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, lightPoints, gl.DYNAMIC_DRAW)
+function updateLightBuffer(time: number) {
+  updateStrobeInstances(time)
 
   return lightPoints.length / vertexSize
+}
+
+function updateStrobeInstances(time: number) {
+  strobeInstances.length = 0
+
+  for (const light of strobeLights) {
+    if (light.zone !== videoZone) {
+      continue
+    }
+
+    const hit = strobeTarget(light, time)
+    const outside = light.zone === 'outside'
+
+    strobeInstances.push(
+      light.x, light.top, light.z,
+      hit[0], light.floor, hit[2],
+      0.07, outside ? 1.35 : 0.5, outside ? 1.85 : 0.68,
+      light.color[0], light.color[1], light.color[2],
+      light.id, outside ? 0.7 : 0.42,
+    )
+  }
+
+  strobeInstanceCount = strobeInstances.length / strobeInstanceSize
+  gl.bindBuffer(gl.ARRAY_BUFFER, strobeInstanceBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(strobeInstances), gl.DYNAMIC_DRAW)
+}
+
+function drawStrobes(camera: ReturnType<typeof getCamera>, width: number, height: number, frame: number) {
+  if (strobeInstanceCount === 0) {
+    return
+  }
+
+  useStrobeProgram(camera, width, height, frame)
+  gl.bindVertexArray(strobeArray)
+  gl.drawArraysInstanced(gl.TRIANGLES, 0, strobeGeometry.count, strobeInstanceCount)
 }
 
 const characterBones: [string, string][] = [
@@ -2129,7 +2290,7 @@ function updateCharacterMesh(time: number) {
   }, time, true)
 
   const view = playerView()
-  const npcPose = sampleBasePose(characterRig, Math.floor(time * 12) / 12)
+  const npcPose = sampleBasePose(characterRig, time)
   const npcBlendCache: PoseBlendCache = new Map()
 
   for (const player of players) {
@@ -2296,8 +2457,8 @@ function sampleCharacterPose(
   basePose = sampleBasePose(rig, time),
   blendCache?: PoseBlendCache,
 ) {
-  const blendKey = Math.round(player.motionBlend * 12)
-  const blend = blendCache ? blendKey / 12 : player.motionBlend
+  const blendKey = Math.round(player.motionBlend * 60)
+  const blend = blendCache ? blendKey / 60 : player.motionBlend
   const cached = blendCache?.get(blendKey)
 
   if (cached) {
@@ -3638,10 +3799,15 @@ function playerHair(index: number) {
 
 function updateChatOverlay(camera: ReturnType<typeof getCamera>, stamp: number) {
   const point = projectWallPoint([characterPosition[0], characterPosition[1] + 1.05, characterPosition[2]], camera)
-  const y = point.y - 68
+  const x = Math.round(point.x)
+  const y = Math.round(point.y - 68)
 
-  chatForm.style.transform = `translate(-50%, -100%) translate(${point.x}px, ${y}px)`
-  chatBubble.style.transform = `translate(-50%, -100%) translate(${point.x}px, ${y - 8}px)`
+  if (x !== chatOverlayX || y !== chatOverlayY) {
+    chatOverlayX = x
+    chatOverlayY = y
+    chatForm.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`
+    chatBubble.style.transform = `translate(-50%, -100%) translate(${x}px, ${y - 8}px)`
+  }
 
   if (chatBubble.dataset.open === 'true' && stamp > chatHideAt) {
     chatBubble.dataset.open = 'false'
@@ -4927,6 +5093,62 @@ function createCharacterBoxGeometry(): CharacterBoxGeometry {
   return {
     data: new Float32Array(vertices),
     count: vertices.length / 4,
+  }
+}
+
+function createStrobeGeometry(): CharacterBoxGeometry {
+  const vertices: number[] = []
+  const add = (localX: number, localZ: number, localY: number, kind: number, u: number, v: number, glow: number,
+    haze: number) =>
+  {
+    vertices.push(localX, localZ, localY, kind, u, v, glow, haze)
+  }
+  const addBeam = (a: number, b: number, uA: number, uB: number) => {
+    add(Math.cos(a), Math.sin(a), 0, 0, uA, 0, 0.18, 1)
+    add(Math.cos(b), Math.sin(b), 0, 0, uB, 0, 0.18, 1)
+    add(Math.cos(b), Math.sin(b), 1, 0, uB, 1, 1, 1)
+    add(Math.cos(a), Math.sin(a), 0, 0, uA, 0, 0.18, 1)
+    add(Math.cos(b), Math.sin(b), 1, 0, uB, 1, 1, 1)
+    add(Math.cos(a), Math.sin(a), 1, 0, uA, 1, 1, 1)
+  }
+  const addPool = (x: number, z: number, glow: number) => add(x, z, 0, 1, 0, 0, glow, 0)
+  const beamSegments = 20
+  const poolSegments = 32
+  const innerRadius = 0.82
+  const outerRadiusX = 1.75
+  const outerRadiusZ = 2.2
+
+  for (let i = 0; i < beamSegments; i++) {
+    addBeam((i / beamSegments) * Math.PI * 2, ((i + 1) / beamSegments) * Math.PI * 2, i / beamSegments,
+      (i + 1) / beamSegments)
+  }
+
+  for (let i = 0; i < poolSegments; i++) {
+    const a = (i / poolSegments) * Math.PI * 2
+    const b = ((i + 1) / poolSegments) * Math.PI * 2
+    const innerAX = Math.cos(a) * innerRadius
+    const innerAZ = Math.sin(a) * innerRadius
+    const innerBX = Math.cos(b) * innerRadius
+    const innerBZ = Math.sin(b) * innerRadius
+    const edgeAX = Math.cos(a) * outerRadiusX
+    const edgeAZ = Math.sin(a) * outerRadiusZ
+    const edgeBX = Math.cos(b) * outerRadiusX
+    const edgeBZ = Math.sin(b) * outerRadiusZ
+
+    addPool(0, 0, 1.08)
+    addPool(innerAX, innerAZ, 0.9)
+    addPool(innerBX, innerBZ, 0.9)
+    addPool(innerAX, innerAZ, 0.34)
+    addPool(edgeAX, edgeAZ, 0.08)
+    addPool(edgeBX, edgeBZ, 0.08)
+    addPool(innerAX, innerAZ, 0.34)
+    addPool(edgeBX, edgeBZ, 0.08)
+    addPool(innerBX, innerBZ, 0.34)
+  }
+
+  return {
+    data: new Float32Array(vertices),
+    count: vertices.length / 8,
   }
 }
 
