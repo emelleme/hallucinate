@@ -79,6 +79,7 @@ const smoke: Vertex[] = []
 const vertexSize = 11
 let frameId = 0
 const saveKey = 'club-state'
+const bloomScale = 0.5
 const keys = new Set<string>()
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
@@ -254,7 +255,7 @@ const resize = () => {
   canvas.width = width
   canvas.height = height
   resizeTarget(gl, target, width, height)
-  resizeTarget(gl, bloomTarget, Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)))
+  resizeTarget(gl, bloomTarget, Math.max(1, Math.floor(width * bloomScale)), Math.max(1, Math.floor(height * bloomScale)))
   gl.viewport(0, 0, width, height)
 }
 
