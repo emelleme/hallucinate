@@ -57,6 +57,8 @@ export type CharacterDrawCache = {
   hairInstances: number[]
   npcBlendCache: PoseBlendCache
   poses: Vec3[][]
+  usedBasePoseKeys: Set<number>
+  usedNpcBlendKeys: Set<number>
   vertices: Vertex[]
 }
 
@@ -87,14 +89,16 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const npcBlendCache = cache?.npcBlendCache ?? new Map()
   const poses = cache?.poses ?? []
   const basePoses = cache?.basePoses ?? new Map()
+  const usedBasePoseKeys = cache?.usedBasePoseKeys ?? new Set<number>()
+  const usedNpcBlendKeys = cache?.usedNpcBlendKeys ?? new Set<number>()
   const basePose = sampleBasePose(options.rig, options.time, characterPoseJoints, characterPoseJointSet)
   let poseIndex = 0
 
   vertices.length = 0
   boxInstances.length = 0
   hairInstances.length = 0
-  npcBlendCache.clear()
-  basePoses.clear()
+  usedBasePoseKeys.clear()
+  usedNpcBlendKeys.clear()
 
   addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true, basePose, undefined,
     poses[poseIndex] ??= [])
@@ -106,12 +110,26 @@ export function buildCharacterDrawData(options: BuildOptions) {
     if (characterInView(player, view, options.width, options.height)) {
       const sampledTime = bodySampleTime(options.time, options.cameraPosition, player.position)
       const sampleKey = Math.round(sampledTime * 60)
+      const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
+      usedBasePoseKeys.add(sampleKey)
+      usedNpcBlendKeys.add(blendKey)
       const sampledBasePose = basePoses.get(sampleKey) ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses,
         sampleKey)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
         npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey)
       poseIndex++
+    }
+  }
+
+  for (const key of basePoses.keys()) {
+    if (!usedBasePoseKeys.has(key)) {
+      basePoses.delete(key)
+    }
+  }
+  for (const key of npcBlendCache.keys()) {
+    if (!usedNpcBlendKeys.has(key)) {
+      npcBlendCache.delete(key)
     }
   }
 

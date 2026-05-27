@@ -147,11 +147,16 @@ export function updateHairInstances(
   for (let i = 0; i < hairRenderMeshes.length; i++) {
     const mesh = hairRenderMeshes[i]!
     const count = uploadCache.counts[i]!
+
+    mesh.instanceCount = count / 15
+    if (count === 0) {
+      continue
+    }
+
     const buffer = uploadCache.buffers[i]!.length === count ? uploadCache.buffers[i]! : uploadCache.buffers[i]!.subarray(
       0, count)
     const upload = uploadCache.uploads[i] ??= { data: buffer }
 
-    mesh.instanceCount = count / 15
     uploadFloatBuffer(context, mesh.instanceBuffer, buffer, upload)
   }
 }

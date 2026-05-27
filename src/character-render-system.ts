@@ -43,6 +43,8 @@ export function createCharacterRenderSystem(options: {
     hairInstances: [],
     npcBlendCache: new Map(),
     poses: [],
+    usedBasePoseKeys: new Set(),
+    usedNpcBlendKeys: new Set(),
     vertices: [],
   }
   const hairInstanceCache: HairInstanceUploadCache = { buffers: [], counts: [], uploads: [] }

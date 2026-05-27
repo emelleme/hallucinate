@@ -26,6 +26,10 @@ export function uploadFloatBuffer(
   data: Float32Array,
   cache?: NumberBufferCache,
 ) {
+  if (data.byteLength === 0) {
+    return
+  }
+
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
 
   if (!cache) {
