@@ -72,8 +72,11 @@ export type VideoZone = 'inside' | 'outside'
 
 export type YouTubePlayer = {
   cueVideoById(options: { videoId: string; startSeconds: number }): void
+  cuePlaylist(options: { index: number; list: string; listType: 'playlist'; startSeconds: number }): void
   getCurrentTime(): number
+  getPlaylistIndex(): number
   loadVideoById(options: { videoId: string; startSeconds: number }): void
+  loadPlaylist(options: { index: number; list: string; listType: 'playlist'; startSeconds: number }): void
   pauseVideo(): void
   playVideo(): void
   seekTo(seconds: number, allowSeekAhead: boolean): void

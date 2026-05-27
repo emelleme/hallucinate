@@ -1,6 +1,6 @@
 import { projectedQuadTransform, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
-import { djVideoWall, outsideVideoWall, videoTracks } from './scene-data.ts'
+import { djVideoWall, outsideVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
 import { isOutside } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
@@ -24,6 +24,10 @@ export function createDjVideoUi(
     outside: document.createElement('div'),
   }
   const times: Record<VideoZone, number> = {
+    inside: 0,
+    outside: 0,
+  }
+  const trackIndexes: Record<VideoZone, number> = {
     inside: 0,
     outside: 0,
   }
@@ -62,6 +66,7 @@ export function createDjVideoUi(
 
   return {
     times,
+    trackIndexes,
     get zone() {
       return zone
     },
@@ -69,7 +74,7 @@ export function createDjVideoUi(
       zone = isOutside(position) ? 'outside' : 'inside'
     },
     syncCurrentTime() {
-      syncVideoTime(zone, players, ready, pendingStarts, times)
+      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes)
     },
     load() {
       const youtube = window as YouTubeWindow
@@ -87,10 +92,10 @@ export function createDjVideoUi(
               onReady() {
                 ready[area] = true
 
-                warmVideo(area, players, pendingStarts, times)
+                warmVideo(area, players, pendingStarts, times, trackIndexes)
               },
               onStateChange() {
-                syncVideoTime(area, players, ready, pendingStarts, times)
+                syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes)
               },
             },
           })
@@ -112,7 +117,7 @@ export function createDjVideoUi(
 
       if (nextZone !== zone) {
         if (ready[zone]) {
-          syncVideoTime(zone, players, ready, pendingStarts, times)
+          syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes)
           players[zone]!.pauseVideo()
         }
 
@@ -183,8 +188,9 @@ function warmVideo(
   players: Partial<Record<VideoZone, YouTubePlayer>>,
   pendingStarts: Partial<Record<VideoZone, number>>,
   times: Record<VideoZone, number>,
+  trackIndexes: Record<VideoZone, number>,
 ) {
-  cueVideoFromTime(area, players, pendingStarts, times)
+  cueVideoFromTime(area, players, pendingStarts, times, trackIndexes)
   players[area]!.playVideo()
   requestAnimationFrame(() => {
     players[area]!.pauseVideo()
@@ -196,12 +202,25 @@ function cueVideoFromTime(
   players: Partial<Record<VideoZone, YouTubePlayer>>,
   pendingStarts: Partial<Record<VideoZone, number>>,
   times: Record<VideoZone, number>,
+  trackIndexes: Record<VideoZone, number>,
 ) {
   pendingStarts[area] = times[area]
-  players[area]!.cueVideoById({
-    videoId: videoTracks[area],
-    startSeconds: times[area],
-  })
+  const playlist = videoPlaylists[area]
+
+  if (playlist) {
+    players[area]!.cuePlaylist({
+      index: trackIndexes[area],
+      list: playlist,
+      listType: 'playlist',
+      startSeconds: times[area],
+    })
+  }
+  else {
+    players[area]!.cueVideoById({
+      videoId: videoTracks[area],
+      startSeconds: times[area],
+    })
+  }
 }
 
 function playVideoFromTime(
@@ -227,10 +246,15 @@ function syncVideoTime(
   ready: Partial<Record<VideoZone, boolean>>,
   pendingStarts: Partial<Record<VideoZone, number>>,
   times: Record<VideoZone, number>,
+  trackIndexes: Record<VideoZone, number>,
 ) {
   if (ready[area]) {
     const time = players[area]!.getCurrentTime()
     const pendingStart = pendingStarts[area]
+
+    if (videoPlaylists[area]) {
+      trackIndexes[area] = players[area]!.getPlaylistIndex()
+    }
 
     if (pendingStart !== undefined && time < pendingStart - 0.5) {
       players[area]!.seekTo(pendingStart, true)

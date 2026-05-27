@@ -14,6 +14,7 @@ export type ClubState = {
   pantsColorIndex?: number
   bottomStyleIndex?: number
   videoTimes?: Partial<Record<VideoZone, number>>
+  videoTrackIndexes?: Partial<Record<VideoZone, number>>
 }
 
 export function readClubState(key: string) {

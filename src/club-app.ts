@@ -13,10 +13,10 @@ import { getDomElements } from './dom-elements.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { bindKeyboardInput } from './input.ts'
 import { createLocalCharacter } from './local-character.ts'
+import { lengthSq } from './math.ts'
 import { createPlayers, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
 import { createSceneLighting } from './scene-lighting.ts'
-import { lengthSq } from './math.ts'
 import {
   isOutside,
   usesSkyBackground,
@@ -278,7 +278,8 @@ const resize = () => {
   canvas.width = width
   canvas.height = height
   resizeTarget(gl, target, width, height)
-  resizeTarget(gl, bloomTarget, Math.max(1, Math.floor(width * bloomScale)), Math.max(1, Math.floor(height * bloomScale)))
+  resizeTarget(gl, bloomTarget, Math.max(1, Math.floor(width * bloomScale)),
+    Math.max(1, Math.floor(height * bloomScale)))
   gl.viewport(0, 0, width, height)
 }
 
@@ -452,7 +453,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const players = createPlayers(200, outsideTree, occupiedSeats)
+const players = createPlayers(500, outsideTree, occupiedSeats)
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
   boxInstanceSize: characterBoxInstanceSize,
