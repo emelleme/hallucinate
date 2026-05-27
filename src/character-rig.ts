@@ -205,8 +205,8 @@ export function sampleBasePose(
   }
 }
 
-export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number,
-  characterPoseJoints: string[], characterPoseJointSet: Set<string>, target?: Vec3[])
+export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number, characterPoseJoints: string[],
+  characterPoseJointSet: Set<string>, target?: Vec3[])
 {
   const tick = (time * clip.ticksPerSecond) % clip.duration
   const plan = getPoseSamplePlan(rig, characterPoseJoints, characterPoseJointSet)

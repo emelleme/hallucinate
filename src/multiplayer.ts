@@ -2,11 +2,6 @@ import { characterFloor } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { lengthSq, mix } from './math.ts'
 import {
-  MESSAGE,
-  S_LEAVE,
-  S_MOTION,
-  S_ROOM_STATE,
-  S_SPAWN,
   angleToProtocol,
   decodeKeys,
   decodeLeave,
@@ -18,11 +13,16 @@ import {
   encodeClientMotion,
   encodeKeys,
   encodeRoomChange,
+  MESSAGE,
   protocolToAngle,
   protocolToScene,
+  S_LEAVE,
+  S_MOTION,
+  S_ROOM_STATE,
+  S_SPAWN,
   sceneToProtocol,
-  truncateMessage,
   type SpawnPacket,
+  truncateMessage,
 } from './protocol.ts'
 import { collideRoom, walkHeight } from './scene.ts'
 import type { CircleBounds, Player, Vec3 } from './types.ts'

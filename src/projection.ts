@@ -33,7 +33,9 @@ export function projectedQuadTransform(width: number, height: number, points: Pr
   invertProjectiveInto(basisFrom, inverseFrom)
   multiplyProjectiveInto(basisTo, inverseFrom, matrixScratch)
 
-  return `matrix3d(${matrixScratch[0]},${matrixScratch[3]},0,${matrixScratch[6]},${matrixScratch[1]},${matrixScratch[4]},0,${matrixScratch[7]},0,0,1,0,${matrixScratch[2]},${matrixScratch[5]},0,${matrixScratch[8]})`
+  return `matrix3d(${matrixScratch[0]},${matrixScratch[3]},0,${matrixScratch[6]},${matrixScratch[1]},${
+    matrixScratch[4]
+  },0,${matrixScratch[7]},0,0,1,0,${matrixScratch[2]},${matrixScratch[5]},0,${matrixScratch[8]})`
 }
 
 export function quadBasis(points: { x: number; y: number }[]) {

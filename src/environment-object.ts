@@ -2,8 +2,8 @@ import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
 import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } from './geometry.ts'
 import { add, mix, scale, subtract } from './math.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideDjBooth,
-  outsideCouches, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
+import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
+  outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
   outsideVideoWall, roomBounds } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
@@ -242,8 +242,8 @@ function addOpenAirHut(target: Vertex[], floor: number) {
   addBox(target, outsideHut.x, postTop, front - 0.16, outsideHut.width, 0.16, 0.14, trim, 0)
   addBox(target, left + 0.16, postTop, outsideHut.z, 0.14, 0.16, outsideHut.depth, trim, 0)
 
-  addQuad(target, [left - eave, roofBottom, back - eave], [right + eave, roofBottom, back - eave], [right + eave,
-    ridge, ridgeZ], [left - eave, ridge, ridgeZ], roof, 0)
+  addQuad(target, [left - eave, roofBottom, back - eave], [right + eave, roofBottom, back - eave], [right + eave, ridge,
+    ridgeZ], [left - eave, ridge, ridgeZ], roof, 0)
   addQuad(target, [right + eave, roofBottom, front + eave], [left - eave, roofBottom, front + eave], [left - eave,
     ridge, ridgeZ], [right + eave, ridge, ridgeZ], roof, 0)
   addTriangle(target, [left - eave, roofBottom, front + eave], [left - eave, roofBottom, back - eave], [left - eave,

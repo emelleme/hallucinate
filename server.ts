@@ -1,7 +1,6 @@
 import {
   C_MOTION,
   C_ROOM_CHANGE,
-  MESSAGE,
   decodeClientMessage,
   decodeClientMotion,
   decodeRoomChange,
@@ -10,9 +9,10 @@ import {
   encodeServerMessage,
   encodeServerMotion,
   encodeSpawn,
+  MESSAGE,
   roomCount,
-  truncateMessage,
   type SpawnPacket,
+  truncateMessage,
 } from './src/protocol.ts'
 
 type Client = {

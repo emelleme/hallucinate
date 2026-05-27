@@ -1,7 +1,7 @@
+import type { CameraMatrix } from './camera-matrix.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
 import { isOutside } from './scene.ts'
 import { strobeRandom, strobeReflectionAmount, strobeTarget } from './strobe-object.ts'
-import type { CameraMatrix } from './camera-matrix.ts'
 import type { CharacterBoxGeometry, StrobeLight, StrobeReflectionLight, Vec3, VideoZone } from './types.ts'
 
 type StrobeDrawOptions = {

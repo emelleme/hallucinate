@@ -1,3 +1,4 @@
+import { createCameraMatrix, updateCameraMatrix } from './camera-matrix.ts'
 import {
   drawCharacterBoxes,
   drawNpcHair,
@@ -7,7 +8,6 @@ import {
   useLightProgram,
   useRoomSmokeProgram,
 } from './room-draw.ts'
-import { createCameraMatrix, updateCameraMatrix } from './camera-matrix.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import type { CharacterBoxGeometry, HairRenderMesh, Target, Vec3 } from './types.ts'
 

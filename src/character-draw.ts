@@ -14,8 +14,8 @@ import { resolvePlayerStyle } from './character-style.ts'
 import { characterView, characterVisibility } from './character-visibility.ts'
 import { normalizeIndex } from './math.ts'
 import type {
-  CharacterPart,
   CharacterMode,
+  CharacterPart,
   CharacterRig,
   HairMesh,
   Player,
@@ -144,8 +144,8 @@ export function buildCharacterDrawData(options: BuildOptions) {
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       usedBasePoseKeys.add(sampleKey)
       usedNpcBlendKeys.add(blendKey)
-      const sampledBasePose = basePoses.get(sampleKey) ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses,
-        sampleKey, player.idleClipIndex)
+      const sampledBasePose = basePoses.get(sampleKey)
+        ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, player.idleClipIndex)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
         npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
@@ -421,14 +421,10 @@ function addCharacterSkirt(
   const bottomWidth = 0.15
   const topDepth = 0.11
   const bottomDepth = 0.14
-  setPoint(skirtA, topX - sideX * topWidth - forwardX * topDepth, topY,
-    topZ - sideZ * topWidth - forwardZ * topDepth)
-  setPoint(skirtB, topX + sideX * topWidth - forwardX * topDepth, topY,
-    topZ + sideZ * topWidth - forwardZ * topDepth)
-  setPoint(skirtC, topX + sideX * topWidth + forwardX * topDepth, topY,
-    topZ + sideZ * topWidth + forwardZ * topDepth)
-  setPoint(skirtD, topX - sideX * topWidth + forwardX * topDepth, topY,
-    topZ - sideZ * topWidth + forwardZ * topDepth)
+  setPoint(skirtA, topX - sideX * topWidth - forwardX * topDepth, topY, topZ - sideZ * topWidth - forwardZ * topDepth)
+  setPoint(skirtB, topX + sideX * topWidth - forwardX * topDepth, topY, topZ + sideZ * topWidth - forwardZ * topDepth)
+  setPoint(skirtC, topX + sideX * topWidth + forwardX * topDepth, topY, topZ + sideZ * topWidth + forwardZ * topDepth)
+  setPoint(skirtD, topX - sideX * topWidth + forwardX * topDepth, topY, topZ - sideZ * topWidth + forwardZ * topDepth)
   setPoint(skirtE, bottomX - sideX * bottomWidth - forwardX * bottomDepth, bottomY,
     bottomZ - sideZ * bottomWidth - forwardZ * bottomDepth)
   setPoint(skirtF, bottomX + sideX * bottomWidth - forwardX * bottomDepth, bottomY,

@@ -4,8 +4,8 @@ import { lengthSq, mix, normalizeIndex, smoothAngle } from './math.ts'
 import {
   backDoor,
   djBooth,
-  outsideHutBar,
   outsideDjBooth,
+  outsideHutBar,
   roomBounds,
 } from './scene-data.ts'
 import { collideRoom, isOutside, seatAt, seats, walkHeight } from './scene.ts'
@@ -273,15 +273,15 @@ function updateDestinationPlayer(
     }
 
     if (!player.lingeringUntil) {
-      player.lingeringUntil = time + seededRange(player.seed, Math.floor(time * 2.9), destinationLinger[0],
-        destinationLinger[1])
+      player.lingeringUntil = time
+        + seededRange(player.seed, Math.floor(time * 2.9), destinationLinger[0], destinationLinger[1])
       player.nextDecision = time
     }
 
     if (time >= player.nextDecision) {
       chooseDestinationJitter(player, time)
-      player.nextDecision = time + seededRange(player.seed, Math.floor(time * 3.1), destinationJitter[0],
-        destinationJitter[1])
+      player.nextDecision = time
+        + seededRange(player.seed, Math.floor(time * 3.1), destinationJitter[0], destinationJitter[1])
     }
 
     turnTowardDestination(player, delta)
@@ -384,7 +384,8 @@ function sitPlayer(
   player.turn = seat.turn
   player.motionBlend = 0
   player.mode = player.resolvedStyle.bottomMode === 'pants' ? 'manSitting' : 'womanSitting'
-  player.sittingUntil = time + seededRange(player.seed, Math.floor(time * 2.3), destinationLinger[0], destinationLinger[1])
+  player.sittingUntil = time
+    + seededRange(player.seed, Math.floor(time * 2.3), destinationLinger[0], destinationLinger[1])
   player.nextDecision = player.sittingUntil
   player.lingeringUntil = undefined
   player.pauseUntil = undefined
@@ -493,8 +494,7 @@ function djDestination(seed: number, step: number, inside: boolean) {
     ? danceFloorDestination(djBooth, false, 1, jitterX, jitterZ)
     : danceFloorDestination(outsideDjBooth, true, -1, jitterX,
       seededRange(seed, step + 103, outsideDanceFloorBackRange[0], outsideDanceFloorBackRange[1])
-        + seededRange(seed, step + 112, -jitterAmount, jitterAmount),
-      outsideDanceFloorDistance)
+        + seededRange(seed, step + 112, -jitterAmount, jitterAmount), outsideDanceFloorDistance)
 }
 
 function seatDestination(
@@ -503,7 +503,9 @@ function seatDestination(
   occupiedSeats: Set<string>,
   kind: 'lounge' | 'stool',
 ): PlayerDestination | undefined {
-  const allSeats = seats().filter(seat => kind === 'stool' ? seat.id.startsWith('stool:') : !seat.id.startsWith('stool:'))
+  const allSeats = seats().filter(seat =>
+    kind === 'stool' ? seat.id.startsWith('stool:') : !seat.id.startsWith('stool:')
+  )
   const openSeats = allSeats.filter(seat => !occupiedSeats.has(seat.id))
   const seat = openSeats[Math.floor(seededRange(seed, step + 104, 0, openSeats.length))]
 
@@ -517,7 +519,7 @@ function seatDestination(
     kind,
     outside: isOutside(seat.position),
     position: [seat.position[0] + Math.sin(seat.turn) * offset, characterFloor, seat.position[2] + Math.cos(seat.turn)
-      * offset],
+        * offset],
     lookAt: seat.position,
     linger: [destinationLinger[0], destinationLinger[1]],
   }

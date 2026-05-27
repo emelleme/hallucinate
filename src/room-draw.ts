@@ -1,5 +1,5 @@
-import { isOutside } from './scene.ts'
 import type { CameraMatrix } from './camera-matrix.ts'
+import { isOutside } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }

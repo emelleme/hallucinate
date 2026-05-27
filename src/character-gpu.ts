@@ -1,6 +1,6 @@
+import type { CameraMatrix } from './camera-matrix.ts'
 import type { HairRenderMesh, Vec3 } from './types.ts'
 import type { CharacterBoxGeometry } from './types.ts'
-import type { CameraMatrix } from './camera-matrix.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
 export type NumberBufferCache = { capacity?: number; data: Float32Array }

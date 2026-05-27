@@ -1,6 +1,8 @@
-import { loadCharacterAssets, loadCharacterDances, loadCharacterDetails, loadCheapCharacterDances } from './character-assets.ts'
+import { loadCharacterAssets, loadCharacterDances, loadCharacterDetails,
+  loadCheapCharacterDances } from './character-assets.ts'
 import { buildCharacterDrawData } from './character-draw.ts'
 import type { CharacterDrawCache } from './character-draw.ts'
+import type { VertexWriter } from './character-geometry.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
 import type { NumberBufferCache } from './character-gpu.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
@@ -9,7 +11,6 @@ import type { HairInstanceUploadCache } from './character-hair.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { createLocalCharacter } from './local-character.ts'
 import type { CharacterRig, HairRenderMesh, Player, Vec3 } from './types.ts'
-import type { VertexWriter } from './character-geometry.ts'
 
 export function createCharacterRenderSystem(options: {
   boxInstanceBuffer: WebGLBuffer
