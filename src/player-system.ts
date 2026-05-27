@@ -1,7 +1,6 @@
-import { hairPalette, jewelPalette, characterFloor } from './character-data.ts'
+import { characterFloor, hairPalette, jewelPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { lengthSq, mix, normalize, normalizeIndex, smoothAngle } from './math.ts'
-import { collideRoom, isOutside } from './scene.ts'
 import {
   backDoor,
   bartenderBar,
@@ -9,6 +8,7 @@ import {
   outsideDjBooth,
   roomBounds,
 } from './scene-data.ts'
+import { collideRoom, isOutside } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 export function createPlayers(count: number, outsideTree: CircleBounds) {

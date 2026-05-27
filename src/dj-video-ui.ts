@@ -1,7 +1,7 @@
+import { dot, subtract } from './math.ts'
 import { projectedQuadTransform, projectWallPoint } from './projection.ts'
 import { djVideoWall, outsideVideoWall, videoTracks } from './scene-data.ts'
 import { isOutside } from './scene.ts'
-import { dot, subtract } from './math.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }

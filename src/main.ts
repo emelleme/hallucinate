@@ -1,5 +1,7 @@
 import './style.css'
 import assimpjs from 'assimpjs'
+import { loadAssimpScene } from './assimp-loader.ts'
+import { createCameraController } from './camera-controller.ts'
 import {
   characterBones,
   characterFloor,
@@ -10,8 +12,16 @@ import {
   shoe,
   skin,
 } from './character-data.ts'
-import { createCameraController } from './camera-controller.ts'
+import {
+  addCharacterBox,
+  addCharacterQuad,
+  addLitTriangle,
+  flattenVertices,
+  hairPoint,
+  triangleAreaSquared,
+} from './character-geometry.ts'
 import { createHairMeshes, createHairRenderMeshes, updateHairInstances } from './character-hair.ts'
+import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import {
   createCharacterClip,
   createRigNodes,
@@ -19,37 +29,29 @@ import {
   sampleCharacterPose,
   validateCharacterRig,
 } from './character-rig.ts'
-import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { applyBottomStyle, applyTopStyle, resolvePlayerStyle } from './character-style.ts'
+import { characterInView, characterView } from './character-visibility.ts'
 import { createChatUi } from './chat-ui.ts'
 import { readClubState, writeClubState } from './club-state.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
+import { getDomElements } from './dom-elements.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
-import { addQuad } from './geometry.ts'
-import { bindKeyboardInput, readMoveInput } from './input.ts'
+import { bindKeyboardInput } from './input.ts'
+import { createLocalCharacter } from './local-character.ts'
 import {
   add,
   clamp,
   cross,
   dot,
-  lengthSq,
   mix,
   normalize,
   normalizeIndex,
-  normalizeInto,
   scale,
   setVec3,
-  smoothAngle,
   smoothstep,
   subtract,
 } from './math.ts'
-import {
-  collideRoom,
-  isOutside,
-  usesSkyBackground,
-  walkHeight,
-} from './scene.ts'
 import { createPlayers, updatePlayers } from './player-system.ts'
 import {
   backDoor,
@@ -63,6 +65,10 @@ import {
   outsideDjSpeakers,
   roomBounds,
 } from './scene-data.ts'
+import {
+  isOutside,
+  usesSkyBackground,
+} from './scene.ts'
 import {
   characterBoxFragment,
   characterBoxVertex,
@@ -80,9 +86,7 @@ import {
 import { createStrobeLights, strobeLightAmount, strobeRandom, strobeTarget } from './strobe-object.ts'
 import { addTreeShadowReceiver, createTreeMeshes, treeCollision, uploadTreeShadowMap } from './tree-object.ts'
 import type {
-  AssimpScene,
   BottomMode,
-  CharacterMode,
   CharacterPart,
   CharacterRig,
   CircleBounds,
@@ -90,7 +94,6 @@ import type {
   HairInstance,
   HairMesh,
   HairRenderMesh,
-  Player,
   PlayerStyle,
   PoseBlendCache,
   ResolvedPlayerStyle,
@@ -117,23 +120,7 @@ if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
 }
 
-const canvas = document.querySelector<HTMLCanvasElement>('#scene')!
-const djVideo = document.querySelector<HTMLElement>('#dj-video')!
-const chatForm = document.querySelector<HTMLFormElement>('#chat-form')!
-const chatInput = document.querySelector<HTMLInputElement>('#chat-input')!
-const chatBubble = document.querySelector<HTMLDivElement>('#chat-bubble')!
-
-if (!canvas) {
-  throw new Error('Missing scene canvas')
-}
-
-if (!djVideo) {
-  throw new Error('Missing DJ video element')
-}
-
-if (!chatForm || !chatInput || !chatBubble) {
-  throw new Error('Missing chat elements')
-}
+const { canvas, djVideo, chatForm, chatInput, chatBubble } = getDomElements()
 
 const gl = canvas.getContext('webgl2', {
   antialias: false,
@@ -155,24 +142,16 @@ let characterHairColorIndex = 0
 let characterHairMeshes: HairMesh[] = []
 let hairRenderMeshes: HairRenderMesh[] = []
 let hairInstances: HairInstance[] = []
-let characterMode: CharacterMode = 'stand'
 let characterRigLoad: Promise<CharacterRig> | undefined
 let frameId = 0
 const saveKey = 'club-state'
 const keys = new Set<string>()
-const input: Vec3 = [0, 0, 0]
-const forward: Vec3 = [0, 0, 0]
-const right: Vec3 = [0, 0, 0]
-const direction: Vec3 = [0, 0, 0]
-const characterPosition: Vec3 = [-2.2, -1.95, -6.8]
+const localCharacter = createLocalCharacter(keys)
+const characterPosition = localCharacter.position
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, canvas, characterPosition)
 const djVideoUi = createDjVideoUi(djVideo, canvas, characterPosition)
-const camera = createCameraController(canvas, characterPosition)
+const cameraController = createCameraController(canvas, characterPosition)
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
-let characterTurn = 0
-let characterMotionBlend = 0
-let floorY = -1.95
-let velocityY = 0
 let lastStamp = 0
 let saveTime = 0
 
@@ -437,7 +416,7 @@ const draw = (stamp: number) => {
   lightFrame = frame
   lastStamp = stamp
   resize()
-  updateCharacter(delta)
+  localCharacter.update(delta, cameraController.turn, outsideTree)
   updatePlayers(players, delta, stamp * 0.001, outsideTree)
   updateCamera(delta)
   updateSave(delta)
@@ -785,30 +764,6 @@ function addTreeToWorld(meshes: TreeMesh[]) {
   refreshRoomBuffer()
 }
 
-async function loadAssimpScene(
-  ajs: Awaited<ReturnType<typeof assimpjs>>,
-  path: string,
-  name: string,
-): Promise<AssimpScene> {
-  const response = await fetch(path)
-
-  if (!response.ok) {
-    throw new Error(`Failed to load ${path}: ${response.status}`)
-  }
-
-  const files = new ajs.FileList()
-
-  files.AddFile(name, new Uint8Array(await response.arrayBuffer()))
-
-  const result = ajs.ConvertFileList(files, 'assjson')
-
-  if (!result.IsSuccess() || result.FileCount() === 0) {
-    throw new Error(`Assimp failed to convert ${name}: ${result.GetErrorCode()}`)
-  }
-
-  return JSON.parse(new TextDecoder().decode(result.GetFile(0).GetContent())) as AssimpScene
-}
-
 function updateCharacterMesh(time: number) {
   if (!characterRig) {
     return 0
@@ -819,8 +774,8 @@ function updateCharacterMesh(time: number) {
   hairInstances = []
   addRenderedCharacter(target, {
     position: characterPosition,
-    turn: characterTurn,
-    motionBlend: characterMotionBlend,
+    turn: localCharacter.turn,
+    motionBlend: localCharacter.motionBlend,
     style: {
       topStyleIndex,
       bottomStyleIndex,
@@ -829,12 +784,12 @@ function updateCharacterMesh(time: number) {
     },
   }, time, true)
 
-  const view = playerView()
+  const view = characterView(cameraController.position, cameraController.target)
   const npcPose = sampleBasePose(characterRig, time, characterPoseJointSet)
   const npcBlendCache: PoseBlendCache = new Map()
 
   for (const player of players) {
-    if (playerInView(player, view)) {
+    if (characterInView(player, view, canvas.width, canvas.height)) {
       addRenderedCharacter(target, player, time, false, npcPose, npcBlendCache)
     }
   }
@@ -870,27 +825,6 @@ function drawCharacterBoxes(camera: ReturnType<typeof getCamera>, width: number,
   gl.bindVertexArray(null)
 }
 
-function flattenVertices(target: Vertex[]) {
-  const data = new Float32Array(target.length * vertexSize)
-  let offset = 0
-
-  for (const vertex of target) {
-    data[offset++] = vertex[0]
-    data[offset++] = vertex[1]
-    data[offset++] = vertex[2]
-    data[offset++] = vertex[3]
-    data[offset++] = vertex[4]
-    data[offset++] = vertex[5]
-    data[offset++] = vertex[6]
-    data[offset++] = vertex[7]
-    data[offset++] = vertex[8]
-    data[offset++] = vertex[9]
-    data[offset++] = vertex[10]
-  }
-
-  return data
-}
-
 function drawNpcHair(camera: ReturnType<typeof getCamera>, width: number, height: number, outside: boolean) {
   gl.useProgram(hairProgram)
   gl.uniform2f(hairResolution, width, height)
@@ -906,31 +840,6 @@ function drawNpcHair(camera: ReturnType<typeof getCamera>, width: number, height
   }
 
   gl.bindVertexArray(null)
-}
-
-function playerView() {
-  const eye = camera.position
-  const forward = normalize(subtract(camera.target, eye))
-  const right = normalize(cross(forward, [0, 1, 0]))
-  const up = cross(right, forward)
-
-  return { eye, forward, right, up }
-}
-
-function playerInView(player: Player, view: ReturnType<typeof playerView>) {
-  const center: Vec3 = [player.position[0], player.position[1] + 0.85, player.position[2]]
-  const toPlayer = subtract(center, view.eye)
-  const depth = dot(toPlayer, view.forward)
-  const radius = 1.2
-
-  if (depth < -radius || depth > 45) {
-    return false
-  }
-
-  const vertical = Math.tan(1.08 / 2) * Math.max(depth, 0.1) + radius
-  const horizontal = vertical * (canvas.width / canvas.height) + radius
-
-  return Math.abs(dot(toPlayer, view.right)) < horizontal && Math.abs(dot(toPlayer, view.up)) < vertical
 }
 
 function addRenderedCharacter(
@@ -1025,8 +934,8 @@ function addCharacterPart(
     b = add(b, offset)
   }
 
-  addCharacterBox(target, a, b, part.width, part.depth, characterPartColor(part, style), part.glow ?? 0.02, player.turn,
-    localReflection)
+  addCharacterBox(target, characterBoxInstances, a, b, part.width, part.depth, characterPartColor(part, style),
+    part.glow ?? 0.02, player.turn, localReflection, addLocalReflection)
 }
 
 function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
@@ -1065,7 +974,8 @@ function addCharacterChest(
     const a = add(add(center, scale(side, offset)), scale(forward, 0.06))
     const b = add(add(center, scale(side, offset)), scale(forward, 0.13))
 
-    addCharacterBox(target, a, b, 0.065, 0.06, skin, 0.02, player.turn, localReflection)
+    addCharacterBox(target, characterBoxInstances, a, b, 0.065, 0.06, skin, 0.02, player.turn, localReflection,
+      addLocalReflection)
   }
 }
 
@@ -1098,11 +1008,11 @@ function addCharacterSkirt(
   const g = add(add(bottomCenter, scale(side, bottomWidth)), scale(forward, bottomDepth))
   const h = add(add(bottomCenter, scale(side, -bottomWidth)), scale(forward, bottomDepth))
 
-  addCharacterQuad(target, a, b, f, e, style.pants, 0.02, localReflection)
-  addCharacterQuad(target, b, c, g, f, scale(style.pants, 0.88), 0.02, localReflection)
-  addCharacterQuad(target, c, d, h, g, scale(style.pants, 0.78), 0.02, localReflection)
-  addCharacterQuad(target, d, a, e, h, scale(style.pants, 0.88), 0.02, localReflection)
-  addCharacterQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02, localReflection)
+  addCharacterQuad(target, a, b, f, e, style.pants, 0.02, localReflection, addLocalReflection)
+  addCharacterQuad(target, b, c, g, f, scale(style.pants, 0.88), 0.02, localReflection, addLocalReflection)
+  addCharacterQuad(target, c, d, h, g, scale(style.pants, 0.78), 0.02, localReflection, addLocalReflection)
+  addCharacterQuad(target, d, a, e, h, scale(style.pants, 0.88), 0.02, localReflection, addLocalReflection)
+  addCharacterQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02, localReflection, addLocalReflection)
 }
 
 function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh, player: { turn: number },
@@ -1121,34 +1031,9 @@ function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairM
     const c = hairPoint(center, side, up, forward, mesh.points[face[2]!]!)
 
     if (triangleAreaSquared(a, b, c) > 0.00000001) {
-      addLitTriangle(target, a, b, c, color, 0)
+      addLitTriangle(target, a, b, c, color, 0, addLocalReflection)
     }
   }
-}
-
-function triangleAreaSquared(a: Vec3, b: Vec3, c: Vec3) {
-  return dot(cross(subtract(c, a), subtract(b, a)), cross(subtract(c, a), subtract(b, a)))
-}
-
-function hairPoint(center: Vec3, side: Vec3, up: Vec3, forward: Vec3, point: Vec3) {
-  const scaleAmount = 1.4
-  const x = point[0] * scaleAmount
-  const z = -(point[2] - 0.02) * scaleAmount - 0.055
-  const y = (point[1] + 0.08) * scaleAmount - Math.max(0, z) * 0.28
-
-  return add(add(add(center, scale(side, x)), scale(up, y)), scale(forward, z))
-}
-
-function addLitTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, glow: number) {
-  const center = scale(add(add(a, b), c), 1 / 3)
-  const normal = normalize(cross(subtract(c, a), subtract(b, a)))
-  const shade = addLocalReflection(color, center, normal)
-
-  target.push(
-    [a[0], a[1], a[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-    [b[0], b[1], b[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-    [c[0], c[1], c[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-  )
 }
 
 function addSunLitTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
@@ -1191,149 +1076,6 @@ function addSunLitTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: V
     [b[0], b[1], b[2], shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
     [c[0], c[1], c[2], shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
   )
-}
-
-function addCharacterBox(
-  target: Vertex[],
-  a: Vec3,
-  b: Vec3,
-  width: number,
-  depth: number,
-  color: Vec3,
-  glow: number,
-  turn: number,
-  localReflection: boolean,
-  strobe = 0,
-) {
-  const dx = b[0] - a[0]
-  const dy = b[1] - a[1]
-  const dz = b[2] - a[2]
-  const length = Math.hypot(dx, dy, dz)
-  const nx = dx / length
-  const ny = dy / length
-  const nz = dz / length
-  const vertical = Math.abs(ny) > 0.82
-  let sideX = 0
-  let sideY = 0
-  let sideZ = 0
-  let upX = 0
-  let upY = 0
-  let upZ = 0
-
-  if (vertical) {
-    sideX = Math.cos(turn)
-    sideZ = -Math.sin(turn)
-    upX = Math.sin(turn)
-    upZ = Math.cos(turn)
-  }
-  else {
-    const sideLength = Math.hypot(-nz, nx)
-
-    sideX = -nz / sideLength
-    sideZ = nx / sideLength
-    upX = -sideZ * ny
-    upY = sideZ * nx - sideX * nz
-    upZ = sideX * ny
-
-    const upLength = Math.hypot(upX, upY, upZ)
-
-    upX /= upLength
-    upY /= upLength
-    upZ /= upLength
-  }
-
-  sideX *= width * 0.5
-  sideY *= width * 0.5
-  sideZ *= width * 0.5
-  upX *= depth * 0.5
-  upY *= depth * 0.5
-  upZ *= depth * 0.5
-
-  if (!localReflection) {
-    addCharacterBoxInstance(a, b, [sideX, sideY, sideZ], [upX, upY, upZ], color, glow, strobe)
-    return
-  }
-
-  const a0: Vec3 = [a[0] - sideX - upX, a[1] - sideY - upY, a[2] - sideZ - upZ]
-  const a1: Vec3 = [a[0] + sideX - upX, a[1] + sideY - upY, a[2] + sideZ - upZ]
-  const a2: Vec3 = [a[0] + sideX + upX, a[1] + sideY + upY, a[2] + sideZ + upZ]
-  const a3: Vec3 = [a[0] - sideX + upX, a[1] - sideY + upY, a[2] - sideZ + upZ]
-  const b0: Vec3 = [b[0] - sideX - upX, b[1] - sideY - upY, b[2] - sideZ - upZ]
-  const b1: Vec3 = [b[0] + sideX - upX, b[1] + sideY - upY, b[2] + sideZ - upZ]
-  const b2: Vec3 = [b[0] + sideX + upX, b[1] + sideY + upY, b[2] + sideZ + upZ]
-  const b3: Vec3 = [b[0] - sideX + upX, b[1] - sideY + upY, b[2] - sideZ + upZ]
-  const shadeA = scale(color, 0.65)
-  const shadeB = scale(color, 0.82)
-
-  addCharacterQuad(target, a0, a1, b1, b0, shadeA, glow, localReflection)
-  addCharacterQuad(target, a1, a2, b2, b1, color, glow, localReflection)
-  addCharacterQuad(target, a2, a3, b3, b2, shadeB, glow, localReflection)
-  addCharacterQuad(target, a3, a0, b0, b3, shadeA, glow, localReflection)
-  addCharacterQuad(target, a3, a2, a1, a0, shadeB, glow, localReflection)
-  addCharacterQuad(target, b0, b1, b2, b3, shadeB, glow, localReflection)
-}
-
-function addCharacterBoxInstance(
-  a: Vec3,
-  b: Vec3,
-  side: Vec3,
-  up: Vec3,
-  color: Vec3,
-  glow: number,
-  strobe: number,
-) {
-  characterBoxInstances.push(
-    a[0],
-    a[1],
-    a[2],
-    b[0],
-    b[1],
-    b[2],
-    side[0],
-    side[1],
-    side[2],
-    up[0],
-    up[1],
-    up[2],
-    color[0],
-    color[1],
-    color[2],
-    glow,
-    strobe,
-  )
-}
-
-function addCharacterQuad(
-  target: Vertex[],
-  a: Vec3,
-  b: Vec3,
-  c: Vec3,
-  d: Vec3,
-  color: Vec3,
-  glow: number,
-  localReflection: boolean,
-) {
-  if (localReflection) {
-    addLitQuad(target, a, b, c, d, color, glow)
-  }
-  else {
-    addQuad(target, a, b, c, d, color, glow)
-  }
-}
-
-function addLitQuad(
-  target: Vertex[],
-  a: Vec3,
-  b: Vec3,
-  c: Vec3,
-  d: Vec3,
-  color: Vec3,
-  glow: number,
-) {
-  const center = scale(add(add(a, b), add(c, d)), 0.25)
-  const normal = normalize(cross(subtract(c, a), subtract(b, a)))
-
-  addQuad(target, a, b, c, d, addLocalReflection(color, center, normal), glow)
 }
 
 function addLocalReflection(color: Vec3, point: Vec3, normal: Vec3): Vec3 {
@@ -1426,10 +1168,10 @@ function restoreState() {
 
   if (state) {
     setVec3(characterPosition, state.character)
-    setVec3(camera.position, state.camera)
-    camera.turn = state.cameraTurn
-    characterTurn = state.characterTurn
-    velocityY = state.velocityY
+    setVec3(cameraController.position, state.camera)
+    cameraController.turn = state.cameraTurn
+    localCharacter.turn = state.characterTurn
+    localCharacter.velocityY = state.velocityY
     characterHairIndex = state.characterHairIndex ?? characterHairIndex
     characterHairColorIndex = normalizeIndex(state.characterHairColorIndex ?? characterHairColorIndex,
       hairPalette.length)
@@ -1449,10 +1191,10 @@ function saveState() {
 
   writeClubState(saveKey, {
     character: characterPosition,
-    camera: camera.position,
-    cameraTurn: camera.turn,
-    characterTurn,
-    velocityY,
+    camera: cameraController.position,
+    cameraTurn: cameraController.turn,
+    characterTurn: localCharacter.turn,
+    velocityY: localCharacter.velocityY,
     characterHairIndex,
     characterHairColorIndex,
     shirtColorIndex,
@@ -1472,55 +1214,13 @@ function updateSave(delta: number) {
   }
 }
 
-function getInput() {
-  return readMoveInput(keys, input)
-}
-
-function updateCharacter(delta: number) {
-  getInput()
-  const moving = lengthSq(input) > 0
-
-  characterMotionBlend = mix(characterMotionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
-  characterMode = characterMotionBlend > 0.5 ? 'run' : 'stand'
-
-  if (moving) {
-    normalizeInto(input)
-    setVec3(forward, [Math.sin(camera.turn), 0, Math.cos(camera.turn)])
-    setVec3(right, [-Math.cos(camera.turn), 0, Math.sin(camera.turn)])
-    setVec3(direction, add(scale(forward, input[2]), scale(right, input[0])))
-    normalizeInto(direction)
-
-    characterPosition[0] += direction[0] * delta * 5
-    characterPosition[2] += direction[2] * delta * 5
-    collideRoom(characterPosition, outsideTree)
-    characterTurn = smoothAngle(characterTurn, Math.atan2(direction[0], direction[2]), 10, delta)
-  }
-  floorY = walkHeight(characterPosition[0], characterPosition[1], characterPosition[2])
-
-  if (floorY > characterPosition[1]) {
-    characterPosition[1] = floorY
-    velocityY = 0
-  }
-  else {
-    velocityY -= 12 * delta
-    characterPosition[1] += velocityY * delta
-
-    if (characterPosition[1] < floorY) {
-      characterPosition[1] = floorY
-      velocityY = 0
-    }
-  }
-
-  collideRoom(characterPosition, outsideTree)
-}
-
 function updateCamera(delta: number) {
-  getInput()
-  camera.update(delta, input, characterTurn)
+  localCharacter.readInput()
+  cameraController.update(delta, localCharacter.input, localCharacter.turn)
 }
 
 function getCamera() {
-  return camera.get()
+  return cameraController.get()
 }
 
 function openChatInput() {

@@ -1,7 +1,7 @@
 import { characterFloor } from './character-data.ts'
 import { clamp, lengthSq, lerpVec3, mix, smoothAngle } from './math.ts'
-import { collideBuildingWalls, isOutside, walkHeight } from './scene.ts'
 import { outsideBounds, roomBounds } from './scene-data.ts'
+import { collideBuildingWalls, isOutside, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {

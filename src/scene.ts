@@ -1,8 +1,8 @@
 import { characterFloor } from './character-data.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideDjBooth, outsideDjSpeakers, roomBounds } from './scene-data.ts'
 import { clamp } from './math.ts'
+import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideDjBooth, outsideDjSpeakers,
+  roomBounds } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3 } from './types.ts'
-
 
 export function walkHeight(_x: number, _y: number, _z: number) {
   return characterFloor
