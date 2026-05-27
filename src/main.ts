@@ -7,12 +7,10 @@ import {
   characterScale,
   hairPalette,
   jewelPalette,
-  pants,
-  shirt,
-  shirtLight,
   shoe,
   skin,
 } from './character-data.ts'
+import { createCameraController } from './camera-controller.ts'
 import { createHairMeshes, createHairRenderMeshes, updateHairInstances } from './character-hair.ts'
 import {
   createCharacterClip,
@@ -21,8 +19,10 @@ import {
   sampleCharacterPose,
   validateCharacterRig,
 } from './character-rig.ts'
+import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { applyBottomStyle, applyTopStyle, resolvePlayerStyle } from './character-style.ts'
 import { createChatUi } from './chat-ui.ts'
+import { readClubState, writeClubState } from './club-state.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
@@ -34,7 +34,6 @@ import {
   cross,
   dot,
   lengthSq,
-  lerpVec3,
   mix,
   normalize,
   normalizeIndex,
@@ -46,12 +45,12 @@ import {
   subtract,
 } from './math.ts'
 import {
-  collideBuildingWalls,
   collideRoom,
   isOutside,
   usesSkyBackground,
   walkHeight,
 } from './scene.ts'
+import { createPlayers, updatePlayers } from './player-system.ts'
 import {
   backDoor,
   bartenderBar,
@@ -92,7 +91,6 @@ import type {
   HairMesh,
   HairRenderMesh,
   Player,
-  PlayerDestination,
   PlayerStyle,
   PoseBlendCache,
   ResolvedPlayerStyle,
@@ -169,15 +167,8 @@ const direction: Vec3 = [0, 0, 0]
 const characterPosition: Vec3 = [-2.2, -1.95, -6.8]
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, canvas, characterPosition)
 const djVideoUi = createDjVideoUi(djVideo, canvas, characterPosition)
-const cameraPosition: Vec3 = [-2.2, 0.15, -9.0]
-const cameraTarget: Vec3 = [-2.2, -0.75, -6.8]
+const camera = createCameraController(canvas, characterPosition)
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
-let cameraTurn = 0
-let cameraDragX = 0
-let cameraDragY = 0
-let cameraPitch = 0
-let cameraDragging = false
-let cameraReturning = false
 let characterTurn = 0
 let characterMotionBlend = 0
 let floorY = -1.95
@@ -412,35 +403,6 @@ gl.bindVertexArray(null)
 
 gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
-canvas.style.touchAction = 'none'
-
-canvas.addEventListener('pointerdown', event => {
-  cameraDragging = true
-  cameraReturning = false
-  cameraDragX = event.clientX
-  cameraDragY = event.clientY
-  canvas.setPointerCapture(event.pointerId)
-})
-
-canvas.addEventListener('pointermove', event => {
-  if (cameraDragging) {
-    cameraTurn -= (event.clientX - cameraDragX) * 0.005
-    cameraPitch = clamp(cameraPitch + (event.clientY - cameraDragY) * 0.018, -2.4, 4.2)
-    cameraDragX = event.clientX
-    cameraDragY = event.clientY
-  }
-})
-
-canvas.addEventListener('pointerup', event => {
-  cameraDragging = false
-  canvas.releasePointerCapture(event.pointerId)
-})
-
-canvas.addEventListener('pointercancel', event => {
-  cameraDragging = false
-  canvas.releasePointerCapture(event.pointerId)
-})
-
 bindKeyboardInput({
   activeInput: chatInput,
   keys,
@@ -476,7 +438,7 @@ const draw = (stamp: number) => {
   lastStamp = stamp
   resize()
   updateCharacter(delta)
-  updatePlayers(delta, stamp * 0.001)
+  updatePlayers(players, delta, stamp * 0.001, outsideTree)
   updateCamera(delta)
   updateSave(delta)
   const camera = getCamera()
@@ -749,51 +711,10 @@ djVideoUi.load()
 const wallLightZ = [-2, -6, -10, -14, -18, -22]
 const backLightX = [-4.5, 0, 4.5]
 const strobeLights = createStrobeLights()
-const players = createPlayers(100)
+const players = createPlayers(100, outsideTree)
 let lightFrame = 0
 let strobeReflectionFrame = -1
 let strobeReflectionLights: StrobeReflectionLight[] = []
-const characterParts: CharacterPart[] = [
-  { from: 'mixamorig:Hips', to: 'mixamorig:Neck', width: 0.26, depth: 0.16, color: shirtLight, start: -0.06, end: 1.02,
-    top: 'torso' },
-  { from: 'mixamorig:Neck', to: 'mixamorig:HeadTop_End', width: 0.17, depth: 0.16, color: skin, start: 0.02,
-    end: 0.34 },
-  { from: 'mixamorig:LeftArm', to: 'mixamorig:LeftForeArm', width: 0.07, depth: 0.065, color: shirt, top: 'sleeve',
-    armOffset: 0.075, lift: 0.035 },
-  { from: 'mixamorig:LeftForeArm', to: 'mixamorig:LeftHand', width: 0.055, depth: 0.05, color: skin, end: 1.22,
-    armOffset: 0.075, lift: 0.035 },
-  { from: 'mixamorig:RightArm', to: 'mixamorig:RightForeArm', width: 0.07, depth: 0.065, color: shirt, top: 'sleeve',
-    armOffset: 0.075, lift: 0.035 },
-  { from: 'mixamorig:RightForeArm', to: 'mixamorig:RightHand', width: 0.055, depth: 0.05, color: skin, end: 1.22,
-    armOffset: 0.075, lift: 0.035 },
-  { from: 'mixamorig:Hips', to: 'mixamorig:LeftUpLeg', width: 0.12, depth: 0.09, color: pants, bottom: true },
-  { from: 'mixamorig:LeftUpLeg', to: 'mixamorig:LeftLeg', width: 0.1, depth: 0.085, color: pants, bottom: true },
-  { from: 'mixamorig:LeftLeg', to: 'mixamorig:LeftFoot', width: 0.08, depth: 0.07, color: skin },
-  { from: 'mixamorig:LeftFoot', to: 'mixamorig:LeftToe_End', width: 0.095, depth: 0.055, color: shoe, start: -0.06,
-    end: 1.05 },
-  { from: 'mixamorig:Hips', to: 'mixamorig:RightUpLeg', width: 0.12, depth: 0.09, color: pants, bottom: true },
-  { from: 'mixamorig:RightUpLeg', to: 'mixamorig:RightLeg', width: 0.1, depth: 0.085, color: pants, bottom: true },
-  { from: 'mixamorig:RightLeg', to: 'mixamorig:RightFoot', width: 0.08, depth: 0.07, color: skin },
-  { from: 'mixamorig:RightFoot', to: 'mixamorig:RightToe_End', width: 0.095, depth: 0.055, color: shoe, start: -0.06,
-    end: 1.05 },
-]
-const characterPoseJoints = [
-  ...new Set([
-    ...characterGroundJoints,
-    ...characterParts.flatMap(part => [part.from, part.to]),
-    'mixamorig:Spine2',
-    'mixamorig:Neck',
-    'mixamorig:Hips',
-    'mixamorig:LeftUpLeg',
-    'mixamorig:RightUpLeg',
-    'mixamorig:LeftLeg',
-    'mixamorig:RightLeg',
-    'mixamorig:Head',
-    'mixamorig:HeadTop_End',
-  ]),
-]
-const characterPoseJointSet = new Set(characterPoseJoints)
-
 async function loadCharacterRig(): Promise<CharacterRig> {
   const ajs = await assimpjs({
     locateFile(path) {
@@ -988,8 +909,8 @@ function drawNpcHair(camera: ReturnType<typeof getCamera>, width: number, height
 }
 
 function playerView() {
-  const eye = cameraPosition
-  const forward = normalize(subtract(cameraTarget, eye))
+  const eye = camera.position
+  const forward = normalize(subtract(camera.target, eye))
   const right = normalize(cross(forward, [0, 1, 0]))
   const up = cross(right, forward)
 
@@ -1501,25 +1422,12 @@ function activeStrobeReflectionLights() {
 }
 
 function restoreState() {
-  const state = JSON.parse(localStorage.getItem(saveKey) ?? 'null') as {
-    character: Vec3
-    camera: Vec3
-    cameraTurn: number
-    characterTurn: number
-    velocityY: number
-    characterHairIndex?: number
-    characterHairColorIndex?: number
-    shirtColorIndex?: number
-    topStyleIndex?: number
-    pantsColorIndex?: number
-    bottomStyleIndex?: number
-    videoTimes?: Partial<typeof djVideoUi.times>
-  } | null
+  const state = readClubState(saveKey)
 
   if (state) {
     setVec3(characterPosition, state.character)
-    setVec3(cameraPosition, state.camera)
-    cameraTurn = state.cameraTurn
+    setVec3(camera.position, state.camera)
+    camera.turn = state.cameraTurn
     characterTurn = state.characterTurn
     velocityY = state.velocityY
     characterHairIndex = state.characterHairIndex ?? characterHairIndex
@@ -1539,10 +1447,10 @@ function restoreState() {
 function saveState() {
   djVideoUi.syncCurrentTime()
 
-  localStorage.setItem(saveKey, JSON.stringify({
+  writeClubState(saveKey, {
     character: characterPosition,
-    camera: cameraPosition,
-    cameraTurn,
+    camera: camera.position,
+    cameraTurn: camera.turn,
     characterTurn,
     velocityY,
     characterHairIndex,
@@ -1552,7 +1460,7 @@ function saveState() {
     pantsColorIndex,
     bottomStyleIndex,
     videoTimes: djVideoUi.times,
-  }))
+  })
 }
 
 function updateSave(delta: number) {
@@ -1577,8 +1485,8 @@ function updateCharacter(delta: number) {
 
   if (moving) {
     normalizeInto(input)
-    setVec3(forward, [Math.sin(cameraTurn), 0, Math.cos(cameraTurn)])
-    setVec3(right, [-Math.cos(cameraTurn), 0, Math.sin(cameraTurn)])
+    setVec3(forward, [Math.sin(camera.turn), 0, Math.cos(camera.turn)])
+    setVec3(right, [-Math.cos(camera.turn), 0, Math.sin(camera.turn)])
     setVec3(direction, add(scale(forward, input[2]), scale(right, input[0])))
     normalizeInto(direction)
 
@@ -1606,243 +1514,13 @@ function updateCharacter(delta: number) {
   collideRoom(characterPosition, outsideTree)
 }
 
-function createPlayers(count: number) {
-  const next: Player[] = []
-
-  for (let i = 0; i < count; i++) {
-    const seed = i + 1
-    const destination = playerDestination(seed, 0)
-    const position: Vec3 = [
-      destination.position[0] + seededRange(seed, 10, -1.2, 1.2),
-      characterFloor,
-      destination.position[2] + seededRange(seed, 11, -1.2, 1.2),
-    ]
-    const style: PlayerStyle = {
-      topStyleIndex: Math.floor(seededRange(seed, 14, 0, jewelPalette.length * 2 + 2)),
-      bottomStyleIndex: Math.floor(seededRange(seed, 15, 0, jewelPalette.length * 2)),
-      hairIndex: Math.floor(seededRange(seed, 16, 0, 19)),
-      hairColorIndex: Math.floor(seededRange(seed, 17, 0, hairPalette.length)),
-    }
-
-    next.push({
-      position,
-      turn: seededRange(seed, 12, -Math.PI, Math.PI),
-      motionBlend: 0,
-      input: [0, 0, 0],
-      nextDecision: seededRange(seed, 13, 0.3, 2.8),
-      destination,
-      style,
-      resolvedStyle: resolvePlayerStyle(style),
-      seed,
-    })
-  }
-
-  return next
-}
-
-function updatePlayers(delta: number, time: number) {
-  for (const player of players) {
-    const destination = activePlayerDestination(player)
-    const distance = Math.hypot(
-      destination.position[0] - player.position[0],
-      destination.position[2] - player.position[2],
-    )
-
-    if (distance < 0.55 && destination === player.destination) {
-      player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed))
-      player.nextDecision = time
-    }
-
-    if (time >= player.nextDecision) {
-      choosePlayerInput(player, time)
-      player.nextDecision = time + seededRange(player.seed, Math.floor(time * 3.1), 0.45, 2.4)
-    }
-
-    const moving = lengthSq(player.input) > 0
-
-    player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-7 * delta))
-
-    if (moving) {
-      const direction = normalize([...player.input])
-
-      player.position[0] += direction[0] * delta * 2.55
-      player.position[2] += direction[2] * delta * 2.55
-      collideRoom(player.position, outsideTree)
-      player.turn = smoothAngle(player.turn, Math.atan2(direction[0], direction[2]), 8, delta)
-    }
-    else if (destination.lookAt) {
-      const dx = destination.lookAt[0] - player.position[0]
-      const dz = destination.lookAt[2] - player.position[2]
-
-      player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
-    }
-
-    player.position[1] = characterFloor
-  }
-}
-
-function choosePlayerInput(player: Player, time: number) {
-  const random = seededRandom(player.seed, Math.floor(time * 7.7))
-
-  if (random < 0.22) {
-    player.input = [0, 0, 0]
-    return
-  }
-
-  const destination = activePlayerDestination(player)
-  const dx = destination.position[0] - player.position[0]
-  const dz = destination.position[2] - player.position[2]
-  const angle = Math.atan2(dx, dz) + seededRange(player.seed, Math.floor(time * 5.3), -0.75, 0.75)
-  const directions: Vec3[] = [
-    [0, 0, 1],
-    [1, 0, 1],
-    [-1, 0, 1],
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 0, -1],
-    [1, 0, -1],
-    [-1, 0, -1],
-  ]
-  const index = normalizeIndex(Math.round(angle / (Math.PI / 4)), directions.length)
-
-  player.input = [...directions[index]!]
-}
-
-function activePlayerDestination(player: Player): PlayerDestination {
-  const outside = isOutside(player.position)
-  const destinationOutside = isOutside(player.destination.position)
-
-  if (outside === destinationOutside) {
-    return player.destination
-  }
-
-  return {
-    position: [backDoor.x, characterFloor, outside ? roomBounds.front - 0.75 : roomBounds.front + 0.75],
-  }
-}
-
-function playerDestination(seed: number, step: number): PlayerDestination {
-  const choice = Math.floor(seededRange(seed, step + 100, 0, 6))
-  const jitterX = seededRange(seed, step + 101, -1.8, 1.8)
-  const jitterZ = seededRange(seed, step + 102, -1.4, 1.4)
-
-  if (choice === 0) {
-    return { position: [jitterX, characterFloor, djBooth.z + 2.2 + jitterZ],
-      lookAt: [djBooth.x, characterFloor, djBooth.z] }
-  }
-
-  if (choice === 1) {
-    return { position: [bartenderBar.x + jitterX, characterFloor, bartenderBar.z - 1.55 + jitterZ * 0.35] }
-  }
-
-  if (choice === 2) {
-    return { position: [backDoor.x + jitterX * 0.35, characterFloor, roomBounds.front - 1.3 + jitterZ * 0.3] }
-  }
-
-  if (choice === 3) {
-    return { position: [outsideTree.x + jitterX, characterFloor, outsideTree.z - 2.4 + jitterZ],
-      lookAt: [outsideTree.x, characterFloor, outsideTree.z] }
-  }
-
-  if (choice === 4) {
-    return { position: [outsideDjBooth.x + jitterX, characterFloor, outsideDjBooth.z - 2.6 + jitterZ],
-      lookAt: [outsideDjBooth.x, characterFloor, outsideDjBooth.z] }
-  }
-
-  return {
-    position: [seededRange(seed, step + 103, roomBounds.left + 1.2, roomBounds.right - 1.2), characterFloor,
-      seededRange(seed, step + 104, roomBounds.back + 2.2, roomBounds.front - 2.0)],
-  }
-}
-
-function seededRange(seed: number, salt: number, min: number, max: number) {
-  return mix(min, max, seededRandom(seed, salt))
-}
-
-function seededRandom(seed: number, salt: number) {
-  const value = Math.sin(seed * 127.1 + salt * 311.7) * 43758.5453123
-
-  return value - Math.floor(value)
-}
-
 function updateCamera(delta: number) {
   getInput()
-  const moving = lengthSq(input) > 0
-
-  if (!cameraDragging && moving) {
-    cameraReturning = true
-  }
-
-  if (!cameraDragging && (moving || cameraReturning)) {
-    const turnSpeed = cameraReturning ? 5 : mix(0.8, 2.2, input[2])
-
-    cameraTurn = smoothAngle(cameraTurn, characterTurn, turnSpeed, delta)
-    cameraPitch = mix(cameraPitch, 0, 1 - Math.exp(-4 * delta))
-
-    if (cameraReturning) {
-      const angle = Math.abs(Math.atan2(Math.sin(characterTurn - cameraTurn), Math.cos(characterTurn - cameraTurn)))
-
-      if (angle < 0.01 && Math.abs(cameraPitch) < 0.01) {
-        cameraReturning = false
-      }
-    }
-  }
-
-  cameraTarget[0] = characterPosition[0]
-  cameraTarget[1] = characterPosition[1] + 1.2
-  cameraTarget[2] = characterPosition[2]
-  const outside = isOutside(characterPosition)
-  const time = performance.now() * 0.001
-  const distance = outside ? 2.2 : cameraDanceDistance(time)
-  const bounce = outside ? 0 : cameraDanceBounce(time)
-  const ideal: Vec3 = [
-    characterPosition[0] - Math.sin(cameraTurn) * distance,
-    characterPosition[1] + 1.35 + cameraPitch + bounce,
-    characterPosition[2] - Math.cos(cameraTurn) * distance,
-  ]
-
-  ideal[0] = outside
-    ? clamp(ideal[0], outsideBounds.left + 1, outsideBounds.right - 1)
-    : clamp(ideal[0], roomBounds.left + 0.4, roomBounds.right - 0.4)
-  ideal[1] = clamp(ideal[1], characterFloor + 0.35, 4.3)
-  ideal[2] = outside
-    ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
-    : clamp(ideal[2], roomBounds.back + 0.2, roomBounds.front - 0.2)
-
-  if (outside) {
-    collideBuildingWalls(ideal, 0.65)
-  }
-
-  lerpVec3(cameraPosition, ideal, 1 - Math.pow(0.015, delta))
-  if (outside) {
-    collideBuildingWalls(cameraPosition, 0.65)
-  }
-
-  cameraPosition[1] = Math.max(cameraPosition[1],
-    walkHeight(cameraPosition[0], characterPosition[1], cameraPosition[2]) + 0.35)
-}
-
-function cameraDanceBounce(time: number) {
-  const beat = (time * 2.25) % 1
-  const offbeat = (time * 4.3 + 0.5) % 1
-  const kick = beat < 0.08 ? beat / 0.08 : 1 - (beat - 0.08) / 0.92
-  const tick = offbeat < 0.04 ? offbeat / 0.04 : 1 - (offbeat - 0.04) / 0.96
-
-  return kick * 0.26 + tick * 0.035
-}
-
-function cameraDanceDistance(time: number) {
-  const beat = (time * 2.15) % 1
-  const zoom = beat < 0.1 ? beat / 0.1 : 1 - (beat - 0.1) / 0.9
-
-  return 2.2 + zoom * 0.18
+  camera.update(delta, input, characterTurn)
 }
 
 function getCamera() {
-  return {
-    eye: [cameraPosition[0], cameraPosition[1], cameraPosition[2]] as [number, number, number],
-    center: [cameraTarget[0], cameraTarget[1], cameraTarget[2]] as [number, number, number],
-  }
+  return camera.get()
 }
 
 function openChatInput() {
