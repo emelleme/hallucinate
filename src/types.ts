@@ -238,15 +238,6 @@ export type HairRenderMesh = {
   instanceCount: number
 }
 
-export type HairInstance = {
-  meshIndex: number
-  center: Vec3
-  side: Vec3
-  up: Vec3
-  forward: Vec3
-  color: Vec3
-}
-
 export type ClubGlobal = typeof globalThis & {
   clubFrameId?: number
   clubCharacterRigLoad?: Promise<CharacterRig>

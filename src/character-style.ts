@@ -2,6 +2,9 @@ import { hairPalette, jewelPalette, pants, shirt, shirtLight, shoe } from './cha
 import { normalizeIndex, scale, setVec3 } from './math.ts'
 import type { BottomMode, PlayerStyle, ResolvedPlayerStyle, TopMode } from './types.ts'
 
+const topStyleCache = new Map<number, ReturnType<typeof createTopStyleData>>()
+const resolvedStyleCache = new Map<number, ResolvedPlayerStyle>()
+
 export function createCharacterStyleController() {
   let shirtColorIndex = 1
   let topStyleIndex = 1
@@ -83,22 +86,47 @@ export function applyBottomStyle(bottomStyleIndex: number) {
 export function resolvePlayerStyle(style: PlayerStyle): ResolvedPlayerStyle {
   const topIndex = normalizeIndex(style.topStyleIndex, jewelPalette.length * 2 + 2)
   const bottomIndex = normalizeIndex(style.bottomStyleIndex, jewelPalette.length * 2)
+  const hairColorIndex = normalizeIndex(style.hairColorIndex, hairPalette.length)
+  const key = (topIndex * jewelPalette.length * 2 + bottomIndex) * hairPalette.length + hairColorIndex
+  const cached = resolvedStyleCache.get(key)
+
+  if (cached) {
+    return cached
+  }
+
   const top = topStyleData(topIndex)
   const bottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
   const pantsColor = jewelPalette[bottomIndex % jewelPalette.length]!
-
-  return {
+  const resolved = {
     topMode: top.mode,
     bottomMode,
     shirt: jewelPalette[top.colorIndex]!,
     shirtLight: scale(jewelPalette[top.colorIndex]!, 1.35),
     pants: pantsColor,
     shoe: scale(pantsColor, 0.72),
-    hairColor: hairPalette[normalizeIndex(style.hairColorIndex, hairPalette.length)]!,
+    hairColor: hairPalette[hairColorIndex]!,
   }
+
+  resolvedStyleCache.set(key, resolved)
+
+  return resolved
 }
 
 function topStyleData(topStyleIndex: number) {
+  const cached = topStyleCache.get(topStyleIndex)
+
+  if (cached) {
+    return cached
+  }
+
+  const data = createTopStyleData(topStyleIndex)
+
+  topStyleCache.set(topStyleIndex, data)
+
+  return data
+}
+
+function createTopStyleData(topStyleIndex: number) {
   const colorIndex = topStyleIndex < jewelPalette.length
     ? topStyleIndex
     : topStyleIndex < jewelPalette.length * 2

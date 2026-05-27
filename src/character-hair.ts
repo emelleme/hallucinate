@@ -1,7 +1,7 @@
 import { uploadFloatBuffer } from './character-gpu.ts'
 import { scale, subtract } from './math.ts'
 import type { NumberBufferCache } from './character-gpu.ts'
-import type { AssimpMesh, AssimpScene, HairInstance, HairMesh, HairRenderMesh, Vec3 } from './types.ts'
+import type { AssimpMesh, AssimpScene, HairMesh, HairRenderMesh, Vec3 } from './types.ts'
 
 export type HairInstanceUploadCache = {
   buffers: Float32Array[]
@@ -110,31 +110,31 @@ export function hairLocalPoint(point: Vec3): Vec3 {
 export function updateHairInstances(
   context: WebGL2RenderingContext,
   hairRenderMeshes: HairRenderMesh[],
-  hairInstances: HairInstance[],
+  hairInstances: number[],
   cache?: HairInstanceUploadCache,
 ) {
   const grouped = cache ? resizeHairInstanceGroups(cache, hairRenderMeshes.length) : createHairInstanceGroups(
     hairRenderMeshes.length)
 
-  for (const instance of hairInstances) {
-    const data = grouped[instance.meshIndex]!
+  for (let i = 0; i < hairInstances.length; i += 16) {
+    const data = grouped[hairInstances[i]!]!
 
     data.push(
-      instance.center[0],
-      instance.center[1],
-      instance.center[2],
-      instance.side[0],
-      instance.side[1],
-      instance.side[2],
-      instance.up[0],
-      instance.up[1],
-      instance.up[2],
-      instance.forward[0],
-      instance.forward[1],
-      instance.forward[2],
-      instance.color[0],
-      instance.color[1],
-      instance.color[2],
+      hairInstances[i + 1]!,
+      hairInstances[i + 2]!,
+      hairInstances[i + 3]!,
+      hairInstances[i + 4]!,
+      hairInstances[i + 5]!,
+      hairInstances[i + 6]!,
+      hairInstances[i + 7]!,
+      hairInstances[i + 8]!,
+      hairInstances[i + 9]!,
+      hairInstances[i + 10]!,
+      hairInstances[i + 11]!,
+      hairInstances[i + 12]!,
+      hairInstances[i + 13]!,
+      hairInstances[i + 14]!,
+      hairInstances[i + 15]!,
     )
   }
 

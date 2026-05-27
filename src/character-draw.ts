@@ -13,7 +13,6 @@ import { normalizeIndex, scale } from './math.ts'
 import type {
   CharacterPart,
   CharacterRig,
-  HairInstance,
   HairMesh,
   Player,
   PlayerStyle,
@@ -54,7 +53,7 @@ type TurnBasis = {
 
 export type CharacterDrawCache = {
   boxInstances: number[]
-  hairInstances: HairInstance[]
+  hairInstances: number[]
   npcBlendCache: PoseBlendCache
   poses: Vec3[][]
   vertices: Vertex[]
@@ -76,6 +75,8 @@ const characterPartPlans = characterParts.map(part => ({
   fromIndex: poseJointIndices.get(part.from)!,
   toIndex: poseJointIndices.get(part.to)!,
 }))
+const hairLightPoint: Vec3 = [0, 0, 0]
+const hairLightNormal: Vec3 = [0, 1, 0]
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -116,7 +117,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
 function addRenderedCharacter(
   target: Vertex[],
   boxInstances: number[],
-  hairInstances: HairInstance[],
+  hairInstances: number[],
   player: CharacterInput,
   options: BuildOptions,
   detailedHair: boolean,
@@ -158,7 +159,7 @@ function addRenderedCharacter(
 }
 
 function addNpcHairInstance(
-  hairInstances: HairInstance[],
+  hairInstances: number[],
   pose: Vec3[],
   hair: HairMesh,
   player: { turn: number },
@@ -174,18 +175,24 @@ function addNpcHairInstance(
   const sin = Math.sin(player.turn)
   const cos = Math.cos(player.turn)
 
-  hairInstances.push({
-    meshIndex: hair.index,
-    center: [
-      head[0] - up[0] * 0.035,
-      head[1] - up[1] * 0.035,
-      head[2] - up[2] * 0.035,
-    ],
-    side: [cos, 0, -sin],
-    up,
-    forward: [sin, 0, cos],
-    color,
-  })
+  hairInstances.push(
+    hair.index,
+    head[0] - up[0] * 0.035,
+    head[1] - up[1] * 0.035,
+    head[2] - up[2] * 0.035,
+    cos,
+    0,
+    -sin,
+    up[0],
+    up[1],
+    up[2],
+    sin,
+    0,
+    cos,
+    color[0],
+    color[1],
+    color[2],
+  )
 }
 
 function addCharacterPart(
@@ -409,8 +416,14 @@ function addCharacterHair(
 
     if (area > 0.00000001) {
       const length = Math.sqrt(area)
-      const shade = light(color, [(ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3],
-        [nx / length, ny / length, nz / length])
+      hairLightPoint[0] = (ax + bx + cx) / 3
+      hairLightPoint[1] = (ay + by + cy) / 3
+      hairLightPoint[2] = (az + bz + cz) / 3
+      hairLightNormal[0] = nx / length
+      hairLightNormal[1] = ny / length
+      hairLightNormal[2] = nz / length
+
+      const shade = light(color, hairLightPoint, hairLightNormal)
 
       target.push(
         [ax, ay, az, shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],

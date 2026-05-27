@@ -5,6 +5,9 @@ export type VertexBufferCache = {
   data: Float32Array
 }
 
+const lightPoint: Vec3 = [0, 0, 0]
+const lightNormal: Vec3 = [0, 1, 0]
+
 export function flattenVertices(target: Vertex[], cache?: VertexBufferCache) {
   const size = target.length * 11
   const data = cache ? resizeVertexBuffer(cache, size) : new Float32Array(size)
@@ -168,11 +171,6 @@ function addLitQuad(
   const vx = b[0] - a[0]
   const vy = b[1] - a[1]
   const vz = b[2] - a[2]
-  const center: Vec3 = [
-    (a[0] + b[0] + c[0] + d[0]) * 0.25,
-    (a[1] + b[1] + c[1] + d[1]) * 0.25,
-    (a[2] + b[2] + c[2] + d[2]) * 0.25,
-  ]
   const nx = uy * vz - uz * vy
   const ny = uz * vx - ux * vz
   const nz = ux * vy - uy * vx
@@ -180,9 +178,15 @@ function addLitQuad(
   if (length === 0) {
     throw new Error('Cannot normalize zero vector')
   }
-  const normal: Vec3 = [nx / length, ny / length, nz / length]
 
-  addQuad(target, a, b, c, d, light(color, center, normal), glow)
+  lightPoint[0] = (a[0] + b[0] + c[0] + d[0]) * 0.25
+  lightPoint[1] = (a[1] + b[1] + c[1] + d[1]) * 0.25
+  lightPoint[2] = (a[2] + b[2] + c[2] + d[2]) * 0.25
+  lightNormal[0] = nx / length
+  lightNormal[1] = ny / length
+  lightNormal[2] = nz / length
+
+  addQuad(target, a, b, c, d, light(color, lightPoint, lightNormal), glow)
 }
 
 function addCharacterBoxInstance(
