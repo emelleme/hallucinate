@@ -112,6 +112,7 @@ const treeShadowMap = createTreeShadowMap(gl)
 const viewProjection = gl.getUniformLocation(program, 'viewProjection')
 const cameraEye = gl.getUniformLocation(program, 'cameraEye')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
+const bloomPass = gl.getUniformLocation(program, 'bloomPass')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
 const characterBoxViewProjection = gl.getUniformLocation(characterBoxProgram, 'viewProjection')
 const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
@@ -163,7 +164,7 @@ const characterBoxGeometry = createCharacterBoxGeometry()
 const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 
-if (!viewProjection || !cameraEye || !renderZone || !treeShadowSampler || !characterBoxViewProjection
+if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !treeShadowSampler || !characterBoxViewProjection
   || !characterBoxRenderZone || !lightTime || !lightSmokeMap || !lightRenderZone || !lightViewProjection
   || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
   || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
@@ -343,6 +344,7 @@ const draw = (stamp: number) => {
     },
     program,
     roomUniforms: {
+      bloomPass,
       cameraEye,
       renderZone,
       treeShadowSampler,

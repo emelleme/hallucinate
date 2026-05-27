@@ -15,6 +15,7 @@ export function drawRoomDepth(options: {
   program: WebGLProgram
   treeShadowMap: WebGLTexture
   uniforms: {
+    bloomPass: WebGLUniformLocation
     cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
     treeShadowSampler: WebGLUniformLocation
@@ -26,6 +27,7 @@ export function drawRoomDepth(options: {
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
+  options.gl.uniform1i(options.uniforms.bloomPass, 0)
   options.gl.activeTexture(options.gl.TEXTURE4)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.treeShadowMap)
   options.gl.uniform1i(options.uniforms.treeShadowSampler, 4)

@@ -76,12 +76,16 @@ export type YouTubePlayer = {
   loadVideoById(options: { videoId: string; startSeconds: number }): void
   pauseVideo(): void
   playVideo(): void
+  seekTo(seconds: number, allowSeekAhead: boolean): void
 }
 
 export type YouTubeConstructor = new(
   element: HTMLElement,
   options: {
-    events: { onReady: () => void }
+    events: {
+      onReady: () => void
+      onStateChange: (event: { data: number }) => void
+    }
     playerVars: Record<string, number>
   },
 ) => YouTubePlayer

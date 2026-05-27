@@ -8,7 +8,7 @@ import {
   outsideDjBooth,
   roomBounds,
 } from './scene-data.ts'
-import { collideRoom, isOutside } from './scene.ts'
+import { collideRoom, isOutside, walkHeight } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const inputDirections: Vec3[] = [
@@ -98,7 +98,7 @@ export function updatePlayers(players: Player[], delta: number, time: number, ou
       player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
     }
 
-    player.position[1] = characterFloor
+    player.position[1] = walkHeight(player.position[0], player.position[1], player.position[2])
   }
 }
 

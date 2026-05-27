@@ -1,7 +1,7 @@
 import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideDjBooth, outsideDjSpeakers,
-  roomBounds } from './scene-data.ts'
+  outsideCouches, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, roomBounds } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3 } from './types.ts'
 
 type PaddedBounds = {
@@ -17,12 +17,26 @@ const bartenderStoolCollisions = bartenderStools.map(bounds => paddedBounds(boun
 const djSpeakerCollisions = djSpeakers.map(bounds => paddedBounds(bounds))
 const outsideDjBoothCollision = paddedBounds(outsideDjBooth)
 const outsideDjSpeakerCollisions = outsideDjSpeakers.map(bounds => paddedBounds(bounds))
+const outsideCouchCollisions = outsideCouches.map(bounds => paddedBounds(bounds))
+const outsideHutBarCollision = paddedBounds(outsideHutBar)
+const outsideHutBarStoolCollisions = outsideHutBarStools.map(bounds => paddedBounds(bounds))
+const outsideHutBarDeckBounds: Bounds = {
+  x: (outsideHut.x - outsideHut.width / 2 + outsideHutBar.x) / 2,
+  z: outsideHutBar.z,
+  width: outsideHut.width / 2 + outsideHutBar.width,
+  depth: outsideHut.depth,
+}
+const outsideHutPostCollisions = hutPostBounds(outsideHut).map(bounds => paddedBounds(bounds, 0.18))
 const insideLeft = roomBounds.left + 0.8
 const insideRight = roomBounds.right - 0.8
 const insideBack = roomBounds.back + 0.8
 const insideFront = roomBounds.front - 0.8
 
-export function walkHeight(_x: number, _y: number, _z: number) {
+export function walkHeight(x: number, _y: number, z: number) {
+  if (inBounds(x, z, outsideHut) || inBounds(x, z, outsideHutBarDeckBounds)) {
+    return characterFloor + outsideHutDeckHeight
+  }
+
   return characterFloor
 }
 
@@ -46,9 +60,22 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
     collideBuildingWalls(position, 0.45)
     collideCircle(position, outsideTree)
     collidePaddedBounds(position, outsideDjBoothCollision)
+    collidePaddedBounds(position, outsideHutBarCollision)
 
     for (const speaker of outsideDjSpeakerCollisions) {
       collidePaddedBounds(position, speaker)
+    }
+
+    for (const couch of outsideCouchCollisions) {
+      collidePaddedBounds(position, couch)
+    }
+
+    for (const stool of outsideHutBarStoolCollisions) {
+      collidePaddedBounds(position, stool)
+    }
+
+    for (const post of outsideHutPostCollisions) {
+      collidePaddedBounds(position, post)
     }
 
     return
@@ -114,6 +141,25 @@ function paddedBounds(bounds: Bounds, padding = 0.28): PaddedBounds {
     left: bounds.x - bounds.width / 2 - padding,
     right: bounds.x + bounds.width / 2 + padding,
   }
+}
+
+function hutPostBounds(bounds: Bounds): Bounds[] {
+  const left = bounds.x - bounds.width / 2 + 0.18
+  const right = bounds.x + bounds.width / 2 - 0.18
+  const back = bounds.z - bounds.depth / 2 + 0.18
+  const front = bounds.z + bounds.depth / 2 - 0.18
+
+  return [
+    { x: left, z: back, width: 0.22, depth: 0.22 },
+    { x: right, z: back, width: 0.22, depth: 0.22 },
+    { x: left, z: front, width: 0.22, depth: 0.22 },
+    { x: right, z: front, width: 0.22, depth: 0.22 },
+  ]
+}
+
+function inBounds(x: number, z: number, bounds: Bounds) {
+  return x > bounds.x - bounds.width / 2 && x < bounds.x + bounds.width / 2
+    && z > bounds.z - bounds.depth / 2 && z < bounds.z + bounds.depth / 2
 }
 
 function collidePaddedBounds(position: Vec3, bounds: PaddedBounds) {

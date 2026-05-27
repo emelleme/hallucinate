@@ -29,6 +29,7 @@ export function createDjVideoUi(
   }
   const players: Partial<Record<VideoZone, YouTubePlayer>> = {}
   const ready: Partial<Record<VideoZone, boolean>> = {}
+  const pendingStarts: Partial<Record<VideoZone, number>> = {}
   let zone: VideoZone = isOutside(position) ? 'outside' : 'inside'
   const setElementStyle = createStyleSetter(element.style)
   const setInsideStyle = createStyleSetter(layers.inside.style)
@@ -68,9 +69,7 @@ export function createDjVideoUi(
       zone = isOutside(position) ? 'outside' : 'inside'
     },
     syncCurrentTime() {
-      if (ready[zone]) {
-        times[zone] = players[zone]!.getCurrentTime()
-      }
+      syncVideoTime(zone, players, ready, pendingStarts, times)
     },
     load() {
       const youtube = window as YouTubeWindow
@@ -87,6 +86,7 @@ export function createDjVideoUi(
             events: {
               onReady() {
                 ready[area] = true
+                pendingStarts[area] = times[area]
                 const load = area === zone ? players[area]!.loadVideoById : players[area]!.cueVideoById
 
                 load.call(players[area]!, {
@@ -100,6 +100,9 @@ export function createDjVideoUi(
                 else {
                   players[area]!.pauseVideo()
                 }
+              },
+              onStateChange() {
+                syncVideoTime(area, players, ready, pendingStarts, times)
               },
             },
           })
@@ -121,7 +124,7 @@ export function createDjVideoUi(
 
       if (nextZone !== zone) {
         if (ready[zone]) {
-          times[zone] = players[zone]!.getCurrentTime()
+          syncVideoTime(zone, players, ready, pendingStarts, times)
           players[zone]!.pauseVideo()
         }
 
@@ -183,6 +186,27 @@ function setPoint(target: Vec3, x: number, y: number, z: number) {
   target[0] = x
   target[1] = y
   target[2] = z
+}
+
+function syncVideoTime(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  ready: Partial<Record<VideoZone, boolean>>,
+  pendingStarts: Partial<Record<VideoZone, number>>,
+  times: Record<VideoZone, number>,
+) {
+  if (ready[area]) {
+    const time = players[area]!.getCurrentTime()
+    const pendingStart = pendingStarts[area]
+
+    if (pendingStart !== undefined && time < pendingStart - 0.5) {
+      players[area]!.seekTo(pendingStart, true)
+    }
+    else {
+      delete pendingStarts[area]
+      times[area] = time
+    }
+  }
 }
 
 type StyleName = 'height' | 'opacity' | 'pointerEvents' | 'transform' | 'width'

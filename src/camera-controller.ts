@@ -1,6 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { clamp, lengthSq, lerpVec3, mix, smoothAngle } from './math.ts'
-import { outsideBounds, roomBounds } from './scene-data.ts'
+import { backDoor, outsideBounds, roomBounds } from './scene-data.ts'
 import { collideBuildingWalls, isOutside, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
@@ -96,11 +96,9 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       target[2] = characterPosition[2]
       const outside = isOutside(characterPosition)
       const cameraOutside = isOutside(position)
-      const crossingOutside = moving && outside && !cameraOutside
+      const crossingOutside = outside && !cameraOutside
       const time = performance.now() * 0.001
-      const distance = crossingOutside
-        ? clamp(characterPosition[2] - insideCameraFront, 0.35, 2.2)
-        : outside ? 2.2 : cameraDanceDistance(time)
+      const distance = outside ? 2.2 : cameraDanceDistance(time)
       const bounce = outside ? 0 : cameraDanceBounce(time)
       const ideal: Vec3 = [
         characterPosition[0] - Math.sin(turn) * distance,
@@ -116,11 +114,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
         : clamp(ideal[2], roomBounds.back + 0.2, insideCameraFront)
 
-      if (crossingOutside) {
-        ideal[2] = Math.max(ideal[2], insideCameraFront)
+      if (crossingOutside && ideal[2] < insideCameraFront) {
+        ideal[0] = backDoor.x
+        ideal[2] = insideCameraFront
       }
 
-      const crossing = moving && outside !== cameraOutside
+      const crossing = outside !== cameraOutside
       const cameraCollides = outside && !crossing
 
       if (cameraCollides) {

@@ -113,6 +113,7 @@ precision highp float;
 uniform float time;
 uniform vec3 cameraEye;
 uniform int renderZone;
+uniform int bloomPass;
 uniform sampler2D treeShadowMap;
 
 in vec3 shade;
@@ -195,6 +196,15 @@ void main() {
   float random = fract(sin(strobeId * 17.13 + time * 9.27) * 43758.5453);
   float strobe = mix(1.0, step(0.82, random), white);
   float receiverShadow = texture(treeShadowMap, patternUv).a;
+
+  if (bloomPass == 1) {
+    if (light < 0.15) {
+      discard;
+    }
+
+    pixel = vec4(shade * light * 2.2 * strobe, 1.0);
+    return;
+  }
 
   if (hazeAmount > 4.5) {
     if (receiverShadow < 0.01) {
@@ -466,9 +476,12 @@ out vec4 pixel;
 
 vec3 bright(vec4 texel) {
   float redGlow = texel.a * smoothstep(0.58, 1.0, texel.r);
+  float greenGlow = texel.a * smoothstep(0.035, 0.18, texel.g) * step(texel.r * 2.6, texel.g)
+    * step(texel.b * 1.8, texel.g);
   float blueGlow = texel.a * smoothstep(0.045, 0.24, texel.b) * step(texel.r * 1.4, texel.b);
 
-  return redGlow * vec3(1.0, 0.035, 0.012) + blueGlow * vec3(0.0, 0.067, 1.0);
+  return redGlow * vec3(1.0, 0.035, 0.012) + greenGlow * vec3(0.04, 0.65, 0.08)
+    + blueGlow * vec3(0.0, 0.067, 1.0);
 }
 
 vec3 afternoonSky(vec2 point) {

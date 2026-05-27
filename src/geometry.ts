@@ -77,6 +77,22 @@ export function addQuad(
   )
 }
 
+export function addTriangle(
+  target: Vertex[],
+  a: [number, number, number],
+  b: [number, number, number],
+  c: [number, number, number],
+  color: [number, number, number],
+  glow: number,
+  strobe = 0,
+) {
+  target.push(
+    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
+    [b[0], b[1], b[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
+    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
+  )
+}
+
 export function addGrassQuad(
   target: Vertex[],
   a: [number, number, number],

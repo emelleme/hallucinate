@@ -1,9 +1,10 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
-import { addBox, addDisc, addGrassQuad, addQuad, pack, packSmoke } from './geometry.ts'
+import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } from './geometry.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideDjBooth,
-  outsideDjSpeakers, roomBounds } from './scene-data.ts'
+  outsideCouches, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
+  roomBounds } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -112,9 +113,127 @@ function addOutside(target: Vertex[]) {
   ], [landscapeBounds.right, floor, roomBounds.back])
   addGrassQuad(target, [landscapeBounds.left, floor, roomBounds.back], [landscapeBounds.right, floor, roomBounds.back],
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
+  addOpenAirHut(target, floor)
+  addOutsideLounges(target, floor)
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
   addOutsideSkyLight(target)
+}
+
+function addOutsideLounges(target: Vertex[], floor: number) {
+  for (const couch of outsideCouches) {
+    addLowPolyCouch(target, couch, floor)
+  }
+}
+
+function addLowPolyCouch(
+  target: Vertex[],
+  couch: Bounds & { color: Vec3; face: 'east' | 'north' | 'south' | 'west' },
+  floor: number,
+) {
+  const cushion = couch.color
+  const shadow: Vec3 = [cushion[0] * 0.45, cushion[1] * 0.45, cushion[2] * 0.45]
+  const trim: Vec3 = [0.035, 0.027, 0.024]
+  const alongX = couch.width > couch.depth
+  const width = couch.width
+  const depth = couch.depth
+
+  addBox(target, couch.x, floor + 0.19, couch.z, width, 0.24, depth, shadow, 0)
+  addBox(target, couch.x, floor + 0.36, couch.z, width * 0.92, 0.2, depth * 0.82, cushion, 0)
+
+  if (alongX) {
+    const backZ = couch.z + (couch.face === 'north' ? -depth * 0.38 : depth * 0.38)
+
+    addBox(target, couch.x, floor + 0.68, backZ, width, 0.64, 0.16, cushion, 0)
+    addBox(target, couch.x - width * 0.45, floor + 0.48, couch.z, 0.18, 0.42, depth, shadow, 0)
+    addBox(target, couch.x + width * 0.45, floor + 0.48, couch.z, 0.18, 0.42, depth, shadow, 0)
+  }
+  else {
+    const backX = couch.x + (couch.face === 'east' ? -width * 0.38 : width * 0.38)
+
+    addBox(target, backX, floor + 0.68, couch.z, 0.16, 0.64, depth, cushion, 0)
+    addBox(target, couch.x, floor + 0.48, couch.z - depth * 0.45, width, 0.42, 0.18, shadow, 0)
+    addBox(target, couch.x, floor + 0.48, couch.z + depth * 0.45, width, 0.42, 0.18, shadow, 0)
+  }
+
+  addBox(target, couch.x, floor + 0.08, couch.z, width * 0.72, 0.08, depth * 0.72, trim, 0)
+}
+
+function addOpenAirHut(target: Vertex[], floor: number) {
+  const wood: Vec3 = [0.24, 0.13, 0.055]
+  const darkWood: Vec3 = [0.11, 0.06, 0.032]
+  const roof: Vec3 = [0.18, 0.052, 0.034]
+  const trim: Vec3 = [0.032, 0.021, 0.014]
+  const left = outsideHut.x - outsideHut.width / 2
+  const right = outsideHut.x + outsideHut.width / 2
+  const back = outsideHut.z - outsideHut.depth / 2
+  const front = outsideHut.z + outsideHut.depth / 2
+  const eave = 0.48
+  const base = floor + outsideHutDeckHeight / 2
+  const deckTop = floor + outsideHutDeckHeight
+  const postTop = deckTop + 2.45
+  const ridge = deckTop + 3.8
+  const roofBottom = postTop + 0.08
+  const ridgeZ = outsideHut.z
+
+  addBox(target, outsideHut.x, base, outsideHut.z, outsideHut.width + 0.35, outsideHutDeckHeight, outsideHut.depth
+    + 0.35, darkWood, 0)
+
+  for (const x of [left + 0.18, right - 0.18]) {
+    for (const z of [back + 0.18, front - 0.18]) {
+      addBox(target, x, deckTop + 1.22, z, 0.22, 2.44, 0.22, wood, 0)
+    }
+  }
+
+  addBox(target, outsideHut.x, postTop, back + 0.16, outsideHut.width, 0.16, 0.14, trim, 0)
+  addBox(target, outsideHut.x, postTop, front - 0.16, outsideHut.width, 0.16, 0.14, trim, 0)
+  addBox(target, left + 0.16, postTop, outsideHut.z, 0.14, 0.16, outsideHut.depth, trim, 0)
+  addBox(target, right - 0.16, postTop, outsideHut.z, 0.14, 0.16, outsideHut.depth, trim, 0)
+
+  addQuad(target, [left - eave, roofBottom, back - eave], [right + eave, roofBottom, back - eave], [right + eave,
+    ridge, ridgeZ], [left - eave, ridge, ridgeZ], roof, 0)
+  addQuad(target, [right + eave, roofBottom, front + eave], [left - eave, roofBottom, front + eave], [left - eave,
+    ridge, ridgeZ], [right + eave, ridge, ridgeZ], roof, 0)
+  addTriangle(target, [left - eave, roofBottom, front + eave], [left - eave, roofBottom, back - eave], [left - eave,
+    ridge, ridgeZ], roof, 0)
+  addTriangle(target, [right + eave, roofBottom, back - eave], [right + eave, roofBottom, front + eave], [right + eave,
+    ridge, ridgeZ], roof, 0)
+  addBox(target, outsideHut.x, ridge, ridgeZ, outsideHut.width + eave * 2.1, 0.12, 0.12, trim, 0)
+  addOpenAirHutBar(target, deckTop)
+}
+
+function addOpenAirHutBar(target: Vertex[], floor: number) {
+  const body: Vec3 = [0.22, 0.12, 0.052]
+  const top: Vec3 = [0.09, 0.045, 0.022]
+  const shelf: Vec3 = [0.12, 0.065, 0.032]
+  const bottle: Vec3 = [0.02, 0.18, 0.72]
+  const seat: Vec3 = [0.16, 0.08, 0.035]
+  const leg: Vec3 = [0.07, 0.04, 0.025]
+  const glow = 0.35
+  const shelfX = outsideHut.x - outsideHut.width / 2 + 0.18
+  const shelfDepth = outsideHut.depth - 0.36
+
+  addBox(target, outsideHutBar.x, floor + 0.38, outsideHutBar.z, outsideHutBar.width, 0.76, outsideHutBar.depth, body,
+    0)
+  addBox(target, outsideHutBar.x + 0.03, floor + 0.8, outsideHutBar.z, outsideHutBar.width + 0.32, 0.12,
+    outsideHutBar.depth + 0.24, top, 0)
+
+  for (const shelfY of [0.98, 1.58]) {
+    addBox(target, shelfX, floor + shelfY, outsideHutBar.z, 0.16, 0.08, shelfDepth, shelf, 0)
+
+    for (let i = 0; i < 9; i++) {
+      const z = outsideHutBar.z - shelfDepth * 0.4 + i * shelfDepth * 0.1
+      const height = 0.28 + (i % 3) * 0.07
+
+      addBox(target, shelfX + 0.08, floor + shelfY + 0.06 + height / 2, z, 0.1, height, 0.1, bottle, glow)
+    }
+  }
+
+  for (const stool of outsideHutBarStools) {
+    addBox(target, stool.x, floor + 0.28, stool.z, 0.07, 0.56, 0.07, leg, 0)
+    addDisc(target, [stool.x, floor + 0.58, stool.z], 0.2, 0.2, 'y', seat, 0)
+    addDisc(target, [stool.x, floor + 0.05, stool.z], 0.15, 0.15, 'y', leg, 0)
+  }
 }
 
 function addOutsideStage(target: Vertex[], floor: number) {
@@ -220,6 +339,7 @@ export function addWallStrips(target: Vertex[]) {
   addDjBoothStrip(target, djBooth, 1, [1, 0.03, 0.015], 2.15)
   addDjBoothStrip(target, outsideDjBooth, -1, electricNavy, 3.2)
   addBartenderBarStrip(target)
+  addOutsideHutBarStrip(target)
   addBartenderBottleGlow(target)
 }
 
@@ -305,6 +425,13 @@ function addDjBoothStrip(target: Vertex[], booth: Bounds, direction: number, col
 function addBartenderBarStrip(target: Vertex[]) {
   addBox(target, bartenderBar.x, -1.54, bartenderBar.z - bartenderBar.depth / 2 - 0.16, bartenderBar.width - 0.45, 0.07,
     0.06, [1, 0.03, 0.015], 2.15)
+}
+
+function addOutsideHutBarStrip(target: Vertex[]) {
+  const x = outsideHutBar.x + outsideHutBar.width / 2 + 0.16
+  const y = characterFloor + outsideHutDeckHeight + 0.46
+
+  addBox(target, x, y, outsideHutBar.z, 0.06, 0.07, outsideHutBar.depth - 0.45, electricNavy, 3.2)
 }
 
 function addBartenderBottleGlow(target: Vertex[]) {

@@ -17,6 +17,7 @@ type Camera = {
 }
 
 type RoomUniforms = {
+  bloomPass: WebGLUniformLocation
   cameraEye: WebGLUniformLocation
   renderZone: WebGLUniformLocation
   treeShadowSampler: WebGLUniformLocation
@@ -119,6 +120,7 @@ export function renderClubFrame(options: {
   gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, mainCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
+  gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
   gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
@@ -176,6 +178,7 @@ export function renderClubFrame(options: {
   gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, bloomCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
+  gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
   gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
@@ -186,24 +189,15 @@ export function renderClubFrame(options: {
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
   gl.disable(gl.POLYGON_OFFSET_FILL)
   drawCharacters(options, options.bloomTarget.width, options.bloomTarget.height, false)
-
-  drawRoomDepth({
-    array: options.arrays.room,
-    camera: options.camera,
-    cameraMatrix: bloomCameraMatrix,
-    count: options.points.length / options.vertexSize,
-    gl,
-    height: options.bloomTarget.height,
-    outside: options.outside,
-    program: options.program,
-    treeShadowMap: options.treeShadowMap,
-    uniforms: options.roomUniforms,
-    width: options.bloomTarget.width,
-  })
   gl.colorMask(true, true, true, true)
+  gl.depthMask(false)
+  gl.useProgram(options.program)
+  gl.uniform1i(options.roomUniforms.bloomPass, 1)
+  gl.bindVertexArray(options.arrays.room)
+  gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE)
-  gl.depthMask(false)
   drawLights(options, options.bloomTarget.width, options.bloomTarget.height, frame)
   gl.depthMask(true)
   gl.disable(gl.BLEND)
