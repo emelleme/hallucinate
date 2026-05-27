@@ -133,6 +133,13 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
   }
 }
 
+export function seats() {
+  return [
+    ...outsideCouches.flatMap(couch => couchSeats(couch)),
+    ...seatStools.map((stool, index) => stoolSeat(stool, index)),
+  ]
+}
+
 function nearestCouchSeat(couch: (typeof outsideCouches)[number], position: Vec3, occupiedSeats: Set<string>) {
   const seats = couchSeats(couch).filter(seat => !occupiedSeats.has(seat.id))
 

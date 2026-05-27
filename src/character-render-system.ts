@@ -1,4 +1,4 @@
-import { loadCharacterAssets, loadCharacterDances } from './character-assets.ts'
+import { loadCharacterAssets, loadCharacterDances, loadCharacterDetails, loadCheapCharacterDances } from './character-assets.ts'
 import { buildCharacterDrawData } from './character-draw.ts'
 import type { CharacterDrawCache } from './character-draw.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
@@ -33,8 +33,12 @@ export function createCharacterRenderSystem(options: {
   let rig: CharacterRig | undefined
   let hairRenderMeshes: HairRenderMesh[] = []
   let rigLoad: Promise<CharacterRig> | undefined
+  let detailLoad: Promise<void> | undefined
+  let danceLoad: Promise<void> | undefined
   let boxInstanceCount = 0
   let assetsLoaded = false
+  let detailsLoaded = false
+  let renderPlayers = false
   const boxInstanceCache: NumberBufferCache = { data: new Float32Array(0) }
   const vertexUploadCache: NumberBufferCache = { data: new Float32Array(0) }
   const drawCache: CharacterDrawCache = {
@@ -51,22 +55,16 @@ export function createCharacterRenderSystem(options: {
   const hairInstanceCache: HairInstanceUploadCache = { buffers: [], counts: [], uploads: [] }
   const vertexWriter: VertexWriter = drawCache.vertices
 
-  async function loadAssets(hairIndex: number) {
-    const assets = await loadCharacterAssets(options.gl, hairIndex)
+  async function loadAssets() {
+    const assets = await loadCharacterAssets()
 
-    hairRenderMeshes = assets.hairRenderMeshes
-    options.hairController.setMeshes(assets.hairMeshes, assets.hairIndex)
     assetsLoaded = true
-    options.hairController.log()
-    loadCharacterDances(assets.rig).catch((error: unknown) => {
-      console.error(error)
-    })
 
     return assets.rig
   }
 
   function loadOnce(onLoaded?: () => void) {
-    rigLoad ??= loadAssets(options.hairController.index).then(next => {
+    rigLoad ??= loadAssets().then(next => {
       rig = next
       onLoaded?.()
 
@@ -100,7 +98,7 @@ export function createCharacterRenderSystem(options: {
       hairMeshes: options.hairController.meshes,
       height: options.canvas.height,
       light: options.light,
-      players: options.players,
+      players: renderPlayers ? options.players : [],
       rig,
       time,
       drawCache,
@@ -114,12 +112,37 @@ export function createCharacterRenderSystem(options: {
 
     uploadFloatBuffer(options.gl, options.buffer, data.vertices, vertexUploadCache)
 
+    if (!renderPlayers) {
+      renderPlayers = true
+      detailLoad ??= loadCharacterDetails(options.gl, rig, options.hairController.index)
+        .then(details => {
+          hairRenderMeshes = details.hairRenderMeshes
+          options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
+          detailsLoaded = true
+          options.hairController.log()
+        })
+        .catch((error: unknown) => {
+          console.error(error)
+        })
+    }
+    else {
+      danceLoad ??= (detailLoad ?? Promise.resolve())
+        .then(() => loadCheapCharacterDances(rig))
+        .then(() => loadCharacterDances(rig))
+        .catch((error: unknown) => {
+          console.error(error)
+        })
+    }
+
     return data.vertices.length / options.vertexSize
   }
 
   return {
     get assetsLoaded() {
       return assetsLoaded
+    },
+    get detailsLoaded() {
+      return detailsLoaded
     },
     get boxInstanceCount() {
       return boxInstanceCount

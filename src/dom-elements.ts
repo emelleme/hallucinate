@@ -4,6 +4,8 @@ export function getDomElements() {
   const chatForm = document.createElement('form')
   const chatInput = document.createElement('input')
   const chatBubble = document.createElement('div')
+  const intro = document.createElement('div')
+  const introProgress = document.createElement('div')
 
   canvas.id = 'scene'
   canvas.className = 'block h-dvh w-dvw'
@@ -21,8 +23,13 @@ export function getDomElements() {
   chatBubble.id = 'chat-bubble'
   chatBubble.className = 'absolute opacity-0'
 
+  intro.id = 'intro'
+  introProgress.id = 'intro-progress'
+  introProgress.textContent = '0%'
+
   chatForm.append(chatInput)
-  document.body.prepend(canvas, djVideo, chatForm, chatBubble)
+  intro.append(introProgress)
+  document.body.prepend(canvas, djVideo, chatForm, chatBubble, intro)
 
   return {
     canvas,
@@ -30,5 +37,7 @@ export function getDomElements() {
     chatForm,
     chatInput,
     chatBubble,
+    intro,
+    introProgress,
   }
 }

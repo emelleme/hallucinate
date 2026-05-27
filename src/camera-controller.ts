@@ -62,7 +62,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         center: [target[0], target[1], target[2]] as Vec3,
       }
     },
-    update(delta: number, input: Vec3, characterTurn: number) {
+    update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean) {
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
 
@@ -109,8 +109,8 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       const cameraOutside = isOutside(position)
       const crossingOutside = outside && !cameraOutside
       const time = performance.now() * 0.001
-      const distance = outside ? 2.2 : cameraDanceDistance(time)
-      const bounce = outside ? 0 : cameraDanceBounce(time)
+      const distance = bounceActive && !outside ? cameraDanceDistance(time) : 2.2
+      const bounce = bounceActive ? cameraDanceBounce(time) : 0
       const ideal: Vec3 = [
         characterPosition[0] - Math.sin(turn) * distance,
         characterPosition[1] + 1.35 + pitch + bounce,

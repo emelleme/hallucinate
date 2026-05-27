@@ -87,13 +87,7 @@ export function createDjVideoUi(
               onReady() {
                 ready[area] = true
 
-                if (area === zone) {
-                  loadVideoFromTime(area, players, pendingStarts, times)
-                }
-                else {
-                  cueVideoFromTime(area, players, pendingStarts, times)
-                  players[area]!.pauseVideo()
-                }
+                warmVideo(area, players, pendingStarts, times)
               },
               onStateChange() {
                 syncVideoTime(area, players, ready, pendingStarts, times)
@@ -173,7 +167,28 @@ export function createDjVideoUi(
         points,
       ))
     },
+    play() {
+      if (ready[zone]) {
+        playVideoFromTime(zone, players, pendingStarts, times)
+        return true
+      }
+
+      return false
+    },
   }
+}
+
+function warmVideo(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  pendingStarts: Partial<Record<VideoZone, number>>,
+  times: Record<VideoZone, number>,
+) {
+  cueVideoFromTime(area, players, pendingStarts, times)
+  players[area]!.playVideo()
+  requestAnimationFrame(() => {
+    players[area]!.pauseVideo()
+  })
 }
 
 function cueVideoFromTime(
@@ -197,20 +212,6 @@ function playVideoFromTime(
 ) {
   pendingStarts[area] = times[area]
   players[area]!.seekTo(times[area], true)
-  players[area]!.playVideo()
-}
-
-function loadVideoFromTime(
-  area: VideoZone,
-  players: Partial<Record<VideoZone, YouTubePlayer>>,
-  pendingStarts: Partial<Record<VideoZone, number>>,
-  times: Record<VideoZone, number>,
-) {
-  pendingStarts[area] = times[area]
-  players[area]!.loadVideoById({
-    videoId: videoTracks[area],
-    startSeconds: times[area],
-  })
   players[area]!.playVideo()
 }
 

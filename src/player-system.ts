@@ -7,7 +7,7 @@ import {
   outsideDjBooth,
   roomBounds,
 } from './scene-data.ts'
-import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
+import { collideRoom, isOutside, seatAt, seats, walkHeight } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const inputDirections: Vec3[] = [
@@ -22,13 +22,21 @@ const inputDirections: Vec3[] = [
 ]
 const inputCrossingDestination: PlayerDestination = { outside: false, position: [backDoor.x, characterFloor, 0] }
 const updateCrossingDestination: PlayerDestination = { outside: false, position: [backDoor.x, characterFloor, 0] }
+const danceFloorSideRange = 3.1
+const danceFloorBackRange = [-0.95, 1.55] as const
+const danceFloorDistance = 2.8
+const danceFloorLinger = [18, 42] as const
+const seatLinger = [12, 32] as const
+const treeLinger = [22, 55] as const
+const initialSeatedPlayerCount = 4
 
-export function createPlayers(count: number, outsideTree: CircleBounds) {
+export function createPlayers(count: number, outsideTree: CircleBounds, occupiedSeats: Set<string>) {
   const next: Player[] = []
+  const initialSeats = seats()
 
   for (let i = 0; i < count; i++) {
     const seed = i + 1
-    const destination = playerDestination(seed, 0)
+    const destination = playerDestination(seed, 0, outsideTree, occupiedSeats)
     const position: Vec3 = [
       destination.position[0] + seededRange(seed, 10, -1.2, 1.2),
       characterFloor,
@@ -41,7 +49,7 @@ export function createPlayers(count: number, outsideTree: CircleBounds) {
       hairColorIndex: Math.floor(seededRange(seed, 17, 0, hairPalette.length)),
     }
 
-    next.push({
+    const player: Player = {
       position,
       turn: seededRange(seed, 12, -Math.PI, Math.PI),
       motionBlend: 0,
@@ -52,10 +60,29 @@ export function createPlayers(count: number, outsideTree: CircleBounds) {
       style,
       resolvedStyle: resolvePlayerStyle(style),
       seed,
-    })
+    }
+
+    if (i < initialSeatedPlayerCount) {
+      sitInitialPlayer(player, initialSeats[(i * 4 + 1) % initialSeats.length]!, occupiedSeats)
+    }
+
+    next.push(player)
   }
 
   return next
+}
+
+function sitInitialPlayer(player: Player, seat: ReturnType<typeof seats>[number], occupiedSeats: Set<string>) {
+  player.seat = seat.id
+  occupiedSeats.add(seat.id)
+  player.position[0] = seat.position[0]
+  player.position[1] = seat.position[1]
+  player.position[2] = seat.position[2]
+  player.turn = seat.turn
+  player.motionBlend = 0
+  player.mode = player.resolvedStyle.bottomMode === 'pants' ? 'manSitting' : 'womanSitting'
+  player.sittingUntil = seededRange(player.seed, 31, 18, 55)
+  player.nextDecision = player.sittingUntil
 }
 
 export function updatePlayers(
@@ -84,7 +111,7 @@ export function updatePlayers(
       player.motionBlend = 1
       player.position[0] += Math.sin(player.turn) * 0.46
       player.position[2] += Math.cos(player.turn) * 0.46
-      player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed))
+      player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed), outsideTree, occupiedSeats)
       player.nextDecision = time
     }
 
@@ -100,7 +127,7 @@ export function updatePlayers(
       }
 
       if (!lingerPlayer(player, time)) {
-        player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed))
+        player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed), outsideTree, occupiedSeats)
         player.nextDecision = time
       }
     }
@@ -223,14 +250,61 @@ function activePlayerDestination(
   return crossingDestination
 }
 
-function playerDestination(seed: number, step: number): PlayerDestination {
-  const inside = seededRandom(seed, step + 100) < 0.35
-  const jitterX = seededRange(seed, step + 101, -4.2, 4.2)
-  const jitterZ = seededRange(seed, step + 102, -3.2, 3.2)
+function playerDestination(
+  seed: number,
+  step: number,
+  outsideTree: CircleBounds,
+  occupiedSeats: Set<string>,
+): PlayerDestination {
+  const pick = seededRandom(seed, step + 100)
+
+  if (pick < 0.68) {
+    return djDestination(seed, step)
+  }
+
+  if (pick < 0.82) {
+    return seatDestination(seed, step, occupiedSeats)
+  }
+
+  return treeDestination(seed, step, outsideTree)
+}
+
+function djDestination(seed: number, step: number) {
+  const inside = seededRandom(seed, step + 101) < 0.5
+  const jitterX = seededRange(seed, step + 102, -danceFloorSideRange, danceFloorSideRange)
+  const jitterZ = seededRange(seed, step + 103, danceFloorBackRange[0], danceFloorBackRange[1])
 
   return inside
     ? danceFloorDestination(djBooth, false, 1, jitterX, jitterZ)
     : danceFloorDestination(outsideDjBooth, true, -1, jitterX, jitterZ)
+}
+
+function seatDestination(seed: number, step: number, occupiedSeats: Set<string>) {
+  const allSeats = seats()
+  const openSeats = allSeats.filter(seat => !occupiedSeats.has(seat.id))
+  const seatOptions = openSeats.length > 0 ? openSeats : allSeats
+  const seat = seatOptions[Math.floor(seededRange(seed, step + 104, 0, seatOptions.length))]!
+  const offset = seededRange(seed, step + 105, -0.18, 0.18)
+
+  return {
+    outside: isOutside(seat.position),
+    position: [seat.position[0] + Math.sin(seat.turn) * offset, characterFloor, seat.position[2] + Math.cos(seat.turn)
+      * offset],
+    lookAt: seat.position,
+    linger: [seatLinger[0], seatLinger[1]],
+  }
+}
+
+function treeDestination(seed: number, step: number, outsideTree: CircleBounds) {
+  const angle = seededRange(seed, step + 106, 0, Math.PI * 2)
+  const distance = seededRange(seed, step + 107, outsideTree.radius + 0.85, outsideTree.radius + 2.4)
+
+  return {
+    outside: true,
+    position: [outsideTree.x + Math.sin(angle) * distance, characterFloor, outsideTree.z + Math.cos(angle) * distance],
+    lookAt: [outsideTree.x, characterFloor, outsideTree.z],
+    linger: [treeLinger[0], treeLinger[1]],
+  }
 }
 
 function danceFloorDestination(
@@ -242,9 +316,10 @@ function danceFloorDestination(
 ): PlayerDestination {
   return {
     outside,
-    position: [bounds.x + jitterX, characterFloor, bounds.z + forward * (bounds.depth * 0.5 + 2.8 + jitterZ)],
+    position: [bounds.x + jitterX, characterFloor, bounds.z + forward * (bounds.depth * 0.5 + danceFloorDistance
+      + jitterZ)],
     lookAt: [bounds.x, characterFloor, bounds.z],
-    linger: [18, 42],
+    linger: [danceFloorLinger[0], danceFloorLinger[1]],
   }
 }
 

@@ -16,6 +16,7 @@ import { createLocalCharacter } from './local-character.ts'
 import { createPlayers, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
 import { createSceneLighting } from './scene-lighting.ts'
+import { lengthSq } from './math.ts'
 import {
   isOutside,
   usesSkyBackground,
@@ -64,7 +65,7 @@ if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
 }
 
-const { canvas, djVideo, chatForm, chatInput, chatBubble } = getDomElements()
+const { canvas, djVideo, chatForm, chatInput, chatBubble, intro, introProgress } = getDomElements()
 
 const gl = canvas.getContext('webgl2', {
   antialias: false,
@@ -105,6 +106,9 @@ const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] },
 const pixelRatio = createAdaptivePixelRatio()
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
+let treeLoaded = false
+let introHidden = false
+let videoPlaying = false
 const saveTimer = createSaveTimer(0.5)
 
 addRoom(vertices)
@@ -289,7 +293,8 @@ const draw = (stamp: number) => {
   resize()
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats)
   updatePlayers(players, delta, stamp * 0.001, outsideTree, occupiedSeats)
-  cameraController.update(delta, localCharacter.input, localCharacter.turn)
+  cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
+    || (localCharacter.mode === 'stand' && idleClipIndex > 0))
   saveTimer.update(delta, () =>
     saveClubState({
       camera: cameraController,
@@ -308,13 +313,16 @@ const draw = (stamp: number) => {
 
   const projector = createWallProjector(camera, canvas, wallProjector)
 
-  djVideoUi.update(camera, projector)
+  if (introHidden) {
+    djVideoUi.update(camera, projector)
+  }
   chatUi.update(projector, stamp)
 
   const outside = isOutside(characterPosition)
   const sky = outside && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
+  const introProgressValue = updateIntro()
 
   renderClubFrame({
     arrays: {
@@ -391,8 +399,31 @@ const draw = (stamp: number) => {
     width: canvas.width,
   })
 
+  if (introProgressValue >= 67 && !videoPlaying) {
+    videoPlaying = djVideoUi.play()
+  }
+
   frameId = requestAnimationFrame(draw)
   clubGlobal.clubFrameId = frameId
+}
+
+function updateIntro() {
+  const progress = Math.round((
+    Number(characterRenderSystem.assetsLoaded)
+    + Number(characterRenderSystem.detailsLoaded)
+    + Number(treeLoaded)
+  ) / 3 * 100)
+
+  introProgress.textContent = `${progress}%`
+
+  const ready = progress === 100
+
+  if (ready && !introHidden) {
+    introHidden = true
+    intro.dataset.hidden = 'true'
+  }
+
+  return progress
 }
 
 import.meta.hot?.dispose(() => {
@@ -421,7 +452,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const players = createPlayers(100, outsideTree)
+const players = createPlayers(100, outsideTree, occupiedSeats)
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
   boxInstanceSize: characterBoxInstanceSize,
@@ -449,6 +480,7 @@ characterRenderSystem.loadOnce().catch((error: unknown) => {
 loadOutsideTree(gl, treeShadowMap, vertices, outsideTree, addSunLitTriangle)
   .then(nextTree => {
     outsideTree = nextTree
+    treeLoaded = true
     refreshRoomBuffer()
   })
   .catch((error: unknown) => {

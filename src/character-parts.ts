@@ -8,6 +8,10 @@ import {
 } from './character-data.ts'
 import type { CharacterPart } from './types.ts'
 
+const shoeStart = -0.08
+const shoeEnd = 0.78
+const lowerLegEnd = 0.9
+
 export const characterParts: CharacterPart[] = [
   { from: 'mixamorig:Hips', to: 'mixamorig:Neck', width: 0.26, depth: 0.16, color: shirtLight, start: -0.06, end: 1.02,
     top: 'torso' },
@@ -23,14 +27,14 @@ export const characterParts: CharacterPart[] = [
     armOffset: 0.075, lift: 0.035 },
   { from: 'mixamorig:Hips', to: 'mixamorig:LeftUpLeg', width: 0.12, depth: 0.09, color: pants, bottom: true },
   { from: 'mixamorig:LeftUpLeg', to: 'mixamorig:LeftLeg', width: 0.1, depth: 0.085, color: pants, bottom: true },
-  { from: 'mixamorig:LeftLeg', to: 'mixamorig:LeftFoot', width: 0.08, depth: 0.07, color: skin },
-  { from: 'mixamorig:LeftFoot', to: 'mixamorig:LeftToe_End', width: 0.095, depth: 0.055, color: shoe, start: -0.06,
-    end: 1.05 },
+  { from: 'mixamorig:LeftLeg', to: 'mixamorig:LeftFoot', width: 0.08, depth: 0.07, color: skin, end: lowerLegEnd },
+  { from: 'mixamorig:LeftFoot', to: 'mixamorig:LeftToe_End', width: 0.09, depth: 0.05, color: shoe, start: shoeStart,
+    end: shoeEnd },
   { from: 'mixamorig:Hips', to: 'mixamorig:RightUpLeg', width: 0.12, depth: 0.09, color: pants, bottom: true },
   { from: 'mixamorig:RightUpLeg', to: 'mixamorig:RightLeg', width: 0.1, depth: 0.085, color: pants, bottom: true },
-  { from: 'mixamorig:RightLeg', to: 'mixamorig:RightFoot', width: 0.08, depth: 0.07, color: skin },
-  { from: 'mixamorig:RightFoot', to: 'mixamorig:RightToe_End', width: 0.095, depth: 0.055, color: shoe, start: -0.06,
-    end: 1.05 },
+  { from: 'mixamorig:RightLeg', to: 'mixamorig:RightFoot', width: 0.08, depth: 0.07, color: skin, end: lowerLegEnd },
+  { from: 'mixamorig:RightFoot', to: 'mixamorig:RightToe_End', width: 0.09, depth: 0.05, color: shoe, start: shoeStart,
+    end: shoeEnd },
 ]
 
 export const characterPoseJoints = [
