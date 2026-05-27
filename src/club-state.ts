@@ -22,3 +22,18 @@ export function readClubState(key: string) {
 export function writeClubState(key: string, state: ClubState) {
   localStorage.setItem(key, JSON.stringify(state))
 }
+
+export function createSaveTimer(interval: number) {
+  let time = 0
+
+  return {
+    update(delta: number, save: () => void) {
+      time += delta
+
+      if (time >= interval) {
+        save()
+        time = 0
+      }
+    },
+  }
+}
