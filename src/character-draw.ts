@@ -55,7 +55,7 @@ type TurnBasis = {
 export type CharacterDrawCache = {
   basePose?: SampledPose
   basePoses: Map<number, SampledPose>
-  boxInstances: number[]
+  boxInstances: VertexWriter
   hairInstances: number[]
   npcBlendCache: PoseBlendCache
   poses: Vec3[][]
@@ -99,7 +99,7 @@ const farHairDistanceSq = 34 * 34
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
   const vertices = cache?.vertices ?? options.vertexWriter ?? { data: new Float32Array(0), length: 0 }
-  const boxInstances = cache?.boxInstances ?? []
+  const boxInstances = cache?.boxInstances ?? { data: new Float32Array(0), length: 0 }
   const hairInstances = cache?.hairInstances ?? []
   const npcBlendCache = cache?.npcBlendCache ?? new Map()
   const poses = cache?.poses ?? []
@@ -115,7 +115,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   let poseIndex = 0
 
   resetVertexWriter(vertices)
-  boxInstances.length = 0
+  resetVertexWriter(boxInstances)
   hairInstances.length = 0
   usedBasePoseKeys.clear()
   usedNpcBlendKeys.clear()
@@ -157,14 +157,14 @@ export function buildCharacterDrawData(options: BuildOptions) {
 
   return {
     vertices: vertexWriterData(vertices),
-    boxInstances,
+    boxInstances: vertexWriterData(boxInstances),
     hairInstances,
   }
 }
 
 function addRenderedCharacter(
   target: VertexWriter,
-  boxInstances: number[],
+  boxInstances: VertexWriter,
   hairInstances: number[],
   player: CharacterInput,
   options: BuildOptions,
@@ -269,7 +269,7 @@ function addNpcHairInstance(
 
 function addCharacterPart(
   target: VertexWriter,
-  boxInstances: number[],
+  boxInstances: VertexWriter,
   pose: Vec3[],
   plan: { part: CharacterPart; fromIndex: number; toIndex: number },
   player: { turn: number },
@@ -340,7 +340,7 @@ function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
 
 function addCharacterChest(
   target: VertexWriter,
-  boxInstances: number[],
+  boxInstances: VertexWriter,
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
@@ -365,7 +365,7 @@ function addCharacterChest(
 
 function addCharacterChestSide(
   target: VertexWriter,
-  boxInstances: number[],
+  boxInstances: VertexWriter,
   centerX: number,
   centerY: number,
   centerZ: number,

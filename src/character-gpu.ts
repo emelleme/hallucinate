@@ -5,21 +5,6 @@ import type { CameraMatrix } from './camera-matrix.ts'
 type Camera = { eye: Vec3; center: Vec3 }
 export type NumberBufferCache = { capacity?: number; data: Float32Array }
 
-export function uploadCharacterBoxInstances(options: {
-  buffer: WebGLBuffer
-  cache?: NumberBufferCache
-  gl: WebGL2RenderingContext
-  instances: number[]
-  instanceSize: number
-}) {
-  const count = options.instances.length / options.instanceSize
-  const data = options.cache ? fillNumberBuffer(options.cache, options.instances) : new Float32Array(options.instances)
-
-  uploadFloatBuffer(options.gl, options.buffer, data, options.cache)
-
-  return count
-}
-
 export function uploadFloatBuffer(
   gl: WebGL2RenderingContext,
   buffer: WebGLBuffer,
@@ -43,16 +28,6 @@ export function uploadFloatBuffer(
   }
 
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, data)
-}
-
-function fillNumberBuffer(cache: NumberBufferCache, values: number[]) {
-  if (cache.data.length < values.length) {
-    cache.data = new Float32Array(values.length)
-  }
-
-  cache.data.set(values)
-
-  return cache.data.length === values.length ? cache.data : cache.data.subarray(0, values.length)
 }
 
 export function drawCharacterBoxes(options: {
