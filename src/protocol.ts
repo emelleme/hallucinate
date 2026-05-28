@@ -8,6 +8,7 @@ export const S_LEAVE = 4
 export const C_ROOM_CHANGE = 6
 export const S_SPAWN = 7
 export const MESSAGE = 8
+export const C_HEARTBEAT = 9
 
 export const roomCount = 2
 export const messageMaxLength = 120
@@ -109,6 +110,15 @@ export function encodeRoomChange(room: number) {
 
 export function decodeRoomChange(view: DataView) {
   return view.getUint8(1)
+}
+
+export function encodeHeartbeat() {
+  const data = new ArrayBuffer(1)
+  const view = new DataView(data)
+
+  view.setUint8(0, C_HEARTBEAT)
+
+  return data
 }
 
 export function encodeSpawn(packet: SpawnPacket) {

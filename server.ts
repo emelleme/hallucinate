@@ -1,4 +1,5 @@
 import {
+  C_HEARTBEAT,
   C_MOTION,
   C_ROOM_CHANGE,
   decodeClientMessage,
@@ -18,6 +19,7 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 type Client = {
   id: number
+  lastSeen: number
   room: number
   socket: Bun.ServerWebSocket<Client>
   pose: SpawnPacket
@@ -27,6 +29,8 @@ const port = Number(process.env.PORT ?? 3001)
 const dist = join(import.meta.dir, 'dist')
 const rooms = Array.from({ length: roomCount }, () => new Set<Client>())
 const clients = new Map<Bun.ServerWebSocket<Client>, Client>()
+const heartbeatInterval = 10_000
+const clientTimeout = 30_000
 let nextId = 1
 
 const server = Bun.serve<Client>({
@@ -43,6 +47,7 @@ const server = Bun.serve<Client>({
       const id = nextId++
       const client: Client = {
         id,
+        lastSeen: Date.now(),
         room: 0,
         socket,
         pose: {
@@ -73,6 +78,12 @@ const server = Bun.serve<Client>({
       const view = messageView(message)
       const type = view.getUint8(0)
 
+      client.lastSeen = Date.now()
+
+      if (type === C_HEARTBEAT) {
+        return
+      }
+
       if (type === C_MOTION) {
         const motion = decodeClientMotion(view)
 
@@ -95,7 +106,11 @@ const server = Bun.serve<Client>({
       }
     },
     close(socket) {
-      const client = clients.get(socket)!
+      const client = clients.get(socket)
+
+      if (!client) {
+        return
+      }
 
       clients.delete(socket)
       removeFromRoom(client)
@@ -105,6 +120,8 @@ const server = Bun.serve<Client>({
 
 console.log(`club multiplayer: ws://localhost:${server.port}`)
 console.log(`club static: http://localhost:${server.port}`)
+
+setInterval(syncRooms, heartbeatInterval)
 
 async function serveStatic(request: Request) {
   const method = request.method
@@ -248,6 +265,22 @@ function sendRoomState(client: Client) {
     room: client.room,
     players: [...rooms[client.room]!.values()].map(player => player.pose),
   }))
+}
+
+function syncRooms() {
+  const now = Date.now()
+
+  for (const client of clients.values()) {
+    if (now - client.lastSeen > clientTimeout) {
+      clients.delete(client.socket)
+      removeFromRoom(client)
+      client.socket.close(1001, 'timeout')
+    }
+  }
+
+  for (const client of clients.values()) {
+    sendRoomState(client)
+  }
 }
 
 function broadcast(room: number, data: ArrayBuffer, except?: Client) {

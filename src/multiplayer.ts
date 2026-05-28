@@ -11,6 +11,7 @@ import {
   decodeSpawn,
   encodeClientMessage,
   encodeClientMotion,
+  encodeHeartbeat,
   encodeKeys,
   encodeRoomChange,
   MESSAGE,
@@ -56,6 +57,7 @@ export function createMultiplayer(options: {
     url = `ws://${location.hostname}:3001`
   }
   const socket = new WebSocket(url)
+  const heartbeatInterval = 5_000
   let selfId = 0
   let room = options.initialRoom
   let lastKeys = -1
@@ -67,12 +69,18 @@ export function createMultiplayer(options: {
     sendMotion()
     send(encodeRoomChange(room))
   })
+  const heartbeat = setInterval(() => send(encodeHeartbeat()), heartbeatInterval)
+
+  socket.addEventListener('close', () => clearInterval(heartbeat))
   socket.addEventListener('message', event => {
     const view = new DataView(event.data as ArrayBuffer)
     const type = view.getUint8(0)
 
     if (type === S_ROOM_STATE) {
       const state = decodeRoomState(view)
+      const previousSelfId = selfId
+      const previousRoom = room
+      const previousIds = new Set(players.keys())
 
       selfId = state.selfId
       room = state.room
@@ -81,10 +89,18 @@ export function createMultiplayer(options: {
       for (const player of state.players) {
         if (player.id !== selfId) {
           players.set(player.id, createRemotePlayer(player))
+          previousIds.delete(player.id)
         }
       }
 
-      options.onRoomState(room)
+      for (const id of previousIds) {
+        options.onLeave(id)
+      }
+
+      if (selfId !== previousSelfId || room !== previousRoom) {
+        options.onRoomState(room)
+      }
+
       return
     }
 
@@ -184,6 +200,7 @@ export function createMultiplayer(options: {
       }
     },
     close() {
+      clearInterval(heartbeat)
       socket.close()
     },
   }
