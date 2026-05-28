@@ -2,8 +2,9 @@ import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  roomBounds } from './scene-data.ts'
-import type { Bounds, CircleBounds, Vec3 } from './types.ts'
+  roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole,
+  tentVideoAngle } from './scene-data.ts'
+import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export type Seat = {
   id: string
@@ -25,6 +26,8 @@ const seatStools = [...bartenderStools, ...outsideHutBarStools]
 const djSpeakerCollisions = djSpeakers.map(bounds => paddedBounds(bounds))
 const outsideDjBoothCollision = paddedBounds(outsideDjBooth)
 const outsideDjSpeakerCollisions = outsideDjSpeakers.map(bounds => paddedBounds(bounds))
+const tentDjBoothCollision = paddedBounds(tentDjBooth)
+const tentDjSpeakerCollisions = tentDjSpeakers.map(bounds => paddedBounds(bounds))
 const outsideCouchCollisions = outsideCouches.map(bounds => couchCollisionBounds(bounds))
 const outsideHutBarCollision = paddedBounds(outsideHutBar)
 const outsideHutBarStoolCollisions = outsideHutBarStools.map(bounds => paddedBounds(bounds))
@@ -63,9 +66,21 @@ function isAtBackDoor(position: Vec3, padding = 0) {
   return Math.abs(position[0] - backDoor.x) < backDoor.width * 0.5 + padding
 }
 
+function isAtTentDoor(position: Vec3, padding = 0) {
+  const distance = Math.hypot(position[0] - tent.x, position[2] - tent.z)
+
+  return Math.abs(angleDistance(pointAngle(position[0], position[2]), tentDoorAngle))
+    < Math.asin((tentDoor.width / 2 + padding) / tent.radius)
+    && distance > tent.radius - 1
+}
+
 export function isOutside(position: Vec3) {
   return position[0] < roomBounds.left || position[0] > roomBounds.right || position[2] < roomBounds.back
     || position[2] > roomBounds.front
+}
+
+export function roomAt(position: Vec3): VideoZone {
+  return inTent(position[0], position[2]) ? 'tent' : isOutside(position) ? 'outside' : 'inside'
 }
 
 export function usesSkyBackground(_camera: { eye: Vec3; center: Vec3 }) {
@@ -77,16 +92,26 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
     position[0] = clamp(position[0], outsideBounds.left, outsideBounds.right)
     position[2] = clamp(position[2], outsideBounds.back, outsideBounds.front)
     collideBuildingWalls(position, 0.45)
+    collideTentWalls(position, 0.35)
+    collideCircle(position, tentPole)
     collideCircle(position, outsideTree)
     collideCircle(position, outsideBuddha)
     if (!onPaddedPlatform(position, outsideDjBoothCollision, djBoothTop)) {
       collidePaddedBounds(position, outsideDjBoothCollision)
+    }
+    if (!onPaddedPlatform(position, tentDjBoothCollision, djBoothTop)) {
+      collidePaddedBounds(position, tentDjBoothCollision)
     }
     if (!onPaddedPlatform(position, outsideHutBarCollision, barTop)) {
       collidePaddedBounds(position, outsideHutBarCollision)
     }
 
     for (const speaker of outsideDjSpeakerCollisions) {
+      if (!onPaddedPlatform(position, speaker, speakerTop)) {
+        collidePaddedBounds(position, speaker)
+      }
+    }
+    for (const speaker of tentDjSpeakerCollisions) {
       if (!onPaddedPlatform(position, speaker, speakerTop)) {
         collidePaddedBounds(position, speaker)
       }
@@ -140,11 +165,15 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
   if (isOutside(point)) {
     return x >= outsideBounds.left && x <= outsideBounds.right && z >= outsideBounds.back && z <= outsideBounds.front
       && !inBuildingWall(x, z, 0.45)
+      && !inTentWall(x, z, 0.35)
+      && !inCircle(x, z, tentPole)
       && !inCircle(x, z, outsideTree)
       && !inCircle(x, z, outsideBuddha)
       && !inPaddedBounds(x, z, outsideDjBoothCollision)
+      && !inPaddedBounds(x, z, tentDjBoothCollision)
       && !inPaddedBounds(x, z, outsideHutBarCollision)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideHutPostCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
@@ -160,11 +189,50 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
     && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
 }
 
+function inTent(x: number, z: number) {
+  const dx = x - tent.x
+  const dz = z - tent.z
+
+  return dx * dx + dz * dz < tent.radius * tent.radius
+}
+
+function collideTentWalls(position: Vec3, padding: number) {
+  const dx = position[0] - tent.x
+  const dz = position[2] - tent.z
+  const distance = Math.sqrt(dx * dx + dz * dz)
+  const outer = tent.radius + padding
+  const inner = tent.radius - 0.62
+
+  if (distance < inner || distance > outer || isAtTentDoor(position, padding)) {
+    return
+  }
+
+  const radius = distance > tent.radius ? outer : inner
+
+  position[0] = tent.x + dx / distance * radius
+  position[2] = tent.z + dz / distance * radius
+}
+
+function inTentWall(x: number, z: number, padding: number) {
+  const dx = x - tent.x
+  const dz = z - tent.z
+  const distance = Math.sqrt(dx * dx + dz * dz)
+
+  return distance < tent.radius + padding && distance > tent.radius - 0.62 && !isAtTentDoor([x, characterFloor, z], padding)
+}
+
 export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), padding = 0.46, includeOccupied = false):
   | Seat
   | undefined
 {
   const buddha = buddhaSeat()
+  const tent = tentSeat(position, occupiedSeats, includeOccupied) ?? tentCenterSeat(position, occupiedSeats,
+    includeOccupied)
+
+  if (tent) {
+    return tent
+  }
+
   const buddhaX = position[0] - outsideBuddha.x
   const buddhaZ = position[2] - outsideBuddha.z
 
@@ -200,6 +268,8 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
 export function seats() {
   return [
     buddhaSeat(),
+    ...tentSeats(),
+    ...tentCenterSeats(),
     ...outsideCouches.flatMap(couch => couchSeats(couch)),
     ...seatStools.map((stool, index) => stoolSeat(stool, index)),
   ]
@@ -213,6 +283,75 @@ function buddhaSeat(): Seat {
   }
 }
 
+function tentSeat(position: Vec3, occupiedSeats: Set<string>, includeOccupied: boolean) {
+  const seats = tentSeats().filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
+  const seat = nearestSeat(seats, position)
+
+  return seat && distanceSq(position, seat.position) < 1 ? seat : undefined
+}
+
+function tentCenterSeat(position: Vec3, occupiedSeats: Set<string>, includeOccupied: boolean) {
+  const seats = tentCenterSeats().filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
+  const seat = nearestSeat(seats, position)
+
+  return seat && distanceSq(position, seat.position) < 0.9 ? seat : undefined
+}
+
+function tentCenterSeats(): Seat[] {
+  const seats: Seat[] = []
+  const radius = (tentCenterBench.innerRadius + tentCenterBench.outerRadius) / 2
+
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.PI * 2 * i / 8
+    const x = tentCenterBench.x + Math.cos(angle) * radius
+    const z = tentCenterBench.z + Math.sin(angle) * radius
+
+    seats.push({
+      id: `tent-center:${i}`,
+      position: [x, characterFloor + 0.3, z],
+      turn: Math.atan2(x - tentCenterBench.x, z - tentCenterBench.z),
+    })
+  }
+
+  return seats
+}
+
+function tentSeats(): Seat[] {
+  const seats: Seat[] = []
+  const outer = tent.radius - 0.52
+  const radius = tent.radius - 0.97
+  const doorCutoutHalf = Math.asin((tentDoor.width / 2 + 0.28) / outer)
+  const boothCutoutHalf = Math.asin(2.2 / outer)
+
+  for (let i = 0; i < 24; i++) {
+    const angle = Math.PI * 2 * i / 24
+    const x = tent.x + Math.sin(angle) * radius
+    const z = tent.z + Math.cos(angle) * radius
+
+    if (Math.abs(angleDistance(angle, tentDoorAngle)) < doorCutoutHalf
+      || Math.abs(angleDistance(angle, tentVideoAngle)) < boothCutoutHalf)
+    {
+      continue
+    }
+
+    seats.push({
+      id: `tent:${i}`,
+      position: [x, characterFloor + 0.3, z],
+      turn: Math.atan2(tent.x - x, tent.z - z),
+    })
+  }
+
+  return seats
+}
+
+function angleDistance(a: number, b: number) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b))
+}
+
+function pointAngle(x: number, z: number) {
+  return Math.atan2(x - tent.x, z - tent.z)
+}
+
 function nearestCouchSeat(
   couch: (typeof outsideCouches)[number],
   position: Vec3,
@@ -221,6 +360,10 @@ function nearestCouchSeat(
 ) {
   const seats = couchSeats(couch).filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
 
+  return nearestSeat(seats, position)
+}
+
+function nearestSeat(seats: Seat[], position: Vec3) {
   seats.sort((a, b) => distanceSq(position, a.position) - distanceSq(position, b.position))
 
   return seats[0]
@@ -361,11 +504,15 @@ function inBounds(x: number, z: number, bounds: Bounds) {
 }
 
 function platformHeight(x: number, z: number) {
-  if (inPaddedBounds(x, z, djBoothCollision) || inPaddedBounds(x, z, outsideDjBoothCollision)) {
+  if (inPaddedBounds(x, z, djBoothCollision) || inPaddedBounds(x, z, outsideDjBoothCollision)
+    || inPaddedBounds(x, z, tentDjBoothCollision))
+  {
     return djBoothTop
   }
 
-  if ([...djSpeakerCollisions, ...outsideDjSpeakerCollisions].some(bounds => inPaddedBounds(x, z, bounds))) {
+  if ([...djSpeakerCollisions, ...outsideDjSpeakerCollisions, ...tentDjSpeakerCollisions].some(bounds =>
+    inPaddedBounds(x, z, bounds)))
+  {
     return speakerTop
   }
 

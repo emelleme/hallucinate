@@ -43,18 +43,52 @@ export const outsideCouches: (Bounds & { color: Vec3; face: 'east' | 'north' | '
 ]
 export const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625, normal: [0, 0, 1] as Vec3 }
 export const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
+export const tent = {
+  x: 25,
+  z: 25,
+  radius: 4.4,
+  wallHeight: 2.6,
+  height: 6.8,
+  doorWidth: 1.65,
+  doorHeight: 2.55,
+}
+export const tentDoorAngle = -Math.PI / 2
+export const tentVideoAngle = Math.PI / 2
+export const tentDoor = {
+  x: tent.x + Math.sin(tentDoorAngle) * tent.radius,
+  z: tent.z + Math.cos(tentDoorAngle) * tent.radius,
+  width: tent.doorWidth,
+  height: tent.doorHeight,
+}
+export const tentVideoWall = {
+  x: tent.x + Math.sin(tentVideoAngle) * (tent.radius - 0.22),
+  y: 0,
+  z: tent.z + Math.cos(tentVideoAngle) * (tent.radius - 0.22),
+  width: 3.6,
+  height: 2.025,
+  normal: [-1, 0, 0] as Vec3,
+}
+export const tentDjBooth: Bounds = { x: tent.x + tent.radius - 1.3, z: tent.z, width: 1.08, depth: 3.1 }
+export const tentDjSpeakers: Bounds[] = [
+  { x: tentDjBooth.x + 0.08, z: tent.z - 2.35, width: 0.68, depth: 0.58 },
+  { x: tentDjBooth.x + 0.08, z: tent.z + 2.35, width: 0.68, depth: 0.58 },
+]
+export const tentPole: CircleBounds = { x: tent.x, z: tent.z, radius: 0.13 }
+export const tentCenterBench = { x: tent.x, z: tent.z, innerRadius: 0.34, outerRadius: 0.9 }
 export const videoTracks: Record<VideoZone, string> = {
   inside: 'DK5XBwLiWZY',
   outside: 'HIn1BxT38mE',
+  tent: 'fz6nN5AtcYk',
 }
 export const videoStartTimes: Record<VideoZone, number> = {
   inside: 38,
   outside: 0,
+  tent: 0,
 }
 export const videoPlaylists: Partial<Record<VideoZone, string>> = {
   // inside: 'PLdfk8NH4EncB_75qaHdSR96vP8L7Lowpv',
 }
 export const backDoor = { x: -4.75, z: 4, width: 1.45, height: 2.55 }
 export const roomBounds = { left: -7, right: 7, back: -24, front: 4 }
-export const outsideBounds = { left: -24, right: 24, back: -32, front: 34 }
+export const outsideBounds = { left: -24, right: 40, back: -32, front: 38 }
 export const landscapeBounds = { left: -72, right: 72, back: -84, front: 88 }

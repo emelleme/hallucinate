@@ -20,10 +20,11 @@ import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
-import { outsideBuddha, roomBounds } from './scene-data.ts'
+import { outsideBuddha, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
+  roomAt,
   seatAt,
   usesSkyBackground,
 } from './scene.ts'
@@ -50,6 +51,7 @@ import type {
   ClubGlobal,
   Player,
   Vertex,
+  VideoZone,
 } from './types.ts'
 import {
   setupCharacterBoxArray,
@@ -145,14 +147,27 @@ addEventListener('keydown', event => {
 let wasOutside = isOutside(characterPosition)
 let doorCoverReleased = true
 const savedState = readClubState(saveKey)
-let activeRoom = savedState?.room === 1 ? 1 : savedState ? Number(!isOutside(savedState.character)) : 0
+let activeRoom = savedState ? roomIndex(roomAt(savedState.character)) : 0
 let requestedRoom = activeRoom
 let lastPoseLog = 0
 const saveTimer = createSaveTimer(0.5)
 const roomStarts = [
   { x: -8.61, z: 9.64, angle: 0.505 },
   { x: -4.75, z: roomBounds.front - 0.85, angle: 0 },
+  {
+    x: tent.x + Math.sin(tentDoorAngle) * (tent.radius - 1.35),
+    z: tent.z + Math.cos(tentDoorAngle) * (tent.radius - 1.35),
+    angle: tentDoorAngle + Math.PI,
+  },
 ]
+
+function roomIndex(zone: VideoZone) {
+  return zone === 'inside' ? 1 : zone === 'tent' ? 2 : 0
+}
+
+function renderZoneIndex(zone: VideoZone) {
+  return zone === 'inside' ? 0 : zone === 'tent' ? 2 : 1
+}
 
 addRoom(vertices)
 addWallStrips(lights)
@@ -324,7 +339,7 @@ function logPlayerPoseEvery(stamp: number) {
   }
 }
 
-if (activeRoom !== Number(!isOutside(characterPosition))) {
+if (activeRoom !== roomIndex(roomAt(characterPosition))) {
   moveToRoom(activeRoom)
 }
 else {
@@ -375,7 +390,6 @@ multiplayer = createMultiplayer({
       room,
       styleController,
     })
-    chatUi.clear()
   },
   onMessage: (id, text) => {
     if (id === multiplayer.selfId && predictedMessages.has(text)) {
@@ -388,7 +402,6 @@ multiplayer = createMultiplayer({
         predictedMessages.set(text, count - 1)
       }
 
-      chatUi.removeLatest(id)
       return
     }
 
@@ -493,12 +506,14 @@ const draw = (stamp: number) => {
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
   // logPlayerPoseEvery(stamp)
-  const room = Number(!isOutside(characterPosition))
+  const zone = roomAt(characterPosition)
+  const room = roomIndex(zone)
 
   if (room !== requestedRoom) {
     requestedRoom = room
     multiplayer.sendMotion()
     multiplayer.sendRoomChange(room)
+    activeRoom = room
   }
   else {
     multiplayer.sendMotionIfKeysChanged()
@@ -509,8 +524,9 @@ const draw = (stamp: number) => {
   takeRemoteSeats()
   renderPlayers.length = 0
   renderPlayers.push(...npcPlayers, ...multiplayer.players.values())
+  const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
-    || (localCharacter.mode === 'stand' && idleClipIndex > 0), localCharacter.jumping)
+    || dancing, localCharacter.jumping)
   saveTimer.update(delta, () =>
     saveClubState({
       camera: cameraController,
@@ -522,7 +538,7 @@ const draw = (stamp: number) => {
       idleClipIndex,
       key: saveKey,
       localCharacter,
-      room: activeRoom,
+      room: roomIndex(roomAt(characterPosition)),
       styleController,
     }))
   const camera = cameraController.get()
@@ -550,7 +566,7 @@ const draw = (stamp: number) => {
   }
 
   wasOutside = outside
-  const sky = outside && usesSkyBackground(camera)
+  const sky = zone === 'outside' && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateIntro()
@@ -591,6 +607,7 @@ const draw = (stamp: number) => {
     },
     doorCoverVisible: outside && doorCoverReleased,
     outside,
+    renderZone: renderZoneIndex(zone),
     points,
     post: {
       bloom: postBloom,

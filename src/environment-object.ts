@@ -4,7 +4,8 @@ import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } 
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsideVideoWall, roomBounds } from './scene-data.ts'
+  outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentPole,
+  tentDoorAngle, tentVideoAngle, tentVideoWall } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -132,7 +133,167 @@ function addOutside(target: Vertex[]) {
   addOutsideLounges(target, floor)
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
+  addTent(target, floor)
   addOutsideSkyLight(target)
+}
+
+function addTent(target: Vertex[], floor: number) {
+  const fuchsia: Vec3 = [0.16, 0.006, 0.11]
+  const light: Vec3 = [0.28, 0.006, 0.17]
+  const seat: Vec3 = [0.18, 0.012, 0.13]
+  const segments = 36
+  const apex: Vec3 = [tent.x, floor + tent.height, tent.z]
+  const wallTop = floor + tent.wallHeight
+  const doorCutoutHalf = Math.asin((tentDoor.width / 2 + 0.18) / tent.radius)
+
+  addDisc(target, [tent.x, floor + 0.015, tent.z], tent.radius, tent.radius, 'y', [0.055, 0.018, 0.048], 0.15)
+
+  for (let i = 0; i < segments; i++) {
+    const a = Math.PI * 2 * i / segments
+    const b = Math.PI * 2 * (i + 1) / segments
+    const ax = tent.x + Math.sin(a) * tent.radius
+    const az = tent.z + Math.cos(a) * tent.radius
+    const bx = tent.x + Math.sin(b) * tent.radius
+    const bz = tent.z + Math.cos(b) * tent.radius
+    const doorA = Math.abs(angleDistance(a, tentDoorAngle)) < doorCutoutHalf
+    const doorB = Math.abs(angleDistance(b, tentDoorAngle)) < doorCutoutHalf
+
+    if (!doorA || !doorB) {
+      addQuad(target, [ax, floor, az], [bx, floor, bz], [bx, wallTop, bz], [ax, wallTop, az], fuchsia, 0.16)
+    }
+    addTriangle(target, [ax, wallTop, az], [bx, wallTop, bz], apex, fuchsia, 0.16)
+  }
+
+  addTentDoorFrame(target, floor)
+  addTentDoorOccluder(target, floor)
+  addTentSeating(target, floor, seat)
+  addTentPole(target, floor)
+  addTentCenterBench(target, floor, seat)
+  addTentDjBooth(target, light, 1.4)
+
+  for (const z of [tent.z - 2.6, tent.z, tent.z + 2.6]) {
+    addDisc(target, [tent.x, floor + 3.15, z], 0.34, 0.34, 'y', light, 1.4)
+  }
+}
+
+function addTentDoorFrame(target: Vertex[], floor: number) {
+  const side = [Math.cos(tentDoorAngle), 0, -Math.sin(tentDoorAngle)] as Vec3
+  const left: Vec3 = [tentDoor.x - side[0] * (tentDoor.width / 2 + 0.06), floor + tentDoor.height / 2,
+    tentDoor.z - side[2] * (tentDoor.width / 2 + 0.06)]
+  const right: Vec3 = [tentDoor.x + side[0] * (tentDoor.width / 2 + 0.06), floor + tentDoor.height / 2,
+    tentDoor.z + side[2] * (tentDoor.width / 2 + 0.06)]
+
+  addBox(target, left[0], left[1], left[2], 0.12, tentDoor.height, 0.12, electricNavy, 3.2)
+  addBox(target, right[0], right[1], right[2], 0.12, tentDoor.height, 0.12, electricNavy, 3.2)
+  addBox(target, tentDoor.x, floor + tentDoor.height + 0.05, tentDoor.z, 0.12, 0.1, tentDoor.width + 0.24,
+    electricNavy, 3.2)
+}
+
+function addTentDoorOccluder(target: Vertex[], floor: number) {
+  const side = [Math.cos(tentDoorAngle), 0, -Math.sin(tentDoorAngle)] as Vec3
+  const normal = [Math.sin(tentDoorAngle), 0, Math.cos(tentDoorAngle)] as Vec3
+  const bottom = floor
+  const top = floor + tentDoor.height
+  const center: Vec3 = [tentDoor.x - normal[0] * 0.04, 0, tentDoor.z - normal[2] * 0.04]
+  const left: Vec3 = [center[0] - side[0] * tentDoor.width / 2, 0, center[2] - side[2] * tentDoor.width / 2]
+  const right: Vec3 = [center[0] + side[0] * tentDoor.width / 2, 0, center[2] + side[2] * tentDoor.width / 2]
+
+  addQuad(target, [right[0], bottom, right[2]], [left[0], bottom, left[2]], [left[0], top, left[2]],
+    [right[0], top, right[2]], [0.001, 0.001, 0.001], 0)
+}
+
+function addTentPole(target: Vertex[], floor: number) {
+  const segments = 18
+  const bottom = floor
+  const top = floor + tent.height
+  const color: Vec3 = [0.05, 0.018, 0.045]
+
+  for (let i = 0; i < segments; i++) {
+    const a = Math.PI * 2 * i / segments
+    const b = Math.PI * 2 * (i + 1) / segments
+    const ax = tentPole.x + Math.cos(a) * tentPole.radius
+    const az = tentPole.z + Math.sin(a) * tentPole.radius
+    const bx = tentPole.x + Math.cos(b) * tentPole.radius
+    const bz = tentPole.z + Math.sin(b) * tentPole.radius
+
+    addQuad(target, [ax, bottom, az], [bx, bottom, bz], [bx, top, bz], [ax, top, az], color, 0.55)
+  }
+}
+
+function addTentCenterBench(target: Vertex[], floor: number, color: Vec3) {
+  const segments = 40
+  const bottom = floor + 0.16
+  const top = floor + 0.48
+  const back = [color[0] * 0.62, color[1] * 0.62, color[2] * 0.62] as Vec3
+  const trim = [0.052, 0.018, 0.044] as Vec3
+
+  for (let i = 0; i < segments; i++) {
+    const a = Math.PI * 2 * i / segments
+    const b = Math.PI * 2 * (i + 1) / segments
+    const outerA: Vec3 = [tentCenterBench.x + Math.cos(a) * tentCenterBench.outerRadius, top,
+      tentCenterBench.z + Math.sin(a) * tentCenterBench.outerRadius]
+    const outerB: Vec3 = [tentCenterBench.x + Math.cos(b) * tentCenterBench.outerRadius, top,
+      tentCenterBench.z + Math.sin(b) * tentCenterBench.outerRadius]
+    const innerA: Vec3 = [tentCenterBench.x + Math.cos(a) * tentCenterBench.innerRadius, top,
+      tentCenterBench.z + Math.sin(a) * tentCenterBench.innerRadius]
+    const innerB: Vec3 = [tentCenterBench.x + Math.cos(b) * tentCenterBench.innerRadius, top,
+      tentCenterBench.z + Math.sin(b) * tentCenterBench.innerRadius]
+    const outerBottomA: Vec3 = [outerA[0], bottom, outerA[2]]
+    const outerBottomB: Vec3 = [outerB[0], bottom, outerB[2]]
+    const innerBottomA: Vec3 = [innerA[0], bottom, innerA[2]]
+    const innerBottomB: Vec3 = [innerB[0], bottom, innerB[2]]
+
+    addQuad(target, innerA, innerB, outerB, outerA, color, 0.08)
+    addQuad(target, outerBottomA, outerBottomB, outerB, outerA, back, 0.04)
+    addQuad(target, innerBottomB, innerBottomA, innerA, innerB, color, 0.06)
+    addQuad(target, innerBottomA, innerBottomB, outerBottomB, outerBottomA, trim, 0)
+  }
+}
+
+function addTentSeating(target: Vertex[], floor: number, color: Vec3) {
+  const segments = 56
+  const outer = tent.radius - 0.52
+  const inner = outer - 0.72
+  const bottom = floor + 0.16
+  const top = floor + 0.48
+  const doorCutoutHalf = Math.asin((tentDoor.width / 2 + 0.28) / outer)
+  const boothCutoutHalf = Math.asin(2.2 / outer)
+  const back = [color[0] * 0.62, color[1] * 0.62, color[2] * 0.62] as Vec3
+  const trim = [0.052, 0.018, 0.044] as Vec3
+
+  for (let i = 0; i < segments; i++) {
+    const a = Math.PI * 2 * i / segments
+    const b = Math.PI * 2 * (i + 1) / segments
+
+    if (inTentSeatCutout(a, doorCutoutHalf, boothCutoutHalf)
+      || inTentSeatCutout(b, doorCutoutHalf, boothCutoutHalf))
+    {
+      continue
+    }
+
+    const outerA: Vec3 = [tent.x + Math.sin(a) * outer, top, tent.z + Math.cos(a) * outer]
+    const outerB: Vec3 = [tent.x + Math.sin(b) * outer, top, tent.z + Math.cos(b) * outer]
+    const innerA: Vec3 = [tent.x + Math.sin(a) * inner, top, tent.z + Math.cos(a) * inner]
+    const innerB: Vec3 = [tent.x + Math.sin(b) * inner, top, tent.z + Math.cos(b) * inner]
+    const outerBottomA: Vec3 = [outerA[0], bottom, outerA[2]]
+    const outerBottomB: Vec3 = [outerB[0], bottom, outerB[2]]
+    const innerBottomA: Vec3 = [innerA[0], bottom, innerA[2]]
+    const innerBottomB: Vec3 = [innerB[0], bottom, innerB[2]]
+
+    addQuad(target, innerA, innerB, outerB, outerA, color, 0.08)
+    addQuad(target, outerBottomA, outerBottomB, outerB, outerA, back, 0.04)
+    addQuad(target, innerBottomB, innerBottomA, innerA, innerB, color, 0.06)
+    addQuad(target, innerBottomA, innerBottomB, outerBottomB, outerBottomA, trim, 0)
+  }
+}
+
+function angleDistance(a: number, b: number) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b))
+}
+
+function inTentSeatCutout(angle: number, doorCutoutHalf: number, boothCutoutHalf: number) {
+  return Math.abs(angleDistance(angle, tentDoorAngle)) < doorCutoutHalf
+    || Math.abs(angleDistance(angle, tentVideoAngle)) < boothCutoutHalf
 }
 
 function addOutsideLounges(target: Vertex[], floor: number) {
@@ -368,6 +529,59 @@ function addSpeakerStack(target: Vertex[], bounds: Bounds, body: Vec3, dark: Vec
   addDisc(target, [bounds.x, y + 1.6, front], 0.15, 0.15, 'z', cone, 0)
 }
 
+function addTentDjBooth(target: Vertex[], accent: Vec3, accentGlow: number) {
+  const body: Vec3 = [0.026, 0.018, 0.021]
+  const top: Vec3 = [0.006, 0.006, 0.008]
+  const dark: Vec3 = [0.012, 0.011, 0.014]
+  const cone: Vec3 = [0.05, 0.047, 0.043]
+  const y = -2
+  const scale = 0.75
+  const direction = -1
+  const booth = tentDjBooth
+
+  addBox(target, booth.x, y + 0.33, booth.z, booth.width, 0.66, booth.depth, body, 0)
+  addBox(target, booth.x + direction * 0.045, y + 0.7, booth.z, booth.width + 0.28 * scale, 0.12,
+    booth.depth + 0.38 * scale, top, 0)
+  addBox(target, booth.x + direction * 0.21, y + 0.81, booth.z - 0.82 * scale, 0.465 * scale, 0.039,
+    0.645 * scale, dark, 0)
+  addBox(target, booth.x + direction * 0.21, y + 0.81, booth.z + 0.82 * scale, 0.465 * scale, 0.039,
+    0.645 * scale, dark, 0)
+  addDisc(target, [booth.x + direction * 0.21, y + 0.84, booth.z - 0.82 * scale], 0.21 * scale, 0.27 * scale, 'y',
+    accent, accentGlow)
+  addDisc(target, [booth.x + direction * 0.21, y + 0.84, booth.z + 0.82 * scale], 0.21 * scale, 0.27 * scale, 'y',
+    accent, accentGlow)
+  addBox(target, booth.x + direction * 0.24, y + 0.835, booth.z, 0.68 * scale, 0.045, 0.56 * scale, [0.035, 0.034,
+    0.036], 0)
+
+  for (const speaker of tentDjSpeakers) {
+    addTentSpeakerStack(target, speaker, body, dark, cone, direction)
+  }
+}
+
+function addTentSpeakerStack(target: Vertex[], bounds: Bounds, body: Vec3, dark: Vec3, cone: Vec3, direction: number) {
+  const y = -2
+  const front = bounds.x + direction * (bounds.width / 2 + 0.012)
+
+  addBox(target, bounds.x, y + 0.72, bounds.z, bounds.width, 1.44, bounds.depth, body, 0)
+  addBox(target, bounds.x, y + 1.6, bounds.z, bounds.width * 0.82, 0.54, bounds.depth * 0.82, dark, 0)
+  addXDisc(target, [front, y + 0.9, bounds.z], 0.24, 0.24, cone, 0)
+  addXDisc(target, [front, y + 0.39, bounds.z], 0.165, 0.165, cone, 0)
+  addXDisc(target, [front, y + 1.6, bounds.z], 0.15, 0.15, cone, 0)
+}
+
+function addXDisc(target: Vertex[], center: Vec3, radiusY: number, radiusZ: number, color: Vec3, glow: number) {
+  const segments = 18
+
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2
+    const b = ((i + 1) / segments) * Math.PI * 2
+    const pointA: Vec3 = [center[0], center[1] + Math.cos(a) * radiusY, center[2] + Math.sin(a) * radiusZ]
+    const pointB: Vec3 = [center[0], center[1] + Math.cos(b) * radiusY, center[2] + Math.sin(b) * radiusZ]
+
+    target.push(pack(center, color, glow), pack(pointA, color, glow), pack(pointB, color, glow))
+  }
+}
+
 export function addWallStrips(target: Vertex[]) {
   let id = 101
 
@@ -388,11 +602,17 @@ export function addWallStrips(target: Vertex[]) {
 
   addDjBoothStrip(target, djBooth, 1, [1, 0.03, 0.015], 2.15)
   addDjBoothStrip(target, outsideDjBooth, -1, electricNavy, 3.2)
+  addTentDjBoothStrip(target)
   addBartenderBarStrip(target)
   addOutsideHutBarStrip(target)
   addOutsideHutRoofStrips(target)
   addBonfireFlame(target)
+  addTentGlow(target)
   addBartenderBottleGlow(target)
+}
+
+function addTentGlow(target: Vertex[]) {
+  addDisc(target, [tent.x, characterFloor + 3.15, tent.z], 1.2, 1.2, 'y', [1, 0.08, 0.68], 1.8)
 }
 
 function addSideStrip(target: Vertex[], x: number, z: number, id: number) {
@@ -484,6 +704,11 @@ function addOutsideHutBarStrip(target: Vertex[]) {
   const y = characterFloor + outsideHutDeckHeight + 0.46
 
   addBox(target, x, y, outsideHutBar.z, 0.06, 0.07, outsideHutBar.depth - 0.45, electricNavy, 3.2)
+}
+
+function addTentDjBoothStrip(target: Vertex[]) {
+  addBox(target, tentDjBooth.x - tentDjBooth.width / 2 - 0.16, -1.54, tentDjBooth.z, 0.06, 0.07,
+    tentDjBooth.depth - 0.45, [0.28, 0.006, 0.17], 1.4)
 }
 
 function addOutsideHutRoofStrips(target: Vertex[]) {

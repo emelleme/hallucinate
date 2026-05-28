@@ -1,7 +1,7 @@
 import { projectedQuadTransform, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
-import { djVideoWall, outsideVideoWall, videoPlaylists, videoStartTimes, videoTracks } from './scene-data.ts'
-import { isOutside } from './scene.ts'
+import { djVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists, videoStartTimes, videoTracks } from './scene-data.ts'
+import { roomAt } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
@@ -9,7 +9,7 @@ type Wall = typeof djVideoWall
 const endedState = 0
 
 export function videoZones(): VideoZone[] {
-  return ['inside', 'outside']
+  return ['inside', 'outside', 'tent']
 }
 
 export function createDjVideoUi(
@@ -19,23 +19,27 @@ export function createDjVideoUi(
   const layers: Record<VideoZone, HTMLElement> = {
     inside: document.createElement('div'),
     outside: document.createElement('div'),
+    tent: document.createElement('div'),
   }
   const mounts: Record<VideoZone, HTMLElement> = {
     inside: document.createElement('div'),
     outside: document.createElement('div'),
+    tent: document.createElement('div'),
   }
   const times: Record<VideoZone, number> = {
     inside: videoStartTimes.inside,
     outside: videoStartTimes.outside,
+    tent: videoStartTimes.tent,
   }
   const trackIndexes: Record<VideoZone, number> = {
     inside: 0,
     outside: 0,
+    tent: 0,
   }
   const players: Partial<Record<VideoZone, YouTubePlayer>> = {}
   const ready: Partial<Record<VideoZone, boolean>> = {}
   const pendingStarts: Partial<Record<VideoZone, number>> = {}
-  let zone: VideoZone = isOutside(position) ? 'outside' : 'inside'
+  let zone: VideoZone = roomAt(position)
   const setElementStyle = createStyleSetter(element.style)
   const setInsideStyle = createStyleSetter(layers.inside.style)
   const setOutsideStyle = createStyleSetter(layers.outside.style)
@@ -72,7 +76,7 @@ export function createDjVideoUi(
       return zone
     },
     setZoneFromPosition() {
-      zone = isOutside(position) ? 'outside' : 'inside'
+      zone = roomAt(position)
     },
     syncCurrentTime() {
       syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes)
@@ -120,7 +124,7 @@ export function createDjVideoUi(
       }
     },
     update(camera: Camera, projector: WallProjector) {
-      const nextZone: VideoZone = isOutside(position) ? 'outside' : 'inside'
+      const nextZone: VideoZone = roomAt(position)
 
       if (nextZone !== zone) {
         if (ready[zone]) {
@@ -135,26 +139,48 @@ export function createDjVideoUi(
         }
       }
 
-      const wall = isOutside(position) ? outsideVideoWall : djVideoWall
+      const wall = videoWall(nextZone)
 
       if (!djVideoFacesCamera(camera, wall)) {
         setElementStyle('opacity', '0')
         setInsideStyle('pointerEvents', 'none')
         setOutsideStyle('pointerEvents', 'none')
+        layers.tent.style.pointerEvents = 'none'
         return
       }
 
-      const left = wall.x - wall.width / 2
-      const right = wall.x + wall.width / 2
       const bottom = wall.y - wall.height / 2
       const top = wall.y + wall.height / 2
-      if (wall.normal[2] < 0) {
+      if (Math.abs(wall.normal[0]) > 0) {
+        const back = wall.z - wall.width / 2
+        const front = wall.z + wall.width / 2
+
+        if (wall.normal[0] < 0) {
+          setPoint(cornerA, wall.x, bottom, back)
+          setPoint(cornerB, wall.x, bottom, front)
+          setPoint(cornerC, wall.x, top, front)
+          setPoint(cornerD, wall.x, top, back)
+        }
+        else {
+          setPoint(cornerA, wall.x, bottom, front)
+          setPoint(cornerB, wall.x, bottom, back)
+          setPoint(cornerC, wall.x, top, back)
+          setPoint(cornerD, wall.x, top, front)
+        }
+      }
+      else if (wall.normal[2] < 0) {
+        const left = wall.x - wall.width / 2
+        const right = wall.x + wall.width / 2
+
         setPoint(cornerA, right, bottom, wall.z)
         setPoint(cornerB, left, bottom, wall.z)
         setPoint(cornerC, left, top, wall.z)
         setPoint(cornerD, right, top, wall.z)
       }
       else {
+        const left = wall.x - wall.width / 2
+        const right = wall.x + wall.width / 2
+
         setPoint(cornerA, left, bottom, wall.z)
         setPoint(cornerB, right, bottom, wall.z)
         setPoint(cornerC, right, top, wall.z)
@@ -169,8 +195,10 @@ export function createDjVideoUi(
       setElementStyle('opacity', '0.74')
       setInsideStyle('opacity', zone === 'inside' ? '1' : '0')
       setOutsideStyle('opacity', zone === 'outside' ? '1' : '0')
+      layers.tent.style.opacity = zone === 'tent' ? '1' : '0'
       setInsideStyle('pointerEvents', zone === 'inside' ? 'auto' : 'none')
       setOutsideStyle('pointerEvents', zone === 'outside' ? 'auto' : 'none')
+      layers.tent.style.pointerEvents = zone === 'tent' ? 'auto' : 'none'
       setElementStyle('width', `${wall.width * 120}px`)
       setElementStyle('height', `${wall.height * 120}px`)
       setElementStyle('transform', projectedQuadTransform(
@@ -188,6 +216,17 @@ export function createDjVideoUi(
       return false
     },
   }
+}
+
+function videoWall(zone: VideoZone): Wall {
+  if (zone === 'inside') {
+    return djVideoWall
+  }
+  if (zone === 'outside') {
+    return outsideVideoWall
+  }
+
+  return tentVideoWall
 }
 
 function cueVideoFromTime(

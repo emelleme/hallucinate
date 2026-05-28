@@ -13,6 +13,7 @@ import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { characterView, characterVisibility } from './character-visibility.ts'
 import { normalizeIndex } from './math.ts'
+import { roomAt } from './scene.ts'
 import type {
   CharacterMode,
   CharacterPart,
@@ -117,7 +118,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const usedBasePoseKeys = cache?.usedBasePoseKeys ?? new Set<number>()
   const usedNpcBlendKeys = cache?.usedNpcBlendKeys ?? new Set<number>()
   const basePose = sampleBasePose(options.rig, options.time, characterPoseJoints, characterPoseJointSet,
-    options.character.idleClipIndex, cache?.basePose)
+    idleClipIndex(options.character), cache?.basePose)
 
   if (cache) {
     cache.basePose = basePose
@@ -141,12 +142,13 @@ export function buildCharacterDrawData(options: BuildOptions) {
 
     if (visibility.visible) {
       const sampledTime = bodySampleTime(options.time, visibility.distanceSq)
-      const sampleKey = player.idleClipIndex * 1000000 + Math.round(sampledTime * 60)
+      const playerIdleClipIndex = idleClipIndex(player)
+      const sampleKey = playerIdleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       usedBasePoseKeys.add(sampleKey)
       usedNpcBlendKeys.add(blendKey)
       const sampledBasePose = basePoses.get(sampleKey)
-        ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, player.idleClipIndex)
+        ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
         npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
@@ -170,6 +172,10 @@ export function buildCharacterDrawData(options: BuildOptions) {
     boxInstances: vertexWriterData(boxInstances),
     hairInstances: vertexWriterData(hairInstances),
   }
+}
+
+function idleClipIndex(character: CharacterInput) {
+  return roomAt(character.position) === 'tent' ? 0 : character.idleClipIndex
 }
 
 function addRenderedCharacter(

@@ -1,7 +1,7 @@
 import { characterFloor } from './character-data.ts'
 import { clamp, lengthSq, lerpVec3, mix, smoothAngle } from './math.ts'
-import { backDoor, outsideBounds, roomBounds } from './scene-data.ts'
-import { collideBuildingWalls, isOutside, walkHeight } from './scene.ts'
+import { backDoor, outsideBounds, roomBounds, tent } from './scene-data.ts'
+import { collideBuildingWalls, isOutside, roomAt, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
 const insideCameraFront = roomBounds.front - 0.2
@@ -103,13 +103,15 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       target[0] = characterPosition[0]
       target[1] = characterPosition[1] + 1.2
       target[2] = characterPosition[2]
+      const zone = roomAt(characterPosition)
 
       if (holdingManualCamera && !dragging) {
+        clampCameraToZone(position, zone)
         wasMoving = moving
         return
       }
 
-      const outside = isOutside(characterPosition)
+      const outside = zone !== 'inside'
       const cameraOutside = isOutside(position)
       const crossingOutside = outside && !cameraOutside
       const time = performance.now() * 0.001
@@ -121,13 +123,18 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         characterPosition[2] - Math.cos(turn) * distance,
       ]
 
-      ideal[0] = outside
-        ? clamp(ideal[0], outsideBounds.left + 1, outsideBounds.right - 1)
-        : clamp(ideal[0], roomBounds.left + 0.4, roomBounds.right - 0.4)
+      ideal[0] = zone === 'tent'
+        ? clamp(ideal[0], tent.x - tent.radius + 1, tent.x + tent.radius - 1)
+        : outside
+          ? clamp(ideal[0], outsideBounds.left + 1, outsideBounds.right - 1)
+          : clamp(ideal[0], roomBounds.left + 0.4, roomBounds.right - 0.4)
       ideal[1] = clamp(ideal[1], characterFloor + 0.35, 4.3)
-      ideal[2] = outside
-        ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
-        : clamp(ideal[2], roomBounds.back + 0.2, insideCameraFront)
+      ideal[2] = zone === 'tent'
+        ? clamp(ideal[2], tent.z - tent.radius + 1, tent.z + tent.radius - 1)
+        : outside
+          ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
+          : clamp(ideal[2], roomBounds.back + 0.2, insideCameraFront)
+      clampCameraToZone(ideal, zone)
 
       if (crossingOutside && ideal[2] < insideCameraFront) {
         ideal[0] = backDoor.x
@@ -147,9 +154,30 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       if (cameraCollides) {
         collideBuildingWalls(position, 0.65)
       }
+      clampCameraToZone(position, zone)
 
       position[1] = Math.max(position[1], walkHeight(position[0], characterPosition[1], position[2]) + 0.35)
     },
+  }
+}
+
+function clampCameraToZone(position: Vec3, zone: ReturnType<typeof roomAt>) {
+  if (zone === 'tent') {
+    clampTentCamera(position)
+  }
+}
+
+function clampTentCamera(position: Vec3) {
+  const y = position[1] - characterFloor
+  const roof = clamp((y - tent.wallHeight) / (tent.height - tent.wallHeight), 0, 1)
+  const radius = tent.radius * (1 - roof) - 0.7
+  const x = position[0] - tent.x
+  const z = position[2] - tent.z
+  const distance = Math.sqrt(x * x + z * z)
+
+  if (distance > radius) {
+    position[0] = tent.x + x / distance * radius
+    position[2] = tent.z + z / distance * radius
   }
 }
 

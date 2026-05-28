@@ -68,7 +68,7 @@ export type TreeMesh = {
   color: Vec3
 }
 
-export type VideoZone = 'inside' | 'outside'
+export type VideoZone = 'inside' | 'outside' | 'tent'
 
 export type YouTubePlayer = {
   cueVideoById(options: { videoId: string; startSeconds: number }): void

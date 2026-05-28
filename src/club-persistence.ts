@@ -50,8 +50,10 @@ export function restoreClubState(options: {
       ?? options.styleController.bottomStyleIndex, jewelPalette.length * 2)
     options.djVideoUi.times.inside = state.videoTimes?.inside ?? options.djVideoUi.times.inside
     options.djVideoUi.times.outside = state.videoTimes?.outside ?? options.djVideoUi.times.outside
+    options.djVideoUi.times.tent = state.videoTimes?.tent ?? options.djVideoUi.times.tent
     options.djVideoUi.trackIndexes.inside = state.videoTrackIndexes?.inside ?? options.djVideoUi.trackIndexes.inside
     options.djVideoUi.trackIndexes.outside = state.videoTrackIndexes?.outside ?? options.djVideoUi.trackIndexes.outside
+    options.djVideoUi.trackIndexes.tent = state.videoTrackIndexes?.tent ?? options.djVideoUi.trackIndexes.tent
     options.setAlternativeInput(state.alternativeInput ?? true)
     options.styleController.setTopStyle()
     options.styleController.setBottomStyle()

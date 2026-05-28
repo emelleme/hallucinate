@@ -78,6 +78,7 @@ export function renderClubFrame(options: {
     uniforms: LightUniforms
   }
   outside: boolean
+  renderZone: number
   doorCoverVisible: boolean
   points: Float32Array
   post: {
@@ -121,7 +122,7 @@ export function renderClubFrame(options: {
   gl.useProgram(options.program)
   gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, mainCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
+  gl.uniform1i(options.roomUniforms.renderZone, options.renderZone)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
@@ -145,7 +146,7 @@ export function renderClubFrame(options: {
     doorCoverVisible: options.doorCoverVisible,
     gl,
     height: options.height,
-    outside: options.outside,
+    renderZone: options.renderZone,
     program: options.program,
     treeShadowMap: options.treeShadowMap,
     uniforms: options.roomUniforms,
@@ -181,7 +182,7 @@ export function renderClubFrame(options: {
   gl.useProgram(options.program)
   gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, bloomCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
+  gl.uniform1i(options.roomUniforms.renderZone, options.renderZone)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
@@ -246,7 +247,7 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
     geometry: options.character.boxGeometry,
     gl: options.gl,
     height,
-    outside: options.outside,
+    renderZone: options.renderZone,
     program: options.character.boxProgram,
     uniforms: options.character.boxUniforms,
     width,
@@ -258,7 +259,7 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
       gl: options.gl,
       hairRenderMeshes: options.character.hairRenderMeshes,
       height,
-      outside: options.outside,
+      renderZone: options.renderZone,
       program: options.character.hairProgram,
       uniforms: options.character.hairUniforms,
       width,

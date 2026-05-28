@@ -10,7 +10,7 @@ export const S_SPAWN = 7
 export const MESSAGE = 8
 export const C_HEARTBEAT = 9
 
-export const roomCount = 2
+export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
 export const protocolVersion = 2

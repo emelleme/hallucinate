@@ -38,7 +38,7 @@ export function drawCharacterBoxes(options: {
   geometry: CharacterBoxGeometry
   gl: WebGL2RenderingContext
   height: number
-  outside: boolean
+  renderZone: number
   program: WebGLProgram
   uniforms: {
     renderZone: WebGLUniformLocation
@@ -52,7 +52,7 @@ export function drawCharacterBoxes(options: {
 
   options.gl.useProgram(options.program)
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
-  options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
+  options.gl.uniform1i(options.uniforms.renderZone, options.renderZone)
   options.gl.bindVertexArray(options.array)
   options.gl.drawArraysInstanced(options.gl.TRIANGLES, 0, options.geometry.count, options.count)
   options.gl.bindVertexArray(null)
@@ -64,7 +64,7 @@ export function drawNpcHair(options: {
   gl: WebGL2RenderingContext
   hairRenderMeshes: HairRenderMesh[]
   height: number
-  outside: boolean
+  renderZone: number
   program: WebGLProgram
   uniforms: {
     renderZone: WebGLUniformLocation
@@ -74,7 +74,7 @@ export function drawNpcHair(options: {
 }) {
   options.gl.useProgram(options.program)
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
-  options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
+  options.gl.uniform1i(options.uniforms.renderZone, options.renderZone)
 
   for (const mesh of options.hairRenderMeshes) {
     if (mesh.instanceCount > 0) {

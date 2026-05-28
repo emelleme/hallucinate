@@ -1,6 +1,6 @@
 import type { CameraMatrix } from './camera-matrix.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
-import { isOutside } from './scene.ts'
+import { roomAt } from './scene.ts'
 import { strobeRandom, strobeReflectionAmount, strobeTarget } from './strobe-object.ts'
 import type { CharacterBoxGeometry, StrobeLight, StrobeReflectionLight, Vec3, VideoZone } from './types.ts'
 
@@ -79,7 +79,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
 
       options.gl.useProgram(options.program)
       options.gl.uniform1f(options.uniforms.time, nextFrame)
-      options.gl.uniform1i(options.uniforms.renderZone, isOutside(options.characterPosition) ? 1 : 0)
+      options.gl.uniform1i(options.uniforms.renderZone, renderZone(roomAt(options.characterPosition)))
       options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, cameraMatrix.viewProjection)
       options.gl.activeTexture(options.gl.TEXTURE2)
       options.gl.bindTexture(options.gl.TEXTURE_2D, options.smokeMap)
@@ -96,6 +96,10 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
 
       return amount
     },
+  }
+
+  function renderZone(zone: ReturnType<typeof roomAt>) {
+    return zone === 'inside' ? 0 : zone === 'tent' ? 2 : 1
   }
 
   function activeReflectionLights() {
