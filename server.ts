@@ -55,8 +55,6 @@ const server = Bun.serve<SocketData>({
     const ip = clientIp(request)
 
     if (ipConnections(ip) >= maxConnectionsPerIp) {
-      console.error(`Rejected websocket from ${ip}`)
-
       return new Response('Too Many Connections', { status: 429 })
     }
 
@@ -133,10 +131,6 @@ const server = Bun.serve<SocketData>({
           const normalizedText = normalizeChatText(text)
           const slur = slurMatch(text)
 
-          if (slur) {
-            console.error(`Rejected chat from ${client.ip}: ${slur.normalized}`)
-          }
-
           if (normalizedText && !binaryText(text) && !slur) {
             console.log(`Chat from ${client.ip}: ${text}`)
             broadcast(client.room, encodeServerMessage({ id: client.id, text }))
@@ -148,7 +142,6 @@ const server = Bun.serve<SocketData>({
         throw new Error(`Invalid client packet type ${type}`)
       }
       catch (e) {
-        console.error(e)
         clients.delete(socket)
         removeFromRoom(client)
         socket.close(1003, 'invalid packet')
