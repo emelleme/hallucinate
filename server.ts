@@ -50,7 +50,19 @@ const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
 const maxClientStep = 1.2
 const maxHairIndex = 32
+const memoryAssetMaxSize = 2 * 1024 * 1024
+const memoryAssets = new Map<string, MemoryAsset>()
 let nextId = 1
+
+type MemoryAsset = {
+  modified: Date
+  source: ArrayBuffer
+  size: number
+  tag: string
+  type: string
+  gzip?: ArrayBuffer
+  br?: ArrayBuffer
+}
 
 const server = Bun.serve<SocketData>({
   port,
@@ -239,14 +251,19 @@ async function fileResponse(path: string, request: Request) {
     return
   }
 
+  if (compressiblePath(path) && file.size <= memoryAssetMaxSize) {
+    return await memoryFileResponse(path, file, request)
+  }
+
   const headers = cacheHeaders(path)
   const modified = new Date(file.lastModified)
   const tag = `"${file.size.toString(16)}-${file.lastModified.toString(16)}"`
 
   headers.set('content-type', file.type || contentType(path))
-  headers.set('content-length', String(file.size))
   headers.set('etag', tag)
   headers.set('last-modified', modified.toUTCString())
+
+  headers.set('content-length', String(file.size))
 
   if (request.headers.get('if-none-match') === tag) {
     headers.delete('content-length')
@@ -307,6 +324,112 @@ const contentTypes = new Map([
   ['.wasm', 'application/wasm'],
   ['.webp', 'image/webp'],
 ])
+
+async function memoryFileResponse(path: string, file: Bun.BunFile, request: Request) {
+  const asset = await memoryAsset(path, file)
+  const encoding = responseEncoding(request, path)
+  const headers = cacheHeaders(path)
+
+  headers.set('content-type', asset.type)
+  headers.set('etag', asset.tag)
+  headers.set('last-modified', asset.modified.toUTCString())
+  headers.set('vary', 'accept-encoding')
+
+  if (request.headers.get('if-none-match') === asset.tag) {
+    return new Response(null, { status: 304, headers })
+  }
+
+  const body = encoding === 'br'
+    ? await compressedAsset(asset, 'br')
+    : encoding === 'gzip'
+    ? await compressedAsset(asset, 'gzip')
+    : asset.source
+
+  if (encoding) {
+    headers.set('content-encoding', encoding)
+  }
+
+  headers.set('content-length', String(body.byteLength))
+
+  if (request.method === 'HEAD') {
+    return new Response(null, { headers })
+  }
+
+  return new Response(body, { headers })
+}
+
+async function memoryAsset(path: string, file: Bun.BunFile) {
+  const tag = `"${file.size.toString(16)}-${file.lastModified.toString(16)}"`
+  const cached = memoryAssets.get(path)
+
+  if (cached?.tag === tag) {
+    return cached
+  }
+
+  const source = await file.arrayBuffer()
+  const asset: MemoryAsset = {
+    modified: new Date(file.lastModified),
+    source,
+    size: file.size,
+    tag,
+    type: file.type || contentType(path),
+  }
+
+  memoryAssets.set(path, asset)
+
+  return asset
+}
+
+async function compressedAsset(asset: MemoryAsset, encoding: 'br' | 'gzip') {
+  const cached = asset[encoding]
+
+  if (cached) {
+    return cached
+  }
+
+  const compressed = await new Response(
+    new Response(asset.source).body!.pipeThrough(new CompressionStream(encoding === 'br' ? 'brotli' : 'gzip')),
+  ).arrayBuffer()
+
+  asset[encoding] = compressed
+
+  return compressed
+}
+
+function responseEncoding(request: Request, _path: string) {
+  const accept = request.headers.get('accept-encoding') ?? ''
+
+  if (acceptEncodingIncludes(accept, 'br')) {
+    return 'br'
+  }
+
+  if (acceptEncodingIncludes(accept, 'gzip')) {
+    return 'gzip'
+  }
+}
+
+function acceptEncodingIncludes(header: string, encoding: string) {
+  return header
+    .split(',')
+    .map(part => part.trim().toLowerCase())
+    .some(part => {
+      const [name, ...parameters] = part.split(';').map(value => value.trim())
+      const q = parameters.find(parameter => parameter.startsWith('q='))?.slice(2)
+
+      return name === encoding && q !== '0' && q !== '0.0' && q !== '0.00' && q !== '0.000'
+    })
+}
+
+function compressiblePath(path: string) {
+  const extension = extname(path)
+
+  return extension === '.html'
+    || extension === '.css'
+    || extension === '.js'
+    || extension === '.json'
+    || extension === '.map'
+    || extension === '.svg'
+}
 
 function changeRoom(client: Client, room: number) {
   if (room < 0 || room >= roomCount) {
