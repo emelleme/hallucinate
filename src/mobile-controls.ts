@@ -127,7 +127,11 @@ export function bindTapDestination(options: {
       return
     }
 
-    options.setDestination(screenGroundPoint(event.clientX, event.clientY, options.canvas, options.projector))
+    const target = screenGroundPoint(event.clientX, event.clientY, options.canvas, options.projector)
+
+    if (target) {
+      options.setDestination(target)
+    }
   })
 
   options.canvas.addEventListener('pointercancel', event => {
@@ -156,7 +160,7 @@ function actionRow(action: StyleAction) {
   return row
 }
 
-function screenGroundPoint(x: number, y: number, canvas: HTMLCanvasElement, projector: WallProjector): Vec3 {
+function screenGroundPoint(x: number, y: number, canvas: HTMLCanvasElement, projector: WallProjector): Vec3 | undefined {
   const rect = canvas.getBoundingClientRect()
   const ndcX = ((x - rect.left) / rect.width) * 2 - 1
   const ndcY = 1 - ((y - rect.top) / rect.height) * 2
@@ -167,6 +171,10 @@ function screenGroundPoint(x: number, y: number, canvas: HTMLCanvasElement, proj
   const rayZ = -projector.cameraZZ + projector.cameraXZ * ndcX * projector.aspect / projector.f
     + projector.cameraYZ * ndcY / projector.f
   const t = (characterFloor - projector.eyeY) / rayY
+
+  if (t <= 0) {
+    return undefined
+  }
 
   return [
     projector.eyeX + rayX * t,

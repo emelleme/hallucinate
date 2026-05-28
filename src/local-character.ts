@@ -77,7 +77,15 @@ export function createLocalCharacter(keys: Set<string>) {
       }
       if (hasDestination) {
         if (path.length === 0) {
-          path = findPath(position, destination, outsideTree)
+          try {
+            path = findPath(position, destination, outsideTree)
+          }
+          catch (e) {
+            console.error(e)
+            hasDestination = false
+            destinationSeat = ''
+            path = []
+          }
         }
 
         while (path.length > 0 && waypointReached(position, path[0]!)) {
