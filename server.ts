@@ -117,7 +117,7 @@ const server = Bun.serve<Client>({
         if (type === MESSAGE) {
           const text = truncateMessage(decodeClientMessage(view))
 
-          if (text) {
+          if (text && !binaryText(text)) {
             broadcast(client.room, encodeServerMessage({ id: client.id, text }))
           }
 
@@ -294,6 +294,10 @@ function removeFromRoom(client: Client) {
 function validateMotion(client: Client, motion: MotionPacket) {
   validateMotionValues(motion)
   validateMotionStep(client, motion)
+}
+
+function binaryText(text: string) {
+  return /^[01]+$/.test(text)
 }
 
 function validateMotionValues(motion: MotionPacket) {
