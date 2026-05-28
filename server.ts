@@ -434,10 +434,10 @@ const slurs = [
 ]
 
 const slurPatterns = [
-  /n+i+g+e+r+s?/,
-  /n+i+g+a+s?/,
-  /n+i+g+u+h+s?/,
-  /n+i+g+l+e+t+s?/,
+  /n+[il]+g+e+r+s?/,
+  /n+[il]+g+a+s?/,
+  /n+[il]+g+u+h+s?/,
+  /n+[il]+g+l+e+t+s?/,
   /f+a+g+o+t+s?/,
   /f+a+g+s?/,
   /k+i+k+e+s?/,
