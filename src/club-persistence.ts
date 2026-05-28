@@ -5,7 +5,8 @@ import { readClubState, writeClubState } from './club-state.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { normalizeIndex, setVec3 } from './math.ts'
-import type { Vec3 } from './types.ts'
+import { videoTracks } from './scene-data.ts'
+import type { Vec3, VideoZone } from './types.ts'
 
 export function restoreClubState(options: {
   camera: {
@@ -48,12 +49,9 @@ export function restoreClubState(options: {
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
     options.styleController.bottomStyleIndex = normalizeIndex(state.bottomStyleIndex ?? state.pantsColorIndex
       ?? options.styleController.bottomStyleIndex, jewelPalette.length * 2)
-    options.djVideoUi.times.inside = state.videoTimes?.inside ?? options.djVideoUi.times.inside
-    options.djVideoUi.times.outside = state.videoTimes?.outside ?? options.djVideoUi.times.outside
-    options.djVideoUi.times.tent = state.videoTimes?.tent ?? options.djVideoUi.times.tent
-    options.djVideoUi.trackIndexes.inside = state.videoTrackIndexes?.inside ?? options.djVideoUi.trackIndexes.inside
-    options.djVideoUi.trackIndexes.outside = state.videoTrackIndexes?.outside ?? options.djVideoUi.trackIndexes.outside
-    options.djVideoUi.trackIndexes.tent = state.videoTrackIndexes?.tent ?? options.djVideoUi.trackIndexes.tent
+    restoreVideoState('inside', state, options.djVideoUi)
+    restoreVideoState('outside', state, options.djVideoUi)
+    restoreVideoState('tent', state, options.djVideoUi)
     options.setAlternativeInput(state.alternativeInput ?? true)
     options.styleController.setTopStyle()
     options.styleController.setBottomStyle()
@@ -98,7 +96,21 @@ export function saveClubState(options: {
     bottomStyleIndex: options.styleController.bottomStyleIndex,
     alternativeInput: options.alternativeInput,
     room: options.room,
+    videoTrackIds: videoTracks,
     videoTimes: options.djVideoUi.times,
     videoTrackIndexes: options.djVideoUi.trackIndexes,
   })
+}
+
+function restoreVideoState(zone: VideoZone, state: NonNullable<ReturnType<typeof readClubState>>,
+  djVideoUi: ReturnType<typeof createDjVideoUi>)
+{
+  if (state.videoTrackIds?.[zone] === videoTracks[zone]) {
+    djVideoUi.times[zone] = state.videoTimes?.[zone] ?? 0
+    djVideoUi.trackIndexes[zone] = state.videoTrackIndexes?.[zone] ?? 0
+    return
+  }
+
+  djVideoUi.times[zone] = 0
+  djVideoUi.trackIndexes[zone] = 0
 }
