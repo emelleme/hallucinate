@@ -44,11 +44,15 @@ export const outsideCouches: (Bounds & { color: Vec3; face: 'east' | 'north' | '
 export const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625, normal: [0, 0, 1] as Vec3 }
 export const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
 export const videoTracks: Record<VideoZone, string> = {
-  inside: '0oB97YhEukw',
+  inside: 'DK5XBwLiWZY',
   outside: 'HIn1BxT38mE',
 }
+export const videoStartTimes: Record<VideoZone, number> = {
+  inside: 38,
+  outside: 0,
+}
 export const videoPlaylists: Partial<Record<VideoZone, string>> = {
-  inside: 'PLdfk8NH4EncB_75qaHdSR96vP8L7Lowpv',
+  // inside: 'PLdfk8NH4EncB_75qaHdSR96vP8L7Lowpv',
 }
 export const backDoor = { x: -4.75, z: 4, width: 1.45, height: 2.55 }
 export const roomBounds = { left: -7, right: 7, back: -24, front: 4 }

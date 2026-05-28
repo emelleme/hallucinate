@@ -28,6 +28,7 @@ export function createHelpUi() {
   const move = document.createElement('div')
   const speak = helpBox({ keys: ['space'], label: 'speak' })
   const toggle = helpBox({ keys: ['h'], label: 'help' })
+  const video = helpNote("If the video doesn't start, press play on it")
 
   root.id = 'help-ui'
   root.dataset.open = 'true'
@@ -35,6 +36,7 @@ export function createHelpUi() {
   move.className = 'help-cluster help-cluster-move'
   speak.className = 'help-box help-box-speak'
   toggle.className = 'help-box help-box-toggle'
+  video.className = 'help-box help-box-video'
 
   for (const row of leftRows) {
     left.append(helpRow(row))
@@ -44,7 +46,7 @@ export function createHelpUi() {
     move.append(helpRow(row))
   }
 
-  root.append(left, move, speak, toggle)
+  root.append(left, move, speak, video, toggle)
   document.body.append(root)
 
   return {
@@ -85,6 +87,18 @@ function helpBox(item: HelpKey) {
   keys.append(...item.keys.map(helpKey))
   label.textContent = item.label
   box.append(keys, label)
+
+  return box
+}
+
+function helpNote(text: string) {
+  const box = document.createElement('div')
+  const label = document.createElement('span')
+
+  box.className = 'help-box'
+  label.className = 'help-label'
+  label.textContent = text
+  box.append(label)
 
   return box
 }

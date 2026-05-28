@@ -72,7 +72,7 @@ if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
 }
 
-const { canvas, djVideo, chatForm, chatInput, chatBubble, intro, introBar, introProgress } = getDomElements()
+const { canvas, djVideo, chatForm, chatInput, chatBubble, intro, introBar, introProgress, introStart } = getDomElements()
 
 const gl = canvas.getContext('webgl2', {
   antialias: false,
@@ -121,6 +121,11 @@ let buddhaLoaded = false
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
+
+introStart.addEventListener('click', () => {
+  videoPlaying = djVideoUi.play()
+  introStart.dataset.playing = String(videoPlaying)
+})
 let wasOutside = isOutside(characterPosition)
 let doorCoverReleased = true
 const savedState = readClubState(saveKey)
@@ -486,7 +491,7 @@ const draw = (stamp: number) => {
   const sky = outside && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
-  const introProgressValue = updateIntro()
+  updateIntro()
 
   renderClubFrame({
     arrays: {
@@ -565,10 +570,6 @@ const draw = (stamp: number) => {
     width: canvas.width,
   })
 
-  if (introProgressValue >= 67 && !videoPlaying) {
-    videoPlaying = djVideoUi.play()
-  }
-
   frameId = requestAnimationFrame(draw)
   clubGlobal.clubFrameId = frameId
 }
@@ -583,8 +584,9 @@ function updateIntro() {
 
   introProgress.textContent = `${progress}%`
   introBar.style.transform = `scaleX(${progress / 100})`
+  introStart.dataset.ready = String(progress >= 75 && !videoPlaying)
 
-  const ready = progress === 100
+  const ready = progress === 100 && videoPlaying
 
   if (ready && !introHidden) {
     introHidden = true

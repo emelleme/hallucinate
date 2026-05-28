@@ -1,6 +1,6 @@
 import { projectedQuadTransform, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
-import { djVideoWall, outsideVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
+import { djVideoWall, outsideVideoWall, videoPlaylists, videoStartTimes, videoTracks } from './scene-data.ts'
 import { isOutside } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
@@ -25,8 +25,8 @@ export function createDjVideoUi(
     outside: document.createElement('div'),
   }
   const times: Record<VideoZone, number> = {
-    inside: 0,
-    outside: 0,
+    inside: videoStartTimes.inside,
+    outside: videoStartTimes.outside,
   }
   const trackIndexes: Record<VideoZone, number> = {
     inside: 0,
