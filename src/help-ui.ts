@@ -13,7 +13,10 @@ const leftRows: HelpKey[][] = [
     { keys: ['a', 's'], label: 'top wear' },
     { keys: ['d', 'f'], label: 'dance moves' },
   ],
-  [{ keys: ['z', 'x'], label: 'bottom wear' }],
+  [
+    { keys: ['z', 'x'], label: 'bottom wear' },
+    { keys: ['b'], label: 'bounce' },
+  ],
 ]
 
 const alternativeLeftRows: HelpKey[][] = [
@@ -26,7 +29,10 @@ const alternativeLeftRows: HelpKey[][] = [
     { keys: ['j', 'k'], label: 'top wear' },
     { keys: ['l', ';'], label: 'dance moves' },
   ],
-  [{ keys: ['m', ','], label: 'bottom wear' }],
+  [
+    { keys: ['m', ','], label: 'bottom wear' },
+    { keys: ['b'], label: 'bounce' },
+  ],
 ]
 
 const moveRows: HelpKey[][] = [
