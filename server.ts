@@ -138,6 +138,7 @@ const server = Bun.serve<SocketData>({
           }
 
           if (normalizedText && !binaryText(text) && !slur) {
+            console.log(`Chat from ${client.ip}: ${text}`)
             broadcast(client.room, encodeServerMessage({ id: client.id, text }))
           }
 
