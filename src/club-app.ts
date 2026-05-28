@@ -427,7 +427,10 @@ bindKeyboardInput({
   ...styleActions,
 })
 
-createMobileControls(styleActions)
+createMobileControls({
+  ...styleActions,
+  openChatInput: () => chatUi.open(),
+})
 bindTapDestination({
   canvas,
   projector: wallProjector,

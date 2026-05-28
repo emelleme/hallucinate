@@ -24,6 +24,7 @@ export function createMobileControls(options: {
   cycleIdle: (direction: number) => void
   cycleShirt: (direction: number) => void
   cyclePants: (direction: number) => void
+  openChatInput: () => void
 }) {
   updateTouchControlsMode()
   addEventListener('resize', updateTouchControlsMode)
@@ -40,6 +41,7 @@ export function createMobileControls(options: {
   const root = document.createElement('div')
   const toggle = document.createElement('button')
   const panel = document.createElement('div')
+  const speak = document.createElement('button')
 
   root.id = 'mobile-controls'
   root.dataset.open = 'false'
@@ -47,10 +49,14 @@ export function createMobileControls(options: {
   toggle.type = 'button'
   toggle.ariaLabel = 'Open menu'
   toggle.textContent = '☰'
+  speak.id = 'mobile-speak'
+  speak.type = 'button'
+  speak.ariaLabel = 'Speak'
+  speak.textContent = '💬'
   panel.id = 'mobile-menu'
 
   panel.append(...actions.map(actionRow))
-  root.append(toggle, panel)
+  root.append(toggle, panel, speak)
   document.body.append(root)
 
   toggle.addEventListener('click', () => {
@@ -60,6 +66,7 @@ export function createMobileControls(options: {
     toggle.ariaLabel = open ? 'Close menu' : 'Open menu'
     document.documentElement.dataset.videoHintDismissed = 'true'
   })
+  speak.addEventListener('click', options.openChatInput)
 
   return root
 }
