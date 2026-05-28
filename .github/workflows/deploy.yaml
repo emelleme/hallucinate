@@ -52,7 +52,7 @@ jobs:
             sudo -n systemctl stop hallucinate
           '"
 
-      - name: Install production dependencies and build
+      - name: Install dependencies and build
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -64,7 +64,7 @@ jobs:
             export PATH=\"\$BUN_INSTALL/bin:\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
             cd \"$REMOTE_PATH\"
             command -v bun
-            bun install --production
+            bun install
             bun run build
           '"
 
