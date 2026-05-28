@@ -11,15 +11,22 @@ import {
   encodeServerMotion,
   encodeSpawn,
   MESSAGE,
+  positionScale,
+  protocolToScene,
   roomCount,
   type SpawnPacket,
+  type MotionPacket,
   truncateMessage,
 } from './src/protocol.ts'
+import { hairPalette, jewelPalette } from './src/character-data.ts'
+import { outsideBounds, roomBounds } from './src/scene-data.ts'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 type Client = {
   id: number
   lastSeen: number
+  lastMotionAt: number
+  poseSynced: boolean
   room: number
   socket: Bun.ServerWebSocket<Client>
   pose: SpawnPacket
@@ -31,6 +38,9 @@ const rooms = Array.from({ length: roomCount }, () => new Set<Client>())
 const clients = new Map<Bun.ServerWebSocket<Client>, Client>()
 const heartbeatInterval = 10_000
 const clientTimeout = 30_000
+const maxClientSpeed = 8
+const maxClientStep = 1.2
+const maxHairIndex = 32
 let nextId = 1
 
 const server = Bun.serve<Client>({
@@ -48,6 +58,8 @@ const server = Bun.serve<Client>({
       const client: Client = {
         id,
         lastSeen: Date.now(),
+        lastMotionAt: Date.now(),
+        poseSynced: false,
         room: 0,
         socket,
         pose: {
@@ -89,7 +101,10 @@ const server = Bun.serve<Client>({
         if (type === C_MOTION) {
           const motion = decodeClientMotion(view)
 
+          validateMotion(client, motion)
           client.pose = { id: client.id, ...motion }
+          client.lastMotionAt = Date.now()
+          client.poseSynced = true
           broadcast(client.room, encodeServerMotion(client.pose), client)
           return
         }
@@ -251,6 +266,10 @@ function changeRoom(client: Client, room: number) {
     throw new Error(`Invalid room ${room}`)
   }
 
+  if (client.poseSynced && room !== clientPoseRoom(client)) {
+    throw new Error(`Invalid room change ${room}`)
+  }
+
   if (client.room === room) {
     sendRoomState(client)
     return
@@ -270,6 +289,63 @@ function addToRoom(client: Client, room: number) {
 function removeFromRoom(client: Client) {
   rooms[client.room]!.delete(client)
   broadcast(client.room, encodeLeave(client.id))
+}
+
+function validateMotion(client: Client, motion: MotionPacket) {
+  validateMotionValues(motion)
+  validateMotionStep(client, motion)
+}
+
+function validateMotionValues(motion: MotionPacket) {
+  const x = protocolToScene(motion.x)
+  const z = protocolToScene(motion.y)
+
+  if (motion.keys > 15 || (motion.keys & 0b0101) === 0b0101 || (motion.keys & 0b1010) === 0b1010) {
+    throw new Error(`Invalid keys ${motion.keys}`)
+  }
+
+  if (motion.mode < 0 || motion.mode > 3) {
+    throw new Error(`Invalid mode ${motion.mode}`)
+  }
+
+  if (motion.idleClipIndex > 19) {
+    throw new Error(`Invalid idle clip ${motion.idleClipIndex}`)
+  }
+
+  if (motion.style.topStyleIndex >= jewelPalette.length * 2 + 2
+    || motion.style.bottomStyleIndex >= jewelPalette.length * 2
+    || motion.style.hairIndex > maxHairIndex
+    || motion.style.hairColorIndex >= hairPalette.length)
+  {
+    throw new Error('Invalid style')
+  }
+
+  if (x < outsideBounds.left || x > outsideBounds.right || z < outsideBounds.back || z > outsideBounds.front) {
+    throw new Error(`Invalid position ${x}, ${z}`)
+  }
+}
+
+function validateMotionStep(client: Client, motion: MotionPacket) {
+  if (!client.poseSynced) {
+    return
+  }
+
+  const now = Date.now()
+  const delta = Math.max(0, (now - client.lastMotionAt) / 1000)
+  const dx = motion.x - client.pose.x
+  const dy = motion.y - client.pose.y
+  const distance = Math.hypot(dx, dy) / positionScale
+
+  if (distance > maxClientStep + delta * maxClientSpeed) {
+    throw new Error(`Invalid movement ${distance.toFixed(2)} in ${delta.toFixed(2)}s`)
+  }
+}
+
+function clientPoseRoom(client: Client) {
+  const x = protocolToScene(client.pose.x)
+  const z = protocolToScene(client.pose.y)
+
+  return Number(!(x < roomBounds.left || x > roomBounds.right || z < roomBounds.back || z > roomBounds.front))
 }
 
 function sendRoomState(client: Client) {

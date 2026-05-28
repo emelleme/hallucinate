@@ -27,7 +27,7 @@ import {
   type SpawnPacket,
   truncateMessage,
 } from './protocol.ts'
-import { collideRoom, seatAt, walkHeight } from './scene.ts'
+import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
 import type { CharacterMode, CircleBounds, Player, Vec3 } from './types.ts'
 
 export function createMultiplayer(options: {
@@ -75,6 +75,7 @@ export function createMultiplayer(options: {
     next.addEventListener('open', () => {
       clearTimeout(reconnect)
       heartbeat = setInterval(() => send(encodeHeartbeat()), heartbeatInterval)
+      room = Number(!isOutside(options.localPosition))
       sendMotion()
       send(encodeRoomChange(room))
     })

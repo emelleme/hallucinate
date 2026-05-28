@@ -445,7 +445,7 @@ const draw = (stamp: number) => {
 
   updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
   updateRemotePlayers(multiplayer.players.values(), delta, outsideTree)
-  takeRemoteSeats(stamp * 0.001)
+  takeRemoteSeats()
   renderPlayers.length = 0
   renderPlayers.push(...npcPlayers, ...multiplayer.players.values())
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
@@ -600,7 +600,7 @@ function updateIntro() {
   return progress
 }
 
-function takeRemoteSeats(time: number) {
+function takeRemoteSeats() {
   for (const seat of remoteSeats) {
     occupiedSeats.delete(seat)
   }
@@ -612,7 +612,6 @@ function takeRemoteSeats(time: number) {
       const seat = seatAt(player.position, occupiedSeats, 0.46, true)
 
       if (seat) {
-        takeNpcSeat(npcPlayers, seat, time, outsideTree, occupiedSeats)
         occupiedSeats.add(seat.id)
         remoteSeats.add(seat.id)
       }
