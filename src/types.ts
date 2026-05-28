@@ -80,6 +80,7 @@ export type YouTubePlayer = {
   pauseVideo(): void
   playVideo(): void
   seekTo(seconds: number, allowSeekAhead: boolean): void
+  setLoop(loopPlaylists: boolean): void
 }
 
 export type YouTubeConstructor = new(

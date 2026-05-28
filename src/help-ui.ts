@@ -56,7 +56,11 @@ export function createHelpUi() {
       root.dataset.open = 'true'
     },
     toggle() {
-      root.dataset.open = String(root.dataset.open !== 'true')
+      const open = root.dataset.open !== 'true'
+
+      root.dataset.open = String(open)
+
+      return open
     },
   }
 }

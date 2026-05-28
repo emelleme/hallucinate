@@ -6,6 +6,9 @@ export function getDomElements() {
   const chatBubble = document.createElement('div')
   const intro = document.createElement('div')
   const introPanel = document.createElement('div')
+  const introLogo = document.createElement('div')
+  const introLogoTitle = document.createElement('div')
+  const introLogoSubtext = document.createElement('div')
   const introTrack = document.createElement('div')
   const introBar = document.createElement('div')
   const introProgress = document.createElement('div')
@@ -28,14 +31,20 @@ export function getDomElements() {
 
   intro.id = 'intro'
   introPanel.id = 'intro-panel'
+  introLogo.id = 'intro-logo'
+  introLogoTitle.id = 'intro-logo-title'
+  introLogoSubtext.id = 'intro-logo-subtext'
   introTrack.id = 'intro-track'
   introBar.id = 'intro-bar'
   introProgress.id = 'intro-progress'
+  introLogoTitle.textContent = 'hallucinate'
+  introLogoSubtext.textContent = 'Massively Multiplayer Online Rave'
   introProgress.textContent = '0%'
 
   chatForm.append(chatInput)
+  introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
-  introPanel.append(introTrack, introProgress)
+  introPanel.append(introLogo, introTrack, introProgress)
   intro.append(introPanel)
   document.body.prepend(canvas, djVideo, chatForm, chatBubble, intro)
 

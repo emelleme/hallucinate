@@ -6,6 +6,7 @@ import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
 type Wall = typeof djVideoWall
+const endedState = 0
 
 export function videoZones(): VideoZone[] {
   return ['inside', 'outside']
@@ -91,11 +92,17 @@ export function createDjVideoUi(
             events: {
               onReady() {
                 ready[area] = true
+                players[area]!.setLoop(true)
 
-                warmVideo(area, players, pendingStarts, times, trackIndexes)
+                cueVideoFromTime(area, players, pendingStarts, times, trackIndexes)
               },
-              onStateChange() {
-                syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes)
+              onStateChange(event) {
+                if (event.data === endedState) {
+                  loopVideo(area, players, pendingStarts, times)
+                }
+                else {
+                  syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes)
+                }
               },
             },
           })
@@ -183,20 +190,6 @@ export function createDjVideoUi(
   }
 }
 
-function warmVideo(
-  area: VideoZone,
-  players: Partial<Record<VideoZone, YouTubePlayer>>,
-  pendingStarts: Partial<Record<VideoZone, number>>,
-  times: Record<VideoZone, number>,
-  trackIndexes: Record<VideoZone, number>,
-) {
-  cueVideoFromTime(area, players, pendingStarts, times, trackIndexes)
-  players[area]!.playVideo()
-  requestAnimationFrame(() => {
-    players[area]!.pauseVideo()
-  })
-}
-
 function cueVideoFromTime(
   area: VideoZone,
   players: Partial<Record<VideoZone, YouTubePlayer>>,
@@ -231,6 +224,18 @@ function playVideoFromTime(
 ) {
   pendingStarts[area] = times[area]
   players[area]!.seekTo(times[area], true)
+  players[area]!.playVideo()
+}
+
+function loopVideo(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  pendingStarts: Partial<Record<VideoZone, number>>,
+  times: Record<VideoZone, number>,
+) {
+  times[area] = 0
+  pendingStarts[area] = 0
+  players[area]!.seekTo(0, true)
   players[area]!.playVideo()
 }
 

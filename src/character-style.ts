@@ -95,7 +95,7 @@ export function resolvePlayerStyle(style: PlayerStyle): ResolvedPlayerStyle {
   }
 
   const top = topStyleData(topIndex)
-  const bottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
+  const bottomMode: BottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
   const pantsColor = jewelPalette[bottomIndex % jewelPalette.length]!
   const resolved = {
     topMode: top.mode,

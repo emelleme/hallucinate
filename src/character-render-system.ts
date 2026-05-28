@@ -80,6 +80,7 @@ export function createCharacterRenderSystem(options: {
       return 0
     }
 
+    const activeRig = rig
     const data = buildCharacterDrawData({
       cameraPosition: options.camera.position,
       cameraTarget: options.camera.target,
@@ -100,7 +101,7 @@ export function createCharacterRenderSystem(options: {
       height: options.canvas.height,
       light: options.light,
       players: renderPlayers ? options.players : [],
-      rig,
+      rig: activeRig,
       time,
       drawCache,
       vertexWriter,
@@ -115,7 +116,7 @@ export function createCharacterRenderSystem(options: {
 
     if (!renderPlayers) {
       renderPlayers = true
-      detailLoad ??= loadCharacterDetails(options.gl, rig, options.hairController.index)
+          detailLoad ??= loadCharacterDetails(options.gl, activeRig, options.hairController.index)
         .then(details => {
           hairRenderMeshes = details.hairRenderMeshes
           options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
@@ -128,8 +129,8 @@ export function createCharacterRenderSystem(options: {
     }
     else {
       danceLoad ??= (detailLoad ?? Promise.resolve())
-        .then(() => loadCheapCharacterDances(rig))
-        .then(() => loadCharacterDances(rig))
+        .then(() => loadCheapCharacterDances(activeRig))
+        .then(() => loadCharacterDances(activeRig))
         .catch((error: unknown) => {
           console.error(error)
         })

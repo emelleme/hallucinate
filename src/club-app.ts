@@ -89,6 +89,7 @@ const smoke: Vertex[] = []
 const vertexSize = 11
 let frameId = 0
 const saveKey = 'club-state'
+const helpSeenKey = 'club-help-seen'
 const bloomScale = 0.5
 const keys = new Set<string>()
 const occupiedSeats = new Set<string>()
@@ -101,6 +102,7 @@ const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
 const djVideoUi = createDjVideoUi(djVideo, characterPosition)
 const helpUi = createHelpUi()
+const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)
 function cycleIdle(direction: number) {
   idleClipIndex = (idleClipIndex + direction + idleClipNames.length) % idleClipNames.length
@@ -362,7 +364,13 @@ bindKeyboardInput({
   activeInput: chatInput,
   keys,
   openChatInput: () => chatUi.open(),
-  toggleHelp: () => helpUi.toggle(),
+  toggleHelp: () => {
+    const open = helpUi.toggle()
+
+    if (!open) {
+      localStorage.setItem(helpSeenKey, 'true')
+    }
+  },
   cycleHair: direction => {
     hairController.cycleHair(direction)
     multiplayer.sendMotion()
@@ -581,7 +589,10 @@ function updateIntro() {
   if (ready && !introHidden) {
     introHidden = true
     intro.dataset.hidden = 'true'
-    helpUi.hide()
+
+    if (helpSeen) {
+      helpUi.hide()
+    }
   }
 
   return progress

@@ -552,7 +552,7 @@ function seatDestination(
   }
 }
 
-function treeDestination(seed: number, step: number, outsideTree: CircleBounds) {
+function treeDestination(seed: number, step: number, outsideTree: CircleBounds): PlayerDestination {
   const angle = seededRange(seed, step + 106, 0, Math.PI * 2)
   const distance = seededRange(seed, step + 107, outsideTree.radius + treeDestinationRadius[0],
     outsideTree.radius + treeDestinationRadius[1])

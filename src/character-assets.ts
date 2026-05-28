@@ -32,7 +32,7 @@ const danceClipFiles = [
   { name: 'dance19.fbx', size: 1234000 },
 ]
 const cheapDanceClipCount = 5
-const danceClipFilesBySize = danceClipFiles.toSorted((a, b) => a.size - b.size)
+const danceClipFilesBySize = [...danceClipFiles].sort((a, b) => a.size - b.size)
 const cheapDanceClipFiles = danceClipFilesBySize.slice(0, cheapDanceClipCount)
 const remainingDanceClipFiles = danceClipFilesBySize.slice(cheapDanceClipCount)
 

@@ -8,6 +8,7 @@
     "dev:web": "vite",
     "dev:app": "bun --watch server.ts",
     "build": "tsc && vite build",
+    "start": "bun server.ts",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -14,6 +14,7 @@ import {
   type SpawnPacket,
   truncateMessage,
 } from './src/protocol.ts'
+import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 type Client = {
   id: number
@@ -23,18 +24,19 @@ type Client = {
 }
 
 const port = Number(process.env.PORT ?? 3001)
+const dist = join(import.meta.dir, 'dist')
 const rooms = Array.from({ length: roomCount }, () => new Set<Client>())
 const clients = new Map<Bun.ServerWebSocket<Client>, Client>()
 let nextId = 1
 
 const server = Bun.serve<Client>({
   port,
-  fetch(request, server) {
+  async fetch(request, server) {
     if (server.upgrade(request)) {
       return
     }
 
-    return new Response('club multiplayer')
+    return serveStatic(request)
   },
   websocket: {
     open(socket) {
@@ -102,6 +104,117 @@ const server = Bun.serve<Client>({
 })
 
 console.log(`club multiplayer: ws://localhost:${server.port}`)
+console.log(`club static: http://localhost:${server.port}`)
+
+async function serveStatic(request: Request) {
+  const method = request.method
+
+  if (method !== 'GET' && method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: {
+        allow: 'GET, HEAD',
+      },
+    })
+  }
+
+  const url = new URL(request.url)
+  const path = decodeURIComponent(url.pathname)
+  const assetPath = path === '/' ? join(dist, 'index.html') : resolve(dist, `.${path}`)
+  const assetRelativePath = relative(dist, assetPath)
+
+  if (assetRelativePath.startsWith('..') || isAbsolute(assetRelativePath)) {
+    throw new Error(`Invalid static path ${url.pathname}`)
+  }
+
+  const response = await fileResponse(assetPath, request)
+
+  if (response) {
+    return response
+  }
+
+  if (extname(path)) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  return await fileResponse(join(dist, 'index.html'), request) ?? new Response('Not Found', { status: 404 })
+}
+
+async function fileResponse(path: string, request: Request) {
+  const file = Bun.file(path)
+
+  if (!await file.exists()) {
+    return
+  }
+
+  const headers = cacheHeaders(path)
+  const modified = new Date(file.lastModified)
+  const tag = `"${file.size.toString(16)}-${file.lastModified.toString(16)}"`
+
+  headers.set('content-type', file.type || contentType(path))
+  headers.set('content-length', String(file.size))
+  headers.set('etag', tag)
+  headers.set('last-modified', modified.toUTCString())
+
+  if (request.headers.get('if-none-match') === tag) {
+    headers.delete('content-length')
+    return new Response(null, { status: 304, headers })
+  }
+
+  if (request.method === 'HEAD') {
+    return new Response(null, { headers })
+  }
+
+  return new Response(file, { headers })
+}
+
+function cacheHeaders(path: string) {
+  const headers = new Headers()
+
+  headers.set('x-content-type-options', 'nosniff')
+
+  if (path.endsWith('index.html')) {
+    headers.set('cache-control', 'no-cache')
+    return headers
+  }
+
+  if (/[/\\]assets[/\\].+-[A-Za-z0-9_-]{8,}\./.test(path)) {
+    headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return headers
+  }
+
+  headers.set('cache-control', 'public, max-age=3600')
+
+  return headers
+}
+
+function contentType(path: string) {
+  const type = contentTypes.get(extname(path))
+
+  if (!type) {
+    throw new Error(`Missing content type for ${path}`)
+  }
+
+  return type
+}
+
+const contentTypes = new Map([
+  ['.avif', 'image/avif'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.fbx', 'application/octet-stream'],
+  ['.gif', 'image/gif'],
+  ['.html', 'text/html; charset=utf-8'],
+  ['.ico', 'image/x-icon'],
+  ['.jpeg', 'image/jpeg'],
+  ['.jpg', 'image/jpeg'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8'],
+  ['.map', 'application/json; charset=utf-8'],
+  ['.png', 'image/png'],
+  ['.svg', 'image/svg+xml'],
+  ['.wasm', 'application/wasm'],
+  ['.webp', 'image/webp'],
+])
 
 function changeRoom(client: Client, room: number) {
   if (room < 0 || room >= roomCount) {
