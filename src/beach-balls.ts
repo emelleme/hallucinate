@@ -2,7 +2,7 @@ import { characterFloor } from './character-data.ts'
 import { pack } from './geometry.ts'
 import { clamp } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
-import { collideRoom, walkHeight } from './scene.ts'
+import { collideSphereRoom, walkHeight } from './scene.ts'
 import type { BeachBall, CircleBounds, Vec3, Vertex } from './types.ts'
 
 export const beachBallRadius = 0.52
@@ -13,6 +13,7 @@ const gravity = 5.6
 const pushSpeed = 3.2
 const liftSpeed = 5.4
 const playerRadius = 0.42
+const playerHeight = 1.7
 const glow = 0.55
 const palette: Vec3[] = [
   [1, 0.02, 0.65],
@@ -47,6 +48,12 @@ export function hitBeachBalls(balls: BeachBall[], player: Vec3) {
   const hits: number[] = []
 
   for (const ball of balls) {
+    if (ball.position[1] - beachBallRadius > player[1] + playerHeight
+      || ball.position[1] + beachBallRadius < player[1])
+    {
+      continue
+    }
+
     const dx = ball.position[0] - player[0]
     const dz = ball.position[2] - player[2]
     const min = beachBallRadius + playerRadius
@@ -80,15 +87,10 @@ function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
   const position = ball.position
   const previousX = position[0]
   const previousZ = position[2]
-  const center: Vec3 = [position[0], characterFloor, position[2]]
 
   position[0] = clamp(position[0], outsideBounds.left + beachBallRadius, outsideBounds.right - beachBallRadius)
   position[2] = clamp(position[2], outsideBounds.back + beachBallRadius, outsideBounds.front - beachBallRadius)
-  center[0] = position[0]
-  center[2] = position[2]
-  collideRoom(center, outsideTree, true)
-  position[0] = center[0]
-  position[2] = center[2]
+  collideSphereRoom(position, beachBallRadius, outsideTree)
 
   if (position[0] !== previousX) {
     ball.velocity[0] *= -bounce

@@ -159,6 +159,45 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
   }
 }
 
+export function collideSphereRoom(position: Vec3, radius: number, outsideTree: CircleBounds) {
+  position[0] = clamp(position[0], outsideBounds.left + radius, outsideBounds.right - radius)
+  position[2] = clamp(position[2], outsideBounds.back + radius, outsideBounds.front - radius)
+  collideBuildingWalls(position, radius)
+
+  if (sphereOverlapsHeight(position, radius, characterFloor + tent.wallHeight)) {
+    collideTentWalls(position, radius)
+  }
+  if (sphereOverlapsHeight(position, radius, characterFloor + tent.height)) {
+    collideCircle(position, tentPole, radius)
+  }
+  if (sphereOverlapsHeight(position, radius, characterFloor + 5.5)) {
+    collideCircle(position, outsideTree, radius)
+  }
+  if (sphereOverlapsHeight(position, radius, characterFloor + 1.75)) {
+    collideCircle(position, outsideBuddha, radius)
+  }
+
+  collideSpherePaddedBounds(position, radius, outsideDjBoothCollision, djBoothTop)
+  collideSpherePaddedBounds(position, radius, tentDjBoothCollision, djBoothTop)
+  collideSpherePaddedBounds(position, radius, outsideHutBarCollision, barTop)
+
+  for (const speaker of outsideDjSpeakerCollisions) {
+    collideSpherePaddedBounds(position, radius, speaker, speakerTop)
+  }
+  for (const speaker of tentDjSpeakerCollisions) {
+    collideSpherePaddedBounds(position, radius, speaker, speakerTop)
+  }
+  for (const couch of outsideCouchCollisions) {
+    collideSpherePaddedBounds(position, radius, couch, characterFloor + 0.78)
+  }
+  for (const stool of outsideHutBarStoolCollisions) {
+    collideSpherePaddedBounds(position, radius, stool, characterFloor + outsideHutDeckHeight + 0.72)
+  }
+  for (const post of outsideHutPostCollisions) {
+    collideSpherePaddedBounds(position, radius, post, characterFloor + outsideHutDeckHeight + 2.45)
+  }
+}
+
 export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
   const point: Vec3 = [x, characterFloor, z]
 
@@ -567,11 +606,26 @@ function collidePaddedBounds(position: Vec3, bounds: PaddedBounds) {
   }
 }
 
-function collideCircle(position: Vec3, bounds: CircleBounds) {
+function collideSpherePaddedBounds(position: Vec3, radius: number, bounds: PaddedBounds, top: number) {
+  if (sphereOverlapsHeight(position, radius, top)) {
+    collidePaddedBounds(position, {
+      back: bounds.back - radius,
+      front: bounds.front + radius,
+      left: bounds.left - radius,
+      right: bounds.right + radius,
+    })
+  }
+}
+
+function sphereOverlapsHeight(position: Vec3, radius: number, top: number, bottom = characterFloor) {
+  return position[1] - radius < top && position[1] + radius > bottom
+}
+
+function collideCircle(position: Vec3, bounds: CircleBounds, padding = 0.28) {
   const x = position[0] - bounds.x
   const z = position[2] - bounds.z
   const distance = Math.sqrt(x * x + z * z)
-  const radius = bounds.radius + 0.28
+  const radius = bounds.radius + padding
 
   if (distance < radius) {
     position[0] = bounds.x + x / distance * radius
