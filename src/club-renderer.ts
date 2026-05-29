@@ -46,6 +46,11 @@ type CharacterBoxUniforms = {
   viewProjection: WebGLUniformLocation
 }
 
+type CharacterHairUniforms = {
+  renderZone: WebGLUniformLocation
+  viewProjection: WebGLUniformLocation
+}
+
 const mainCameraMatrix = createCameraMatrix()
 const bloomCameraMatrix = createCameraMatrix()
 
@@ -69,7 +74,7 @@ export function renderClubFrame(options: {
     count: number
     hairProgram: WebGLProgram
     hairRenderMeshes: HairRenderMesh[]
-    hairUniforms: CharacterBoxUniforms
+    hairUniforms: CharacterHairUniforms
   }
   characterPosition: Vec3
   gl: WebGL2RenderingContext

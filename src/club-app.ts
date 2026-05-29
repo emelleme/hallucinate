@@ -508,8 +508,8 @@ multiplayer = createMultiplayer({
 })
 clubGlobal.clubMultiplayerClose = () => multiplayer.close()
 
-const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants',
-  (direction: number) => void> = {
+const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants'
+  | 'cycleAccessory', (direction: number) => void> = {
     cycleHair: direction => {
       hairController.cycleHair(direction)
       multiplayer.sendMotion()
