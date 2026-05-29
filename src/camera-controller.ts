@@ -20,35 +20,71 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let returning = false
   let wasMoving = false
 
-  canvas.style.touchAction = 'none'
-  canvas.addEventListener('pointerdown', event => {
+  function startDrag(x: number, y: number) {
     dragging = true
     returning = false
-    dragX = event.clientX
-    dragY = event.clientY
+    dragX = x
+    dragY = y
+  }
+
+  function moveDrag(x: number, y: number) {
+    turn -= (x - dragX) * 0.005
+    pitch = clamp(pitch + (y - dragY) * 0.018, -2.4, 4.2)
+    holdingManualCamera = true
+    manualCameraHoldUntil = performance.now() + manualCameraHoldTime
+    dragX = x
+    dragY = y
+  }
+
+  canvas.style.touchAction = 'none'
+  canvas.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse') {
+      return
+    }
+
+    event.preventDefault()
+    startDrag(event.clientX, event.clientY)
     canvas.setPointerCapture(event.pointerId)
   })
 
   canvas.addEventListener('pointermove', event => {
     if (dragging) {
-      turn -= (event.clientX - dragX) * 0.005
-      pitch = clamp(pitch + (event.clientY - dragY) * 0.018, -2.4, 4.2)
-      holdingManualCamera = true
-      manualCameraHoldUntil = performance.now() + manualCameraHoldTime
-      dragX = event.clientX
-      dragY = event.clientY
+      event.preventDefault()
+      moveDrag(event.clientX, event.clientY)
     }
   })
 
   canvas.addEventListener('pointerup', event => {
     dragging = false
-    canvas.releasePointerCapture(event.pointerId)
+    releasePointerCapture(canvas, event.pointerId)
   })
 
   canvas.addEventListener('pointercancel', event => {
     dragging = false
-    canvas.releasePointerCapture(event.pointerId)
+    releasePointerCapture(canvas, event.pointerId)
   })
+
+  document.addEventListener('mousedown', event => {
+    if (event.button !== 0 || interactiveTarget(event.target)) {
+      return
+    }
+
+    event.preventDefault()
+    startDrag(event.clientX, event.clientY)
+  }, { capture: true })
+
+  document.addEventListener('mousemove', event => {
+    if (!dragging) {
+      return
+    }
+
+    event.preventDefault()
+    moveDrag(event.clientX, event.clientY)
+  }, { capture: true })
+
+  document.addEventListener('mouseup', () => {
+    dragging = false
+  }, { capture: true })
 
   return {
     position,
@@ -166,6 +202,21 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       position[1] = Math.max(position[1], walkHeight(position[0], characterPosition[1], position[2]) + 0.35)
     },
   }
+}
+
+function releasePointerCapture(canvas: HTMLCanvasElement, pointerId: number) {
+  if (canvas.hasPointerCapture(pointerId)) {
+    canvas.releasePointerCapture(pointerId)
+  }
+}
+
+function interactiveTarget(target: EventTarget | null) {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLButtonElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target instanceof HTMLDialogElement
+    || target instanceof HTMLAnchorElement
 }
 
 function clampCameraToZone(position: Vec3, zone: ReturnType<typeof roomAt>) {
