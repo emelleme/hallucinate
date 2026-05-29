@@ -484,7 +484,13 @@ multiplayer = createMultiplayer({
   },
   onVideoState: (entries, preserveSameTrack) => djVideoUi.applyStates(entries, preserveSameTrack),
   onBeachBalls: balls => {
+    const stamp = performance.now()
+
     for (const ball of balls) {
+      if ((beachBallAuthorityUntil.get(ball.id) ?? 0) > stamp) {
+        continue
+      }
+
       const target = beachBalls[ball.id]!
 
       target.position[0] = ball.position[0]
@@ -601,7 +607,7 @@ const draw = (stamp: number) => {
     beachBallAuthorityUntil.set(id, stamp + beachBallAuthorityDuration)
   }
   if (hits.length > 0) {
-    const activeBalls = beachBalls.filter(ball => (beachBallAuthorityUntil.get(ball.id) ?? 0) > stamp)
+    const activeBalls = beachBalls.filter(ball => hits.includes(ball.id))
 
     if (activeBalls.length > 0) {
       multiplayer.sendBeachBalls(activeBalls)

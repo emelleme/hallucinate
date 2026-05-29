@@ -63,6 +63,7 @@ const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 let videoState = initialVideoState()
+let videoStateSynced = false
 let beachBalls = createBeachBalls()
 const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
@@ -137,7 +138,9 @@ const server = Bun.serve<SocketData>({
       clients.set(socket, client)
       addToRoom(client, 0)
       sendRoomState(client)
-      sendVideoState(client)
+      if (videoStateSynced) {
+        sendVideoState(client)
+      }
       sendBeachBalls(client)
       broadcastOnline()
       broadcast(client.room, encodeSpawn(client.pose), client)
@@ -187,6 +190,18 @@ const server = Bun.serve<SocketData>({
         if (type === VIDEO_STATE) {
           const nextVideoState = validateVideoState(decodeVideoState(view).entries)
 
+          if (!client.poseSynced) {
+            return
+          }
+
+          if (!videoStateSynced) {
+            videoState = nextVideoState
+            videoStateSynced = true
+            client.videoState = nextVideoState
+            broadcastVideoState()
+            return
+          }
+
           if (!videoIdsMatch(nextVideoState, videoState)) {
             sendVideoState(client)
             return
@@ -198,8 +213,10 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === BEACH_BALLS) {
-          if (applyBeachBalls(client, validateBeachBalls(decodeBeachBalls(view).balls))) {
-            broadcastBeachBalls()
+          const appliedBalls = applyBeachBalls(client, validateBeachBalls(decodeBeachBalls(view).balls))
+
+          if (appliedBalls.length > 0) {
+            broadcastBeachBalls(appliedBalls)
           }
 
           return
@@ -689,6 +706,14 @@ function sendVideoState(client: Client) {
   client.socket.send(encodeVideoState({ entries: videoState }))
 }
 
+function broadcastVideoState() {
+  const data = encodeVideoState({ entries: videoState })
+
+  for (const client of clients.values()) {
+    client.socket.send(data)
+  }
+}
+
 function sendBeachBalls(client: Client) {
   client.socket.send(encodeBeachBalls({ balls: beachBalls }))
 }
@@ -777,7 +802,7 @@ function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
 
 function applyBeachBalls(client: Client, balls: ReturnType<typeof createBeachBalls>) {
   const now = Date.now()
-  let applied = false
+  const applied: ReturnType<typeof createBeachBalls> = []
 
   for (const ball of balls) {
     const authority = beachBallAuthorities[ball.id]!
@@ -789,14 +814,14 @@ function applyBeachBalls(client: Client, balls: ReturnType<typeof createBeachBal
     authority.client = client.id
     authority.until = now + beachBallAuthorityDuration
     beachBalls[ball.id] = ball
-    applied = true
+    applied.push(ball)
   }
 
   return applied
 }
 
-function broadcastBeachBalls() {
-  const data = encodeBeachBalls({ balls: beachBalls })
+function broadcastBeachBalls(balls = beachBalls) {
+  const data = encodeBeachBalls({ balls })
 
   for (const client of clients.values()) {
     client.socket.send(data)
