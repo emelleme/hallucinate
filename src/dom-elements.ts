@@ -4,6 +4,7 @@ export function getDomElements() {
   const chatForm = document.createElement('form')
   const chatInput = document.createElement('input')
   const chatBubble = document.createElement('div')
+  const onlineIndicator = document.createElement('div')
   const intro = document.createElement('div')
   const introPanel = document.createElement('div')
   const introLogo = document.createElement('div')
@@ -30,6 +31,9 @@ export function getDomElements() {
   chatBubble.id = 'chat-bubble'
   chatBubble.className = 'absolute left-0 top-0 z-20'
 
+  onlineIndicator.id = 'online-indicator'
+  onlineIndicator.textContent = '0 online'
+
   intro.id = 'intro'
   introPanel.id = 'intro-panel'
   introLogo.id = 'intro-logo'
@@ -50,7 +54,7 @@ export function getDomElements() {
   introTrack.append(introBar)
   introPanel.append(introLogo, introStart, introTrack, introProgress)
   intro.append(introPanel)
-  document.body.prepend(canvas, djVideo, chatForm, chatBubble, intro)
+  document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, intro)
 
   return {
     canvas,
@@ -58,6 +62,7 @@ export function getDomElements() {
     chatForm,
     chatInput,
     chatBubble,
+    onlineIndicator,
     intro,
     introBar,
     introProgress,

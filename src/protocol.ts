@@ -9,6 +9,7 @@ export const C_ROOM_CHANGE = 6
 export const S_SPAWN = 7
 export const MESSAGE = 8
 export const C_HEARTBEAT = 9
+export const S_ONLINE = 10
 
 export const roomCount = 3
 export const messageMaxLength = 120
@@ -126,6 +127,22 @@ export function encodeHeartbeat() {
   view.setUint8(0, C_HEARTBEAT)
 
   return data
+}
+
+export function encodeOnline(count: number) {
+  const data = new ArrayBuffer(3)
+  const view = new DataView(data)
+
+  view.setUint8(0, S_ONLINE)
+  view.setUint16(1, count)
+
+  return data
+}
+
+export function decodeOnline(view: DataView) {
+  expectSize(view, 3)
+
+  return view.getUint16(1)
 }
 
 export function encodeSpawn(packet: SpawnPacket) {

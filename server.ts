@@ -6,6 +6,7 @@ import {
   decodeClientMotion,
   decodeRoomChange,
   encodeLeave,
+  encodeOnline,
   encodeRoomState,
   encodeServerMessage,
   encodeServerMotion,
@@ -123,6 +124,7 @@ const server = Bun.serve<SocketData>({
       clients.set(socket, client)
       addToRoom(client, 0)
       sendRoomState(client)
+      broadcastOnline()
       broadcast(client.room, encodeSpawn(client.pose), client)
     },
     message(socket, message) {
@@ -172,6 +174,7 @@ const server = Bun.serve<SocketData>({
       catch (e) {
         clients.delete(socket)
         removeFromRoom(client)
+        broadcastOnline()
         socket.close(1012, 'protocol')
       }
     },
@@ -184,6 +187,7 @@ const server = Bun.serve<SocketData>({
 
       clients.delete(socket)
       removeFromRoom(client)
+      broadcastOnline()
     },
   },
 })
@@ -656,12 +660,21 @@ function syncRooms() {
     if (now - client.lastSeen > clientTimeout) {
       clients.delete(client.socket)
       removeFromRoom(client)
+      broadcastOnline()
       client.socket.close(1001, 'timeout')
     }
   }
 
   for (const client of clients.values()) {
     sendRoomState(client)
+  }
+}
+
+function broadcastOnline() {
+  const data = encodeOnline(clients.size)
+
+  for (const client of clients.values()) {
+    client.socket.send(data)
   }
 }
 

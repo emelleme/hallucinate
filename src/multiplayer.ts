@@ -5,6 +5,7 @@ import {
   angleToProtocol,
   decodeKeys,
   decodeLeave,
+  decodeOnline,
   decodeRoomState,
   decodeServerMessage,
   decodeServerMotion,
@@ -22,6 +23,7 @@ import {
   protocolVersion,
   S_LEAVE,
   S_MOTION,
+  S_ONLINE,
   S_ROOM_STATE,
   S_SPAWN,
   sceneToProtocol,
@@ -49,6 +51,7 @@ export function createMultiplayer(options: {
   onRoomState: (room: number) => void
   onMessage: (id: number, text: string) => void
   onLeave: (id: number) => void
+  onOnlineCount: (count: number) => void
 }) {
   const players = new Map<number, Player>()
   let url: string
@@ -156,6 +159,11 @@ export function createMultiplayer(options: {
 
       players.delete(id)
       options.onLeave(id)
+      return
+    }
+
+    if (type === S_ONLINE) {
+      options.onOnlineCount(decodeOnline(view))
       return
     }
 

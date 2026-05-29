@@ -75,7 +75,18 @@ if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
 }
 
-const { canvas, djVideo, chatForm, chatInput, chatBubble, intro, introBar, introProgress, introStart } = getDomElements()
+const {
+  canvas,
+  djVideo,
+  chatForm,
+  chatInput,
+  chatBubble,
+  onlineIndicator,
+  intro,
+  introBar,
+  introProgress,
+  introStart,
+} = getDomElements()
 
 const gl = canvas.getContext('webgl2', {
   antialias: false,
@@ -108,6 +119,10 @@ const djVideoUi = createDjVideoUi(djVideo, characterPosition)
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)
+function syncOnlineIndicator() {
+  onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+}
+syncOnlineIndicator()
 function cycleIdle(direction: number) {
   idleClipIndex = (idleClipIndex + direction + idleClipNames.length) % idleClipNames.length
   // console.log(`idle animation: ${idleClipNames[idleClipIndex]}`)
@@ -410,6 +425,9 @@ multiplayer = createMultiplayer({
     chatUi.show(id, text, position, performance.now())
   },
   onLeave: id => chatUi.remove(id),
+  onOnlineCount: count => {
+    onlineIndicator.textContent = `${count} online`
+  },
 })
 
 const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants',
@@ -448,6 +466,7 @@ bindKeyboardInput({
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
     const open = helpUi.toggle()
+    syncOnlineIndicator()
 
     if (!open) {
       localStorage.setItem(helpSeenKey, 'true')
@@ -673,6 +692,7 @@ function updateIntro() {
 
     if (helpSeen) {
       helpUi.hide()
+      syncOnlineIndicator()
     }
   }
 
