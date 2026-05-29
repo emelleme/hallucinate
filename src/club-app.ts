@@ -563,10 +563,12 @@ multiplayer = createMultiplayer({
 
     const position = id === multiplayer.selfId
       ? characterPosition
-      : multiplayer.players.get(id)?.position ?? characterPosition
+      : multiplayer.players.get(id)?.position
 
     addChatLogMessage(id, text)
-    chatUi.show(id, text, position, performance.now())
+    if (position) {
+      chatUi.show(id, text, position, performance.now())
+    }
   },
   onDeleteMessages: id => {
     deleteChatLogMessages(id)
