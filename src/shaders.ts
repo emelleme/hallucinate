@@ -20,6 +20,7 @@ out vec3 shade;
 out float light;
 out vec2 patternUv;
 out float hazeAmount;
+out float flashGate;
 out vec3 worldPosition;
 flat out float strobeId;
 
@@ -29,6 +30,7 @@ void main() {
   light = glow;
   patternUv = pattern;
   hazeAmount = haze;
+  flashGate = step(0.5, haze);
   worldPosition = position;
   strobeId = strobe;
 }
@@ -258,6 +260,7 @@ in vec3 shade;
 in float light;
 in vec2 patternUv;
 in float hazeAmount;
+in float flashGate;
 in vec3 worldPosition;
 flat in float strobeId;
 
@@ -296,7 +299,7 @@ void main() {
   float redRandom = fract(sin(strobeId * 31.7 + floor(time / 90.0) * 13.11) * 43758.5453);
   float redControlled = red * step(0.5, strobeId);
   float redGate = step(0.28, redRandom);
-  float beam = step(0.5, hazeAmount);
+  float beam = flashGate;
   float beamGate = step(0.56, random);
   float strobe = mix(1.0, step(0.82, random), white) * mix(1.0, redGate, redControlled) * mix(1.0, beamGate, beam);
   float density = 1.0;
@@ -391,6 +394,7 @@ out vec3 shade;
 out float light;
 out vec2 patternUv;
 out float hazeAmount;
+out float flashGate;
 out vec3 worldPosition;
 flat out float strobeId;
 
@@ -407,6 +411,7 @@ void main() {
   light = glow;
   patternUv = paint.xy;
   hazeAmount = paint.w;
+  flashGate = max(step(0.5, paint.w), pool * step(0.6, instanceMeta.y));
   worldPosition = position;
   strobeId = instanceMeta.x;
 }
