@@ -85,11 +85,11 @@ export function createDjVideoUi(
     },
     syncCurrentTime() {
       syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds)
+      pauseOtherVideos(zone, players, ready)
     },
     states() {
-      for (const area of videoZones()) {
-        syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes, trackIds)
-      }
+      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds)
+      pauseOtherVideos(zone, players, ready)
 
       return videoZones().map(area => ({
         zone: area,
@@ -110,11 +110,16 @@ export function createDjVideoUi(
         pendingStarts[state.zone] = state.time
 
         if (ready[state.zone]) {
-          if (sameTrack) {
+          if (sameTrack && state.zone === zone) {
             players[state.zone]!.seekTo(state.time, true)
+          }
+          else if (sameTrack) {
+            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            players[state.zone]!.pauseVideo()
           }
           else if (state.zone !== zone) {
             cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            players[state.zone]!.pauseVideo()
           }
           else {
             loadVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
@@ -140,17 +145,22 @@ export function createDjVideoUi(
                 ready[area] = true
                 players[area]!.setLoop(true)
 
-                cueVideoFromTime(area, players, pendingStarts, times, trackIndexes, trackIds)
+                if (area === zone) {
+                  cueVideoFromTime(area, players, pendingStarts, times, trackIndexes, trackIds)
+                }
+                else {
+                  players[area]!.pauseVideo()
+                }
               },
               onStateChange(event) {
+                if (area !== zone) {
+                  players[area]!.pauseVideo()
+                  return
+                }
+
                 if (event.data === endedState) {
-                  if (area === zone) {
-                    loopVideo(area, players, pendingStarts, times)
-                    pauseOtherVideos(area, players, ready)
-                  }
-                  else {
-                    players[area]!.pauseVideo()
-                  }
+                  loopVideo(area, players, pendingStarts, times)
+                  pauseOtherVideos(area, players, ready)
                 }
                 else {
                   syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes, trackIds)
@@ -183,7 +193,7 @@ export function createDjVideoUi(
         zone = nextZone
 
         if (ready[zone]) {
-          playVideoFromTime(zone, players, pendingStarts, times)
+          loadVideoFromTime(zone, players, pendingStarts, times, trackIndexes, trackIds)
           pauseOtherVideos(zone, players, ready)
         }
       }
