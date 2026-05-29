@@ -103,7 +103,7 @@ const server = Bun.serve<SocketData>({
     if (server.upgrade(request, {
       data: {
         ip,
-        protocolOk: url.searchParams.get('protocol') === String(protocolVersion),
+        protocolOk: clientProtocolOk(url.searchParams.get('protocol')),
       },
     })) {
       return
@@ -267,6 +267,12 @@ const server = Bun.serve<SocketData>({
     },
   },
 })
+
+function clientProtocolOk(protocol: string | null) {
+  const version = protocol === '-1' ? String(protocolVersion) : protocol
+
+  return version === String(protocolVersion)
+}
 
 console.log(`club multiplayer: ws://localhost:${server.port}`)
 console.log(`club static: http://localhost:${server.port}`)
