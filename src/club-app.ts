@@ -791,7 +791,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const npcPlayers = createPlayers(200, outsideTree, occupiedSeats)
+const npcPlayers = createPlayers(250, outsideTree, occupiedSeats)
 const renderPlayers: Player[] = [...npcPlayers]
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
