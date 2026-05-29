@@ -5,6 +5,7 @@ import {
   angleToProtocol,
   decodeKeys,
   decodeLeave,
+  decodeBeachBalls,
   decodeOnline,
   decodeRoomState,
   decodeServerMessage,
@@ -14,6 +15,7 @@ import {
   encodeClientMessage,
   encodeClientMotion,
   encodeHeartbeat,
+  encodeBeachBalls,
   encodeKeys,
   encodeRoomChange,
   encodeVideoState,
@@ -32,10 +34,11 @@ import {
   type SpawnPacket,
   type VideoStateEntry,
   truncateMessage,
+  BEACH_BALLS,
   VIDEO_STATE,
 } from './protocol.ts'
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
-import type { CharacterMode, CircleBounds, Player, Vec3 } from './types.ts'
+import type { BeachBall, CharacterMode, CircleBounds, Player, Vec3 } from './types.ts'
 
 export function createMultiplayer(options: {
   localPosition: Vec3
@@ -57,6 +60,7 @@ export function createMultiplayer(options: {
   onLeave: (id: number) => void
   onOnlineCount: (count: number) => void
   onVideoState: (entries: VideoStateEntry[], preserveSameTrack: boolean) => void
+  onBeachBalls: (balls: BeachBall[]) => void
   videoState: () => VideoStateEntry[]
 }) {
   const players = new Map<number, Player>()
@@ -192,6 +196,11 @@ export function createMultiplayer(options: {
       return
     }
 
+    if (type === BEACH_BALLS) {
+      options.onBeachBalls(decodeBeachBalls(view).balls)
+      return
+    }
+
     if (type === MESSAGE) {
       const message = decodeServerMessage(view)
 
@@ -270,6 +279,9 @@ export function createMultiplayer(options: {
       return next
     },
     sendMotion,
+    sendBeachBalls(balls: BeachBall[]) {
+      send(encodeBeachBalls({ balls }))
+    },
     sendMotionIfKeysChanged() {
       const mode = options.localMode()
       const protocolMode = modeToProtocol(mode)

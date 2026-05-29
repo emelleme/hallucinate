@@ -1,4 +1,4 @@
-import type { Vec3 } from './types.ts'
+import type { BeachBall, Vec3 } from './types.ts'
 import type { CharacterMode, PlayerStyle, VideoZone } from './types.ts'
 
 export const C_MOTION = 1
@@ -11,11 +11,12 @@ export const MESSAGE = 8
 export const C_HEARTBEAT = 9
 export const S_ONLINE = 10
 export const VIDEO_STATE = 11
+export const BEACH_BALLS = 12
 
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 4
+export const protocolVersion = 5
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -56,6 +57,10 @@ export type VideoStateEntry = {
 
 export type VideoStatePacket = {
   entries: VideoStateEntry[]
+}
+
+export type BeachBallPacket = {
+  balls: BeachBall[]
 }
 
 const protocolModes: CharacterMode[] = ['stand', 'run', 'manSitting', 'womanSitting', 'jump']
@@ -203,6 +208,55 @@ export function decodeVideoState(view: DataView): VideoStatePacket {
   expectSize(view, offset)
 
   return { entries }
+}
+
+export function encodeBeachBalls(packet: BeachBallPacket) {
+  const data = new ArrayBuffer(2 + packet.balls.length * 13)
+  const view = new DataView(data)
+  let offset = 2
+
+  view.setUint8(0, BEACH_BALLS)
+  view.setUint8(1, packet.balls.length)
+
+  for (const ball of packet.balls) {
+    view.setUint8(offset, ball.id)
+    view.setInt16(offset + 1, sceneToProtocol(ball.position[0]))
+    view.setInt16(offset + 3, sceneToProtocol(ball.position[1]))
+    view.setInt16(offset + 5, sceneToProtocol(ball.position[2]))
+    view.setInt16(offset + 7, sceneToProtocol(ball.velocity[0]))
+    view.setInt16(offset + 9, sceneToProtocol(ball.velocity[1]))
+    view.setInt16(offset + 11, sceneToProtocol(ball.velocity[2]))
+    offset += 13
+  }
+
+  return data
+}
+
+export function decodeBeachBalls(view: DataView): BeachBallPacket {
+  expectAtLeastSize(view, 2)
+  const count = view.getUint8(1)
+  expectSize(view, 2 + count * 13)
+  const balls: BeachBall[] = []
+  let offset = 2
+
+  for (let i = 0; i < count; i++) {
+    balls.push({
+      id: view.getUint8(offset),
+      position: [
+        protocolToScene(view.getInt16(offset + 1)),
+        protocolToScene(view.getInt16(offset + 3)),
+        protocolToScene(view.getInt16(offset + 5)),
+      ],
+      velocity: [
+        protocolToScene(view.getInt16(offset + 7)),
+        protocolToScene(view.getInt16(offset + 9)),
+        protocolToScene(view.getInt16(offset + 11)),
+      ],
+    })
+    offset += 13
+  }
+
+  return { balls }
 }
 
 export function encodeSpawn(packet: SpawnPacket) {

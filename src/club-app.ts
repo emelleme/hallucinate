@@ -1,4 +1,5 @@
 import { createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
+import { addBeachBallGeometry, createBeachBalls, hitBeachBalls, updateBeachBalls } from './beach-balls.ts'
 import { createCameraController } from './camera-controller.ts'
 import { idleClipNames } from './character-assets.ts'
 import { characterFloor } from './character-data.ts'
@@ -288,6 +289,8 @@ const characterBoxGeometryBuffer = gl.createBuffer()
 const characterBoxInstanceBuffer = gl.createBuffer()
 const postArray = gl.createVertexArray()
 const postBuffer = gl.createBuffer()
+const beachBallArray = gl.createVertexArray()
+const beachBallBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
 const bloomTarget = createTarget(gl, 1, 1)
 const stride = vertexSize * Float32Array.BYTES_PER_ELEMENT
@@ -307,7 +310,8 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisi
   || !postSkyForward || !postSkyRight || !postSkyUp || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
-  || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer)
+  || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
+  || !beachBallArray || !beachBallBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
 }
@@ -349,6 +353,7 @@ setupCharacterBoxArray({
   instanceStride: characterBoxInstanceStride,
 })
 setupPostArray({ array: postArray, buffer: postBuffer, gl })
+setupVertexArray({ array: beachBallArray, buffer: beachBallBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 
 gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
@@ -415,6 +420,8 @@ function localMoveAngle() {
 
 let multiplayer: ReturnType<typeof createMultiplayer>
 const predictedMessages = new Map<string, number>()
+const beachBalls = createBeachBalls()
+let beachBallPoints = new Float32Array()
 
 multiplayer = createMultiplayer({
   localPosition: characterPosition,
@@ -474,6 +481,18 @@ multiplayer = createMultiplayer({
     onlineCount.textContent = `${count} online`
   },
   onVideoState: (entries, preserveSameTrack) => djVideoUi.applyStates(entries, preserveSameTrack),
+  onBeachBalls: balls => {
+    for (const ball of balls) {
+      const target = beachBalls[ball.id]!
+
+      target.position[0] = ball.position[0]
+      target.position[1] = ball.position[1]
+      target.position[2] = ball.position[2]
+      target.velocity[0] = ball.velocity[0]
+      target.velocity[1] = ball.velocity[1]
+      target.velocity[2] = ball.velocity[2]
+    }
+  },
   videoState: () => djVideoUi.states(),
 })
 clubGlobal.clubMultiplayerClose = () => multiplayer.close()
@@ -573,6 +592,10 @@ const draw = (stamp: number) => {
   resize()
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
+  updateBeachBalls(beachBalls, delta, outsideTree)
+  if (hitBeachBalls(beachBalls, characterPosition)) {
+    multiplayer.sendBeachBalls(beachBalls)
+  }
   // logPlayerPoseEvery(stamp)
   const zone = roomAt(characterPosition)
   const room = roomIndex(zone)
@@ -637,6 +660,7 @@ const draw = (stamp: number) => {
   const sky = zone === 'outside' && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
+  updateBeachBallBuffer()
   updateIntro()
 
   renderClubFrame({
@@ -645,6 +669,7 @@ const draw = (stamp: number) => {
       characterBox: characterBoxArray,
       light: lightArray,
       post: postArray,
+      beachBalls: beachBallArray,
       room: array,
       smoke: smokeArray,
     },
@@ -677,6 +702,7 @@ const draw = (stamp: number) => {
     outside,
     renderZone: renderZoneIndex(zone),
     points,
+    beachBallPoints,
     post: {
       bloom: postBloom,
       bloomResolution: postBloomResolution,
@@ -719,6 +745,15 @@ const draw = (stamp: number) => {
 
   frameId = requestAnimationFrame(draw)
   clubGlobal.clubFrameId = frameId
+}
+
+function updateBeachBallBuffer() {
+  const points: Vertex[] = []
+
+  addBeachBallGeometry(points, beachBalls)
+  beachBallPoints = new Float32Array(points.flat())
+  gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
 }
 
 function updateIntro() {

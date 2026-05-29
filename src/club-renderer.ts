@@ -54,6 +54,7 @@ export function renderClubFrame(options: {
     characterBox: WebGLVertexArrayObject
     light: WebGLVertexArrayObject
     post: WebGLVertexArrayObject
+    beachBalls: WebGLVertexArrayObject
     room: WebGLVertexArrayObject
     smoke: WebGLVertexArrayObject
   }
@@ -81,6 +82,7 @@ export function renderClubFrame(options: {
   renderZone: number
   doorCoverVisible: boolean
   points: Float32Array
+  beachBallPoints: Float32Array
   post: {
     bloom: WebGLUniformLocation
     bloomResolution: WebGLUniformLocation
@@ -134,6 +136,7 @@ export function renderClubFrame(options: {
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(1, 1)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  drawBeachBalls(options)
   gl.disable(gl.POLYGON_OFFSET_FILL)
   gl.disable(gl.BLEND)
   drawCharacters(options, options.width, options.height, true)
@@ -193,6 +196,7 @@ export function renderClubFrame(options: {
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(1, 1)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  drawBeachBalls(options)
   gl.disable(gl.POLYGON_OFFSET_FILL)
   drawCharacters(options, options.bloomTarget.width, options.bloomTarget.height, false)
   gl.colorMask(true, true, true, true)
@@ -231,6 +235,15 @@ export function renderClubFrame(options: {
   }
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+}
+
+function drawBeachBalls(options: Parameters<typeof renderClubFrame>[0]) {
+  if (options.beachBallPoints.length === 0) {
+    return
+  }
+
+  options.gl.bindVertexArray(options.arrays.beachBalls)
+  options.gl.drawArrays(options.gl.TRIANGLES, 0, options.beachBallPoints.length / options.vertexSize)
 }
 
 function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: number, height: number, hair: boolean) {

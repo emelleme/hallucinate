@@ -1,8 +1,10 @@
 import {
+  BEACH_BALLS,
   C_HEARTBEAT,
   C_MOTION,
   C_ROOM_CHANGE,
   decodeClientMessage,
+  decodeBeachBalls,
   decodeClientMotion,
   decodeRoomChange,
   decodeVideoState,
@@ -10,6 +12,7 @@ import {
   encodeOnline,
   encodeRoomState,
   encodeServerMessage,
+  encodeBeachBalls,
   encodeServerMotion,
   encodeSpawn,
   encodeVideoState,
@@ -25,6 +28,7 @@ import {
   VIDEO_STATE,
 } from './src/protocol.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
+import { createBeachBalls } from './src/beach-balls.ts'
 import { outsideBounds, roomBounds, videoStartTimes, videoTracks } from './src/scene-data.ts'
 import { seatAt } from './src/scene.ts'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -59,6 +63,7 @@ const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 let videoState = initialVideoState()
+let beachBalls = createBeachBalls()
 let nextId = 1
 
 type MemoryAsset = {
@@ -131,6 +136,7 @@ const server = Bun.serve<SocketData>({
       addToRoom(client, 0)
       sendRoomState(client)
       sendVideoState(client)
+      sendBeachBalls(client)
       broadcastOnline()
       broadcast(client.room, encodeSpawn(client.pose), client)
     },
@@ -186,6 +192,12 @@ const server = Bun.serve<SocketData>({
 
           client.videoState = nextVideoState
           pickVideoState()
+          return
+        }
+
+        if (type === BEACH_BALLS) {
+          beachBalls = validateBeachBalls(decodeBeachBalls(view).balls)
+          broadcastBeachBalls()
           return
         }
 
@@ -673,6 +685,10 @@ function sendVideoState(client: Client) {
   client.socket.send(encodeVideoState({ entries: videoState }))
 }
 
+function sendBeachBalls(client: Client) {
+  client.socket.send(encodeBeachBalls({ balls: beachBalls }))
+}
+
 function pickVideoState() {
   const synced = [...clients.values()].filter(client => client.videoState)
 
@@ -725,6 +741,46 @@ function validateVideoState(entries: VideoStateEntry[]) {
   }
 
   return entries
+}
+
+function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
+  if (balls.length !== beachBalls.length) {
+    throw new Error(`Invalid beach ball count ${balls.length}`)
+  }
+
+  const ids = new Set<number>()
+
+  for (const ball of balls) {
+    const existing = beachBalls[ball.id]
+
+    if (!existing || ids.has(ball.id)) {
+      throw new Error(`Invalid beach ball ${ball.id}`)
+    }
+
+    ids.add(ball.id)
+    if (ball.position[0] < outsideBounds.left || ball.position[0] > outsideBounds.right
+      || ball.position[2] < outsideBounds.back || ball.position[2] > outsideBounds.front
+      || ball.position[1] < -3 || ball.position[1] > 6)
+    {
+      throw new Error(`Invalid beach ball position ${ball.position[0]}, ${ball.position[1]}, ${ball.position[2]}`)
+    }
+
+    const speed = Math.hypot(ball.velocity[0], ball.velocity[1], ball.velocity[2])
+
+    if (speed > 18) {
+      throw new Error(`Invalid beach ball speed ${speed}`)
+    }
+  }
+
+  return balls
+}
+
+function broadcastBeachBalls() {
+  const data = encodeBeachBalls({ balls: beachBalls })
+
+  for (const client of clients.values()) {
+    client.socket.send(data)
+  }
 }
 
 function syncRooms() {

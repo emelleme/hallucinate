@@ -189,6 +189,12 @@ export type Player = {
   seed: number
 }
 
+export type BeachBall = {
+  id: number
+  position: Vec3
+  velocity: Vec3
+}
+
 export type SampledPose = {
   stand: Vec3[]
   run: Vec3[]
