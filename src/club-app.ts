@@ -171,9 +171,19 @@ function addChatLogMessage(id: number, text: string) {
   ban.type = 'button'
   ban.className = 'chat-ban-button'
   ban.textContent = 'ban'
+  let pointerBanAt = 0
   const sendBan = (event: Event) => {
+    console.log(`Ban ${event.type}: id=${id}`)
     event.preventDefault()
     event.stopPropagation()
+    if (event.type === 'click' && performance.now() - pointerBanAt < 500) {
+      return
+    }
+    if (event.type === 'pointerdown') {
+      pointerBanAt = performance.now()
+    }
+    deleteChatLogMessages(id)
+    chatUi.removeMessages(id)
     multiplayer.sendAdmin(adminPass, 'ban', id)
   }
   ban.addEventListener('pointerdown', sendBan, { capture: true })
@@ -209,6 +219,9 @@ adminSubmit.textContent = 'enter'
 adminForm.append(adminInput, adminSubmit)
 adminDialog.append(adminForm)
 document.body.append(adminDialog)
+for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
+  adminInput.addEventListener(eventName, event => event.stopPropagation())
+}
 
 adminForm.addEventListener('submit', () => {
   adminPass = adminInput.value

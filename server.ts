@@ -276,7 +276,7 @@ const server = Bun.serve<SocketData>({
         throw new Error(`Invalid client packet type ${type}`)
       }
       catch (e) {
-        void e
+        console.error(e)
       }
     },
     close(socket) {

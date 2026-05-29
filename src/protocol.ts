@@ -467,8 +467,8 @@ export function decodeAdminMessage(view: DataView): AdminPacket {
   expectAtLeastSize(view, 7)
   const passLength = view.getUint16(3)
 
-  expectTextSize(view, 5, passLength)
   const commandOffset = 5 + passLength
+  expectAtLeastSize(view, commandOffset + 2)
   const commandLength = view.getUint16(commandOffset)
 
   expectTextSize(view, commandOffset + 2, commandLength)
