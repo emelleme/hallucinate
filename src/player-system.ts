@@ -1,6 +1,6 @@
 import { characterFloor, hairPalette, jewelPalette, skinPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
-import { lengthSq, mix, normalizeIndex, smoothAngle } from './math.ts'
+import { clamp, lengthSq, mix, smoothAngle } from './math.ts'
 import {
   backDoor,
   djBooth,
@@ -11,16 +11,6 @@ import {
 import { collideRoom, isOutside, seatAt, seats, walkHeight } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
-const inputDirections: Vec3[] = [
-  [0, 0, 1],
-  [1, 0, 1],
-  [-1, 0, 1],
-  [1, 0, 0],
-  [-1, 0, 0],
-  [0, 0, -1],
-  [1, 0, -1],
-  [-1, 0, -1],
-]
 const danceFloorSideRange = 3.1
 const outsideDanceFloorSideRange = 4.8
 const danceFloorBackRange = [0, 5.4] as const
@@ -31,8 +21,8 @@ const kioskDestinationRadius = [1.9, 6.4] as const
 const treeDestinationRadius = [2.6, 9.5] as const
 const destinationLinger = [10, 30] as const
 const destinationJitter = [0.35, 0.9] as const
-const travelSidestep = [0.65, 1.45] as const
 const randomPause = [2, 5] as const
+const blockedPause = [10, 30] as const
 const initialSeatedPlayerCount = 4
 const leaveSeatTime = 1.4
 const doorInside: Vec3 = [backDoor.x, characterFloor, roomBounds.front - 0.75]
@@ -148,7 +138,7 @@ export function updatePlayers(
       player.nextDecision = player.leavingSeatUntil
     }
     else if (player.destination.kind === 'random') {
-      updateRandomPlayer(player, time, outsideTree, occupiedSeats)
+      updateRandomPlayer(player, delta, time, outsideTree, occupiedSeats)
     }
     else {
       updateDestinationPlayer(player, delta, time, outsideTree, occupiedSeats)
@@ -163,12 +153,14 @@ export function updatePlayers(
     if (moving) {
       const lastX = player.position[0]
       const lastZ = player.position[2]
-      const inputLength = Math.sqrt(inputLengthSq)
-      const directionX = player.input[0] / inputLength
-      const directionZ = player.input[2] / inputLength
+      const direction = playerInputDirection(player)
+      const directionX = direction[0]
+      const directionZ = direction[2]
 
-      player.position[0] += directionX * delta * 2.55
-      player.position[2] += directionZ * delta * 2.55
+      const speed = Math.min(Math.sqrt(inputLengthSq), 1)
+
+      player.position[0] += directionX * delta * 2.55 * speed
+      player.position[2] += directionZ * delta * 2.55 * speed
 
       collideRoom(player.position, outsideTree, isOutside(player.position))
       if ((!player.leavingSeatUntil || time >= player.leavingSeatUntil) && trySitPlayer(player, time, occupiedSeats)) {
@@ -176,7 +168,8 @@ export function updatePlayers(
       }
 
       if (blockedForward(player, lastX, lastZ, directionX, directionZ, delta)) {
-        choosePerpendicularInput(player, directionX, directionZ, time)
+        pauseBlockedPlayer(player, time, outsideTree, occupiedSeats)
+        continue
       }
 
       player.turn = smoothAngle(player.turn, Math.atan2(directionX, directionZ), 8, delta)
@@ -243,6 +236,7 @@ function updateRandomPause(player: Player, time: number) {
 
 function updateRandomPlayer(
   player: Player,
+  delta: number,
   time: number,
   outsideTree: CircleBounds,
   occupiedSeats: Set<string>,
@@ -253,7 +247,7 @@ function updateRandomPlayer(
   }
 
   if (time >= player.nextDecision) {
-    chooseRandomInput(player, time)
+    chooseRandomInput(player, delta, time)
     player.nextDecision = time + seededRange(player.seed, Math.floor(time * 3.1), 0.45, 2.4)
   }
 }
@@ -308,7 +302,7 @@ function updateDestinationPlayer(
     }
 
     if (time >= player.nextDecision) {
-      chooseDestinationJitter(player, time)
+      chooseDestinationJitter(player, delta, time)
       player.nextDecision = time
         + seededRange(player.seed, Math.floor(time * 3.1), destinationJitter[0], destinationJitter[1])
     }
@@ -322,20 +316,30 @@ function updateDestinationPlayer(
     return
   }
 
-  if (player.sidestepUntil && time < player.sidestepUntil) {
-    return
-  }
-
   player.sidestepUntil = undefined
 
-  if (seededRandom(player.seed, Math.floor(time * 7.9)) < 0.018) {
-    choosePerpendicularInput(player, dx / distance, dz / distance, time)
-    return
-  }
+  chooseTravelInput(player, dx / distance, dz / distance, delta)
+}
 
-  player.input[0] = dx / distance
+function chooseTravelInput(player: Player, targetX: number, targetZ: number, delta: number) {
+  const targetAngle = Math.atan2(targetX, targetZ)
+  const turnDistance = Math.abs(Math.atan2(Math.sin(targetAngle - player.turn), Math.cos(targetAngle - player.turn)))
+  const speed = clamp(1 - turnDistance / (Math.PI * 0.55), 0, 1)
+
+  player.turn = smoothAngle(player.turn, targetAngle, 4.5, delta)
+  player.input[0] = 0
   player.input[1] = 0
-  player.input[2] = dz / distance
+  player.input[2] = speed
+}
+
+function playerInputDirection(player: Player): Vec3 {
+  const sin = Math.sin(player.turn)
+  const cos = Math.cos(player.turn)
+  const x = sin * player.input[2] + cos * player.input[0]
+  const z = cos * player.input[2] - sin * player.input[0]
+  const length = Math.hypot(x, z)
+
+  return [x / length, 0, z / length]
 }
 
 function blockedForward(
@@ -353,13 +357,19 @@ function blockedForward(
   return forwardMovement < delta * 0.35
 }
 
-function choosePerpendicularInput(player: Player, directionX: number, directionZ: number, time: number) {
-  const side = seededRandom(player.seed, Math.floor(time * 8.3)) < 0.5 ? -1 : 1
+function pauseBlockedPlayer(
+  player: Player,
+  time: number,
+  outsideTree: CircleBounds,
+  occupiedSeats: Set<string>,
+) {
+  const pauseUntil = time + seededRange(player.seed, Math.floor(time * 6.7), blockedPause[0], blockedPause[1])
 
-  player.input[0] = directionZ * side
+  player.input[0] = 0
   player.input[1] = 0
-  player.input[2] = -directionX * side
-  player.sidestepUntil = time + seededRange(player.seed, Math.floor(time * 6.3), travelSidestep[0], travelSidestep[1])
+  player.input[2] = 0
+  choosePlayerDestination(player, pauseUntil, outsideTree, occupiedSeats)
+  player.pauseUntil = pauseUntil
 }
 
 function turnTowardDestination(player: Player, delta: number) {
@@ -422,7 +432,7 @@ function sitPlayer(
   player.leavingSeatUntil = undefined
 }
 
-function chooseRandomInput(player: Player, time: number) {
+function chooseRandomInput(player: Player, delta: number, time: number) {
   const random = seededRandom(player.seed, Math.floor(time * 7.7))
 
   if (random < 0.22) {
@@ -433,15 +443,15 @@ function chooseRandomInput(player: Player, time: number) {
   }
 
   const angle = seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI)
-  const index = normalizeIndex(Math.round(angle / (Math.PI / 4)), inputDirections.length)
-  const input = inputDirections[index]!
+  const turnDistance = Math.abs(Math.atan2(Math.sin(angle - player.turn), Math.cos(angle - player.turn)))
 
-  player.input[0] = input[0]
-  player.input[1] = input[1]
-  player.input[2] = input[2]
+  player.turn = smoothAngle(player.turn, angle, 4.5, delta)
+  player.input[0] = 0
+  player.input[1] = 0
+  player.input[2] = clamp(1 - turnDistance / (Math.PI * 0.55), 0, 1)
 }
 
-function chooseDestinationJitter(player: Player, time: number) {
+function chooseDestinationJitter(player: Player, delta: number, time: number) {
   const random = seededRandom(player.seed, Math.floor(time * 7.7))
 
   if (random < 0.45) {
@@ -452,11 +462,12 @@ function chooseDestinationJitter(player: Player, time: number) {
   }
 
   const angle = seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI)
-  const scale = seededRange(player.seed, Math.floor(time * 6.7), 0.25, 0.6)
+  const turnDistance = Math.abs(Math.atan2(Math.sin(angle - player.turn), Math.cos(angle - player.turn)))
 
-  player.input[0] = Math.sin(angle) * scale
+  player.turn = smoothAngle(player.turn, angle, 4.5, delta)
+  player.input[0] = 0
   player.input[1] = 0
-  player.input[2] = Math.cos(angle) * scale
+  player.input[2] = clamp(1 - turnDistance / (Math.PI * 0.55), 0, 1)
 }
 
 function playerDestination(
