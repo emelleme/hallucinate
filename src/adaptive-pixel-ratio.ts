@@ -45,3 +45,45 @@ export function createAdaptivePixelRatio() {
     },
   }
 }
+
+export function createAdaptiveBloomScale() {
+  const min = 0.35
+  const max = 1
+  const step = 0.1
+  const slowFrame = 1 / 54
+  const fastFrame = 1 / 59
+  let scale = max
+  let frameTime = 1 / 60
+  let changeAt = 0
+
+  return {
+    scale: () => scale,
+    update(delta: number, stamp: number) {
+      if (delta === 0) {
+        return scale
+      }
+
+      frameTime = mix(frameTime, delta, 0.08)
+
+      if (stamp < changeAt) {
+        return scale
+      }
+
+      const next = frameTime > slowFrame
+        ? scale - step
+        : frameTime < fastFrame
+        ? scale + step
+        : scale
+      const direction = Math.sign(next - scale)
+
+      if (direction === 0) {
+        return scale
+      }
+
+      scale = clamp(next, min, max)
+      changeAt = stamp + (direction > 0 ? 2500 : 250)
+
+      return scale
+    },
+  }
+}

@@ -1,4 +1,4 @@
-import { createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
+import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { addBeachBallGeometry, createBeachBalls, hitBeachBalls, updateBeachBalls } from './beach-balls.ts'
 import { createCameraController } from './camera-controller.ts'
 import { idleClipNames } from './character-assets.ts'
@@ -118,7 +118,6 @@ const vertexSize = 11
 let frameId = 0
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
-const bloomScale = 0.5
 const chatLogMax = 15
 let adminPass = ''
 let adminView = false
@@ -301,6 +300,7 @@ function palmTreeMeshColor(index: number): [number, number, number] {
 useAlternativeInput(alternativeInput)
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
 const pixelRatio = createAdaptivePixelRatio()
+const bloomScale = createAdaptiveBloomScale()
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
 let buddhaLoaded = false
@@ -862,16 +862,18 @@ const resize = () => {
   const ratio = pixelRatio.ratio()
   const width = Math.floor(canvas.clientWidth * ratio)
   const height = Math.floor(canvas.clientHeight * ratio)
+  const bloomWidth = Math.max(1, Math.floor(width * bloomScale.scale()))
+  const bloomHeight = Math.max(1, Math.floor(height * bloomScale.scale()))
 
-  if (canvas.width === width && canvas.height === height) {
+  if (canvas.width === width && canvas.height === height
+    && bloomTarget.width === bloomWidth && bloomTarget.height === bloomHeight) {
     return
   }
 
   canvas.width = width
   canvas.height = height
   resizeTarget(gl, target, width, height)
-  resizeTarget(gl, bloomTarget, Math.max(1, Math.floor(width * bloomScale)),
-    Math.max(1, Math.floor(height * bloomScale)))
+  resizeTarget(gl, bloomTarget, bloomWidth, bloomHeight)
   gl.viewport(0, 0, width, height)
 }
 
@@ -882,6 +884,7 @@ const draw = (stamp: number) => {
   strobeController.setFrame(frame)
   lastStamp = stamp
   pixelRatio.update(delta, stamp)
+  bloomScale.update(delta, stamp)
   clubGlobal.clubPixelRatio = pixelRatio.ratio()
   resize()
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
