@@ -517,7 +517,9 @@ async function compressedAsset(asset: MemoryAsset, encoding: 'br' | 'gzip') {
   }
 
   const compressed = await new Response(
-    new Response(asset.source).body!.pipeThrough(new CompressionStream(encoding === 'br' ? 'brotli' : 'gzip')),
+    new Response(asset.source).body!.pipeThrough(
+      new CompressionStream(encoding === 'br' ? 'brotli' as CompressionFormat : 'gzip'),
+    ),
   ).arrayBuffer()
 
   asset[encoding] = compressed
