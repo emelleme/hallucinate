@@ -24,12 +24,12 @@ import {
 import { createHelpUi } from './help-ui.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { createLocalCharacter } from './local-character.ts'
-import { lengthSq } from './math.ts'
+import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
-import { outsideBuddha, outsidePalmTree, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
+import { outsideBounds, outsideBuddha, outsidePalmTree, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -51,7 +51,7 @@ import {
   strobeVertex,
   vertex,
 } from './shaders.ts'
-import { loadStaticFbxObject } from './static-fbx-object.ts'
+import { loadStaticFbxObject, loadStaticFbxObjects } from './static-fbx-object.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
 import { loadOutsideTree } from './tree-world.ts'
@@ -297,6 +297,52 @@ function palmTreeMeshColor(index: number): [number, number, number] {
   return index === 0 ? [0.42, 0.24, 0.1] : [0.02, 0.72 + (index % 3) * 0.08, 0.16]
 }
 
+function rockPlacements() {
+  const placements: Array<{
+    height: number
+    meshIndex: number
+    position: [number, number, number]
+    turn: number
+  }> = []
+  const count = 92
+  const inset = 1.15
+
+  for (let i = 0; i < count; i++) {
+    const random = seededRockRandom(i, 1)
+    const side = Math.floor(random * 4)
+    const x = side === 0
+      ? outsideBounds.left + inset
+      : side === 1
+      ? outsideBounds.right - inset
+      : mix(outsideBounds.left + 1.5, outsideBounds.right - 1.5, seededRockRandom(i, 2))
+    const z = side === 2
+      ? outsideBounds.back + inset
+      : side === 3
+      ? outsideBounds.front - inset
+      : mix(outsideBounds.back + 1.5, outsideBounds.front - 1.5, seededRockRandom(i, 3))
+    const edgeJitter = seededRockRandom(i, 4) * 3.4
+
+    placements.push({
+      height: mix(0.28, 0.9, seededRockRandom(i, 5)),
+      meshIndex: Math.floor(seededRockRandom(i, 6) * 24),
+      position: [
+        side === 0 ? x - edgeJitter : side === 1 ? x + edgeJitter : x,
+        characterFloor,
+        side === 2 ? z - edgeJitter : side === 3 ? z + edgeJitter : z,
+      ],
+      turn: seededRockRandom(i, 7) * Math.PI * 2,
+    })
+  }
+
+  return placements
+}
+
+function seededRockRandom(seed: number, salt: number) {
+  const value = Math.sin(seed * 127.1 + salt * 311.7) * 43758.5453123
+
+  return value - Math.floor(value)
+}
+
 useAlternativeInput(alternativeInput)
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
 const pixelRatio = createAdaptivePixelRatio()
@@ -305,6 +351,7 @@ let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
 let buddhaLoaded = false
 let palmTreeLoaded = false
+let rocksLoaded = false
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
@@ -1136,8 +1183,9 @@ function updateIntro() {
     + Number(characterRenderSystem.detailsLoaded)
     + Number(buddhaLoaded)
     + Number(palmTreeLoaded)
+    + Number(rocksLoaded)
     + Number(treeLoaded)
-  ) / 5 * 100)
+  ) / 6 * 100)
 
   introProgress.textContent = `${progress}%`
   introBar.style.transform = `scaleX(${progress / 100})`
@@ -1272,4 +1320,22 @@ loadStaticFbxObject(vertices, {
   })
   .catch((error: unknown) => {
     void error
+  })
+
+loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
+  color: [0.29, 0.27, 0.24],
+  height: rock.height,
+  lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
+  meshIndex: rock.meshIndex,
+  path: '/rocks.fbx',
+  position: rock.position,
+  sourceUp: 'z',
+  turn: rock.turn,
+})), addSunLitTriangle)
+  .then(() => {
+    rocksLoaded = true
+    refreshRoomBuffer()
+  })
+  .catch((error: unknown) => {
+    console.error(error)
   })

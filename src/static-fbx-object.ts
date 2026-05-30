@@ -13,6 +13,7 @@ type StaticObjectOptions = {
   color: Vec3
   height: number
   lightBounds: CircleBounds
+  meshIndex?: number
   path: string
   position: Vec3
   sourceUp: 'y' | 'z'
@@ -25,6 +26,29 @@ export async function loadStaticFbxObject(
   addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
 ) {
   const scene = await loadAssimpScene(options.path, options.path.slice(1))
+
+  addStaticFbxObject(target, scene, options, addSunLitTriangle)
+}
+
+export async function loadStaticFbxObjects(
+  target: Vertex[],
+  path: string,
+  options: StaticObjectOptions[],
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+) {
+  const scene = await loadAssimpScene(path, path.slice(1))
+
+  for (const option of options) {
+    addStaticFbxObject(target, scene, option, addSunLitTriangle)
+  }
+}
+
+function addStaticFbxObject(
+  target: Vertex[],
+  scene: AssimpScene,
+  options: StaticObjectOptions,
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+) {
   const meshes = createStaticMeshes(scene, options)
 
   for (const mesh of meshes) {
@@ -55,7 +79,9 @@ function createStaticMeshes(scene: AssimpScene, options: StaticObjectOptions): S
     throw new Error(`${options.path} has no meshes`)
   }
 
-  return normalizeStaticMeshes(meshes, options.height, options.sourceUp, options.turn)
+  const normalized = normalizeStaticMeshes(meshes, options.height, options.sourceUp, options.turn)
+
+  return options.meshIndex === undefined ? normalized : [normalized[options.meshIndex % normalized.length]!]
 }
 
 function normalizeStaticMeshes(meshes: StaticMesh[], height: number, sourceUp: 'y' | 'z', turn: number): StaticMesh[] {
