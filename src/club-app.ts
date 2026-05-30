@@ -671,24 +671,16 @@ multiplayer = createMultiplayer({
 
       if (optimistic >= 0) {
         graffitiSplats[optimistic] = splat
-        graffitiIds.add(splat.id)
+        addGraffitiId(splat)
       }
       else {
         graffitiSplats.push(splat)
-        graffitiIds.add(splat.id)
+        addGraffitiId(splat)
         appended.push(splat)
       }
     }
 
-    if (graffitiSplats.length > maxGraffitiSplats) {
-      const removed = graffitiSplats.splice(0, graffitiSplats.length - maxGraffitiSplats)
-
-      for (const splat of removed) {
-        graffitiIds.delete(splat.id)
-      }
-
-      rebuild = true
-    }
+    rebuild ||= enforceGraffitiCap()
 
     if (rebuild) {
       scheduleGraffitiTexturePaint(graffitiSplats, true)
@@ -838,9 +830,40 @@ function sprayAt(clientX: number, clientY: number) {
   }
 
   graffitiSplats.push(splat)
-  graffitiIds.add(splat.id)
-  paintGraffitiTexture([splat])
+  addGraffitiId(splat)
+  if (enforceGraffitiCap()) {
+    repaintGraffitiTexture()
+  }
+  else {
+    paintGraffitiTexture([splat])
+  }
   multiplayer.sendGraffiti([splat])
+}
+
+function addGraffitiId(splat: import('./types.ts').GraffitiSplat) {
+  if (splat.id !== 0) {
+    graffitiIds.add(splat.id)
+  }
+}
+
+function deleteGraffitiId(splat: import('./types.ts').GraffitiSplat) {
+  if (splat.id !== 0) {
+    graffitiIds.delete(splat.id)
+  }
+}
+
+function enforceGraffitiCap() {
+  if (graffitiSplats.length <= maxGraffitiSplats) {
+    return false
+  }
+
+  const removed = graffitiSplats.splice(0, graffitiSplats.length - maxGraffitiSplats)
+
+  for (const splat of removed) {
+    deleteGraffitiId(splat)
+  }
+
+  return true
 }
 
 function graffitiKey(splat: import('./types.ts').GraffitiSplat) {

@@ -964,8 +964,13 @@ async function loadGraffitiSplats() {
   }
 
   splats.sort((a, b) => a.id - b.id)
+  const removed = splats.splice(0, Math.max(0, splats.length - maxGraffitiSplats))
 
-  return splats.slice(-maxGraffitiSplats)
+  for (const splat of removed) {
+    await graffitiDb.remove(splat.id)
+  }
+
+  return splats
 }
 
 async function loadBannedIps() {
