@@ -65,7 +65,7 @@ export function getDomElements() {
   onlineIndicator.append(chatLog, onlineCount)
   introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
-  introPanel.append(introLogo, introStart, introTrack, introProgress)
+  introPanel.append(introLogo, introTrack, introProgress, introStart)
   intro.append(introPanel)
   document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, supportLink, intro)
 

@@ -1,47 +1,47 @@
+import { open } from 'lmdb'
+import { extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { createBeachBalls } from './src/beach-balls.ts'
+import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
+import { accessoryPalette } from './src/character-style.ts'
+import { graffitiColors, maxGraffitiSplats } from './src/graffiti.ts'
 import {
   ADMIN,
   BEACH_BALLS,
   C_HEARTBEAT,
   C_MOTION,
   C_ROOM_CHANGE,
-  decodeClientMessage,
   decodeAdminMessage,
   decodeBeachBalls,
+  decodeClientMessage,
   decodeClientMotion,
   decodeGraffiti,
   decodeRoomChange,
   decodeVideoState,
+  encodeBeachBalls,
+  encodeGraffiti,
   encodeLeave,
+  encodeModerationMessage,
   encodeOnline,
   encodeRoomState,
   encodeServerMessage,
-  encodeModerationMessage,
-  encodeBeachBalls,
-  encodeGraffiti,
   encodeServerMotion,
   encodeSpawn,
   encodeVideoState,
+  GRAFFITI,
   MESSAGE,
   modeCount,
+  type MotionPacket,
   positionScale,
-  protocolVersion,
   protocolToScene,
+  protocolVersion,
   roomCount,
   type SpawnPacket,
-  type MotionPacket,
-  type VideoStateEntry,
   truncateMessage,
-  GRAFFITI,
   VIDEO_STATE,
+  type VideoStateEntry,
 } from './src/protocol.ts'
-import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
-import { accessoryPalette } from './src/character-style.ts'
-import { createBeachBalls } from './src/beach-balls.ts'
-import { graffitiColors, maxGraffitiSplats } from './src/graffiti.ts'
 import { outsideBounds, roomBounds, videoStartTimes, videoTracks } from './src/scene-data.ts'
 import { roomAt, seatAt } from './src/scene.ts'
-import { extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { open } from 'lmdb'
 import type { GraffitiSplat } from './src/types.ts'
 
 type Client = {
@@ -216,7 +216,7 @@ const server = Bun.serve<SocketData>({
 
           touchInteraction(client)
           if (normalizedText && !binaryText(text) && !slur) {
-            console.log(`Chat from ${client.ip}: ${text}`)
+            console.log(`[chat] ${client.ip}: ${text}`)
             broadcastAll(encodeServerMessage({ id: client.id, text }))
           }
 
@@ -316,10 +316,11 @@ function clientProtocolOk(protocol: string | null) {
   return version === String(protocolVersion)
 }
 
-console.log(`club multiplayer: ws://localhost:${server.port}`)
-console.log(`club static: http://localhost:${server.port}`)
+console.log(`[server]: ws://localhost:${server.port}`)
+console.log(`[server]: http://localhost:${server.port}`)
 
 setInterval(syncRooms, heartbeatInterval)
+setInterval(logStats, 60_000)
 
 function clientIp(request: Request) {
   return request.headers.get('cf-connecting-ip')
@@ -1066,15 +1067,24 @@ function removeClient(client: Client) {
 }
 
 function broadcastOnline() {
-  const now = Date.now()
-  const online = [...clients.values()]
-    .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
-    .length
+  const online = onlineCount()
   const data = encodeOnline(online)
 
   for (const client of clients.values()) {
     client.socket.send(data)
   }
+}
+
+function onlineCount() {
+  const now = Date.now()
+
+  return [...clients.values()]
+    .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
+    .length
+}
+
+function logStats() {
+  console.log(`[stats] online: ${onlineCount()}`)
 }
 
 function broadcastAll(data: ArrayBuffer) {
