@@ -28,7 +28,8 @@ import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
-import { createWallProjector } from './projection.ts'
+import { createWallProjector, projectWallPointInto } from './projection.ts'
+import type { ProjectedPoint } from './projection.ts'
 import { outsideBounds, outsideBuddha, outsidePalmTree, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
@@ -59,6 +60,7 @@ import type {
   CircleBounds,
   ClubGlobal,
   Player,
+  Vec3,
   Vertex,
   VideoZone,
 } from './types.ts'
@@ -121,6 +123,9 @@ const helpSeenKey = 'club-help-seen'
 const chatLogMax = 15
 let adminPass = ''
 let adminView = false
+const adminIdLabels = new Map<number, HTMLButtonElement>()
+const adminLabelAnchor: Vec3 = [0, 0, 0]
+const adminLabelPoint: ProjectedPoint = { x: 0, y: 0 }
 const chatPalette = [
   '#ff4fd8',
   '#00f5ff',
@@ -181,6 +186,7 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
+const adminIdRoot = document.createElement('div')
 const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
   recoverFocus: () => canvas.focus(),
 })
@@ -192,6 +198,9 @@ function syncOnlineIndicator() {
   supportLink.dataset.hidden = String(helpUi.root.dataset.open === 'true')
 }
 syncOnlineIndicator()
+adminIdRoot.id = 'admin-id-root'
+document.body.append(adminIdRoot)
+
 function addChatLogMessage(id: number, text: string) {
   const row = document.createElement('div')
   const message = document.createElement('span')
@@ -215,9 +224,7 @@ function addChatLogMessage(id: number, text: string) {
     if (event.type === 'pointerdown') {
       pointerBanAt = performance.now()
     }
-    pendingBan = { id, message: text }
-    banMessage.textContent = `Are you sure you want to ban user with message: ${text}`
-    banDialog.showModal()
+    openBanDialog(id, `user with message: ${text}`)
   }
   ban.addEventListener('pointerdown', sendBan, { capture: true })
   ban.addEventListener('click', sendBan)
@@ -241,6 +248,8 @@ const adminDialog = document.createElement('dialog')
 const adminForm = document.createElement('form')
 const adminInput = document.createElement('input')
 const adminSubmit = document.createElement('button')
+const adminBanIdInput = document.createElement('input')
+const adminBanIdSubmit = document.createElement('button')
 const banDialog = document.createElement('dialog')
 const banForm = document.createElement('form')
 const banMessage = document.createElement('p')
@@ -254,7 +263,13 @@ adminInput.autocomplete = 'current-password'
 adminInput.placeholder = 'admin pass'
 adminSubmit.type = 'submit'
 adminSubmit.textContent = 'enter'
-adminForm.append(adminInput, adminSubmit)
+adminBanIdInput.type = 'number'
+adminBanIdInput.min = '1'
+adminBanIdInput.step = '1'
+adminBanIdInput.placeholder = 'id'
+adminBanIdSubmit.type = 'button'
+adminBanIdSubmit.textContent = 'ban id'
+adminForm.append(adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit)
 adminDialog.append(adminForm)
 banDialog.id = 'ban-dialog'
 banForm.method = 'dialog'
@@ -267,6 +282,7 @@ banDialog.append(banForm)
 document.body.append(adminDialog, banDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
   adminInput.addEventListener(eventName, event => event.stopPropagation())
+  adminBanIdInput.addEventListener(eventName, event => event.stopPropagation())
 }
 
 let pendingBan: { id: number; message: string } | undefined
@@ -274,6 +290,18 @@ let pendingBan: { id: number; message: string } | undefined
 adminForm.addEventListener('submit', () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
+})
+
+adminBanIdSubmit.addEventListener('click', () => {
+  const id = Number(adminBanIdInput.value)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`Invalid ban id ${adminBanIdInput.value}`)
+  }
+
+  adminPass = adminInput.value
+  setAdminView(adminPass.length > 0)
+  openBanDialog(id, `id: ${id}`)
 })
 
 banCancel.addEventListener('click', () => {
@@ -294,6 +322,12 @@ banForm.addEventListener('submit', () => {
   multiplayer.sendAdmin(adminPass, 'ban', id)
 })
 
+function openBanDialog(id: number, message: string) {
+  pendingBan = { id, message }
+  banMessage.textContent = `Are you sure you want to ban ${message}`
+  banDialog.showModal()
+}
+
 function openAdminDialog() {
   adminInput.value = adminPass
   adminDialog.showModal()
@@ -303,7 +337,72 @@ function openAdminDialog() {
 function setAdminView(value: boolean) {
   adminView = value
   chatLog.dataset.admin = String(adminView)
+  adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
+  if (!adminView) {
+    clearAdminIdLabels()
+  }
+}
+
+function updateAdminIdLabels(projector: ReturnType<typeof createWallProjector>) {
+  if (!adminView) {
+    return
+  }
+
+  const active = new Set<number>()
+
+  if (multiplayer.selfId > 0) {
+    updateAdminIdLabel(multiplayer.selfId, characterPosition, projector, active)
+  }
+  for (const [id, player] of multiplayer.players) {
+    updateAdminIdLabel(id, player.position, projector, active)
+  }
+  for (const [id, element] of adminIdLabels) {
+    if (!active.has(id)) {
+      element.remove()
+      adminIdLabels.delete(id)
+    }
+  }
+}
+
+function updateAdminIdLabel(
+  id: number,
+  position: Vec3,
+  projector: ReturnType<typeof createWallProjector>,
+  active: Set<number>,
+) {
+  active.add(id)
+  let label = adminIdLabels.get(id)
+
+  if (!label) {
+    label = document.createElement('button')
+    label.type = 'button'
+    label.className = 'admin-id-label'
+    label.textContent = String(id)
+    label.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      openBanDialog(id, `id: ${id}`)
+    })
+    adminIdRoot.append(label)
+    adminIdLabels.set(id, label)
+  }
+
+  adminLabelAnchor[0] = position[0]
+  adminLabelAnchor[1] = position[1] + 1.75
+  adminLabelAnchor[2] = position[2]
+  projectWallPointInto(adminLabelAnchor, projector, adminLabelPoint)
+  label.style.transform = `translate(-50%, -100%) translate(${Math.round(adminLabelPoint.x)}px, ${
+    Math.round(adminLabelPoint.y)
+  }px)`
+}
+
+function clearAdminIdLabels() {
+  for (const label of adminIdLabels.values()) {
+    label.remove()
+  }
+
+  adminIdLabels.clear()
 }
 
 function chatUserColor(id: number) {
@@ -1106,6 +1205,7 @@ const draw = (stamp: number) => {
     djVideoUi.update(camera, projector)
   }
   chatUi.update(projector, stamp)
+  updateAdminIdLabels(projector)
 
   const outside = isOutside(characterPosition)
   const moving = lengthSq(localCharacter.input) > 0
