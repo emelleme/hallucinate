@@ -198,7 +198,7 @@ export function createDjVideoUi(
                   if (videoPlaylists[area]) {
                     if (options.isAuthority?.(area) ?? true) {
                       nextPlaylistVideo(area, zone, players, pendingStarts, pendingLoops, times, trackIndexes, trackIds,
-                        playlistIds, options.onStateChanged)
+                        playlistIds, playlistOrders, options.onStateChanged)
                     }
                     else {
                       pendingStarts[area] = times[area]
@@ -465,6 +465,7 @@ function nextPlaylistVideo(
   trackIndexes: Record<VideoZone, number>,
   trackIds: Record<VideoZone, string>,
   playlistIds: Partial<Record<VideoZone, string[]>>,
+  playlistOrders: Partial<Record<VideoZone, string[]>>,
   onStateChanged?: () => void,
 ) {
   if (pendingLoops[area]) {
