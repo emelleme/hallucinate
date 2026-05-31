@@ -2,8 +2,8 @@ import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsidePalmTree, outsideStage, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor,
-  tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
+  outsidePalmTree, outsideStage, outsideToiletDoor, outsideToilets, roomBounds, tent, tentCenterBench, tentDjBooth,
+  tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export type Seat = {
@@ -32,6 +32,7 @@ const tentDjSpeakerCollisions = tentDjSpeakers.map(bounds => paddedBounds(bounds
 const outsideCouchCollisions = outsideCouches.map(bounds => couchCollisionBounds(bounds))
 const outsideHutBarCollision = paddedBounds(outsideHutBar)
 const outsideHutBarStoolCollisions = outsideHutBarStools.map(bounds => paddedBounds(bounds))
+const outsideToiletWallCollisions = toiletWallBounds().map(bounds => paddedBounds(bounds, 0.18))
 const outsideHutBarDeckBounds: Bounds = {
   x: (outsideHut.x - outsideHut.width / 2 + outsideHutBar.x) / 2,
   z: outsideHutBar.z,
@@ -89,7 +90,7 @@ export function usesSkyBackground(_camera: { eye: Vec3; center: Vec3 }) {
   return true
 }
 
-export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside = isOutside(position)) {
+export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside = isOutside(position), previous?: Vec3) {
   if (outside) {
     position[0] = clamp(position[0], outsideBounds.left, outsideBounds.right)
     position[2] = clamp(position[2], outsideBounds.back, outsideBounds.front)
@@ -132,6 +133,8 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
     for (const post of outsideHutPostCollisions) {
       collidePaddedBounds(position, post)
     }
+
+    collideToiletWalls(position, previous)
 
     return
   }
@@ -202,6 +205,9 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   for (const post of outsideHutPostCollisions) {
     collideSpherePaddedBounds(position, radius, post, characterFloor + outsideHutDeckHeight + 2.45)
   }
+  for (const wall of outsideToiletWallCollisions) {
+    collideSpherePaddedBounds(position, radius, wall, characterFloor + 2.75)
+  }
 }
 
 export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
@@ -224,6 +230,7 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideHutPostCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && outsideToiletWallCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
   }
 
   return x >= insideLeft && x <= insideRight
@@ -543,6 +550,113 @@ function hutPostBounds(bounds: Bounds): Bounds[] {
     { x: left, z: front, width: 0.22, depth: 0.22 },
     { x: right, z: front, width: 0.22, depth: 0.22 },
   ]
+}
+
+function toiletWallBounds(): Bounds[] {
+  const left = outsideToilets.x - outsideToilets.width / 2
+  const right = outsideToilets.x + outsideToilets.width / 2
+  const back = outsideToilets.z - outsideToilets.depth / 2
+  const front = outsideToilets.z + outsideToilets.depth / 2
+  const doorBack = outsideToiletDoor.z - outsideToiletDoor.width / 2
+  const doorFront = outsideToiletDoor.z + outsideToiletDoor.width / 2
+  const doorSide = outsideToiletDoor.side === 'east' ? 1 : -1
+  const doorX = doorSide > 0 ? right : left
+  const oppositeX = doorSide > 0 ? left : right
+  const dividerX = outsideToilets.x - doorSide * 0.58
+  const wall = 0.12
+  const divider = 0.5
+
+  return [
+    { x: outsideToilets.x, z: back, width: outsideToilets.width, depth: wall },
+    { x: outsideToilets.x, z: front, width: outsideToilets.width, depth: wall },
+    { x: oppositeX, z: outsideToilets.z, width: wall, depth: outsideToilets.depth },
+    { x: doorX, z: (back + doorBack) / 2, width: wall, depth: doorBack - back },
+    { x: doorX, z: (doorFront + front) / 2, width: wall, depth: front - doorFront },
+    { x: dividerX, z: outsideToilets.z, width: outsideToilets.width - 1.32, depth: divider },
+  ]
+}
+
+function collideToiletWalls(position: Vec3, previous?: Vec3) {
+  const left = outsideToilets.x - outsideToilets.width / 2
+  const right = outsideToilets.x + outsideToilets.width / 2
+  const back = outsideToilets.z - outsideToilets.depth / 2
+  const front = outsideToilets.z + outsideToilets.depth / 2
+  const doorBack = outsideToiletDoor.z - outsideToiletDoor.width / 2
+  const doorFront = outsideToiletDoor.z + outsideToiletDoor.width / 2
+  const doorSide = outsideToiletDoor.side === 'east' ? 1 : -1
+  const doorX = doorSide > 0 ? right : left
+  const oppositeX = doorSide > 0 ? left : right
+  const dividerX = outsideToilets.x - doorSide * 0.58
+  const dividerLeft = dividerX - (outsideToilets.width - 1.32) / 2
+  const dividerRight = dividerX + (outsideToilets.width - 1.32) / 2
+  const padding = 0.34
+  const dividerPadding = 0.43
+
+  if (previous) {
+    collideHorizontalWall(position, previous, back, left, right, padding)
+    collideHorizontalWall(position, previous, front, left, right, padding)
+    collideVerticalWall(position, previous, oppositeX, back, front, padding)
+    collideVerticalWall(position, previous, doorX, back, doorBack, padding)
+    collideVerticalWall(position, previous, doorX, doorFront, front, padding)
+    collideHorizontalWall(position, previous, outsideToilets.z, dividerLeft, dividerRight, dividerPadding)
+  }
+
+  if (position[0] > left - padding && position[0] < right + padding) {
+    if (position[2] > back - padding && position[2] < back + padding) {
+      position[2] = position[2] > back ? back + padding : back - padding
+    }
+    if (position[2] > front - padding && position[2] < front + padding) {
+      position[2] = position[2] < front ? front - padding : front + padding
+    }
+  }
+
+  for (const wall of outsideToiletWallCollisions.slice(2)) {
+    collidePaddedBounds(position, wall)
+  }
+}
+
+function collideHorizontalWall(
+  position: Vec3,
+  previous: Vec3,
+  z: number,
+  left: number,
+  right: number,
+  padding: number,
+) {
+  if (!segmentOverlaps(previous[0], position[0], left, right, padding)) {
+    return
+  }
+
+  if (previous[2] >= z + padding && position[2] < z + padding) {
+    position[2] = z + padding
+  }
+  else if (previous[2] <= z - padding && position[2] > z - padding) {
+    position[2] = z - padding
+  }
+}
+
+function collideVerticalWall(
+  position: Vec3,
+  previous: Vec3,
+  x: number,
+  back: number,
+  front: number,
+  padding: number,
+) {
+  if (!segmentOverlaps(previous[2], position[2], back, front, padding)) {
+    return
+  }
+
+  if (previous[0] >= x + padding && position[0] < x + padding) {
+    position[0] = x + padding
+  }
+  else if (previous[0] <= x - padding && position[0] > x - padding) {
+    position[0] = x - padding
+  }
+}
+
+function segmentOverlaps(a: number, b: number, min: number, max: number, padding: number) {
+  return Math.max(a, b) > min - padding && Math.min(a, b) < max + padding
 }
 
 function inBounds(x: number, z: number, bounds: Bounds) {

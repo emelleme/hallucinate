@@ -30,7 +30,7 @@ import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint } from './projection.ts'
-import { outsideBounds, outsideBuddha, outsidePalmTree, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
+import { outsideBounds, outsideBuddha, outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -467,19 +467,36 @@ function rockPlacements() {
       : mix(outsideBounds.back + 1.5, outsideBounds.front - 1.5, seededRockRandom(i, 3))
     const edgeJitter = seededRockRandom(i, 4) * 3.4
 
+    const position: [number, number, number] = [
+      side === 0 ? x - edgeJitter : side === 1 ? x + edgeJitter : x,
+      characterFloor,
+      side === 2 ? z - edgeJitter : side === 3 ? z + edgeJitter : z,
+    ]
+
+    if (inRockClearance(position[0], position[2])) {
+      continue
+    }
+
     placements.push({
       height: mix(0.28, 0.9, seededRockRandom(i, 5)),
       meshIndex: Math.floor(seededRockRandom(i, 6) * 24),
-      position: [
-        side === 0 ? x - edgeJitter : side === 1 ? x + edgeJitter : x,
-        characterFloor,
-        side === 2 ? z - edgeJitter : side === 3 ? z + edgeJitter : z,
-      ],
+      position,
       turn: seededRockRandom(i, 7) * Math.PI * 2,
     })
   }
 
   return placements
+}
+
+function inRockClearance(x: number, z: number) {
+  return inToiletBounds(x, z, 1.8)
+}
+
+function inToiletBounds(x: number, z: number, padding = 0) {
+  return x > outsideToilets.x - outsideToilets.width / 2 - padding
+    && x < outsideToilets.x + outsideToilets.width / 2 + padding
+    && z > outsideToilets.z - outsideToilets.depth / 2 - padding
+    && z < outsideToilets.z + outsideToilets.depth / 2 + padding
 }
 
 function seededRockRandom(seed: number, salt: number) {
@@ -494,10 +511,14 @@ const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
 const feedbackMaxAmount = 0.97
 const feedbackRampSeconds = 60 * 30 // 30 mins
+const feedbackToiletRampSeconds = 60
 const feedbackSitResetSeconds = 3
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
 let feedbackStartStamp = 0
+let feedbackToiletStartStamp = 0
+let feedbackToiletStartAmount = 0
+let feedbackInToilets = false
 let feedbackSitSeconds = 0
 let feedbackSitReset = false
 let buddhaLoaded = false
@@ -1137,6 +1158,30 @@ function clearFeedback() {
   gl.clear(gl.COLOR_BUFFER_BIT)
 }
 
+function updateFeedbackAmount(stamp: number) {
+  const slow = feedbackRamp(stamp, feedbackStartStamp, 0, feedbackRampSeconds)
+  const toilet = feedbackToiletStartStamp === 0
+    ? 0
+    : feedbackRamp(stamp, feedbackToiletStartStamp, feedbackToiletStartAmount, feedbackToiletRampSeconds)
+
+  feedback.amount = Math.max(slow, toilet)
+}
+
+function feedbackRamp(stamp: number, startStamp: number, startAmount: number, seconds: number) {
+  return mix(startAmount, feedbackMaxAmount, Math.min((stamp - startStamp) / (seconds * 1000), 1))
+}
+
+function updateFeedbackToiletVisit(stamp: number) {
+  const inToilets = inToiletBounds(characterPosition[0], characterPosition[2])
+
+  if (inToilets && !feedbackInToilets) {
+    feedbackToiletStartStamp = stamp
+    feedbackToiletStartAmount = feedback.amount
+  }
+
+  feedbackInToilets = inToilets
+}
+
 const draw = (stamp: number) => {
   const delta = lastStamp === 0 ? 0 : Math.min((stamp - lastStamp) / 1000, 0.05)
   const frame = Math.floor(stamp / 16.6667)
@@ -1150,15 +1195,19 @@ const draw = (stamp: number) => {
   if (feedbackStartStamp === 0) {
     feedbackStartStamp = stamp
   }
-  feedback.amount = mix(0, feedbackMaxAmount, Math.min((stamp - feedbackStartStamp) / (feedbackRampSeconds * 1000), 1))
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
+  updateFeedbackToiletVisit(stamp)
+  updateFeedbackAmount(stamp)
   const sitting = localCharacter.mode === 'manSitting' || localCharacter.mode === 'womanSitting'
 
   if (sitting) {
     feedbackSitSeconds += delta
     if (!feedbackSitReset && feedbackSitSeconds >= feedbackSitResetSeconds) {
       feedbackStartStamp = stamp
+      feedbackToiletStartStamp = 0
+      feedbackToiletStartAmount = 0
+      feedbackInToilets = inToiletBounds(characterPosition[0], characterPosition[2])
       feedback.amount = 0
       clearFeedback()
       feedbackSitReset = true

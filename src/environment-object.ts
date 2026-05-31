@@ -4,8 +4,8 @@ import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } 
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsideStage, outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentPole,
-  tentDoorAngle, tentVideoAngle, tentVideoWall } from './scene-data.ts'
+  outsideStage, outsideToiletDoor, outsideToilets, outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth,
+  tentDjSpeakers, tentDoor, tentPole, tentDoorAngle, tentVideoAngle, tentVideoWall } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -131,10 +131,58 @@ function addOutside(target: Vertex[]) {
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
   addOpenAirHut(target, floor)
   addOutsideLounges(target, floor)
+  addOutsideToilets(target, floor)
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
   addTent(target, floor)
   addOutsideSkyLight(target)
+}
+
+function addOutsideToilets(target: Vertex[], floor: number) {
+  const wall: Vec3 = [0.72, 0.64, 0.52]
+  const inside: Vec3 = [0.12, 0.16, 0.17]
+  const trim: Vec3 = [0.06, 0.08, 0.09]
+  const doorGlow: Vec3 = [0.04, 0.7, 0.95]
+  const roof: Vec3 = [0.04, 0.05, 0.06]
+  const left = outsideToilets.x - outsideToilets.width / 2
+  const right = outsideToilets.x + outsideToilets.width / 2
+  const back = outsideToilets.z - outsideToilets.depth / 2
+  const front = outsideToilets.z + outsideToilets.depth / 2
+  const doorBack = outsideToiletDoor.z - outsideToiletDoor.width / 2
+  const doorFront = outsideToiletDoor.z + outsideToiletDoor.width / 2
+  const doorSide = outsideToiletDoor.side === 'east' ? 1 : -1
+  const doorX = doorSide > 0 ? right : left
+  const oppositeX = doorSide > 0 ? left : right
+  const dividerX = outsideToilets.x - doorSide * 0.58
+  const fixtureX = outsideToilets.x - doorSide * 1.35
+  const bottom = floor
+  const top = floor + 2.55
+
+  addBox(target, outsideToilets.x, floor + 0.04, outsideToilets.z, outsideToilets.width, 0.08, outsideToilets.depth,
+    inside, 0)
+  addQuad(target, [right, bottom, front], [left, bottom, front], [left, top, front], [right, top, front], wall, 0)
+  addQuad(target, [left, bottom, back], [right, bottom, back], [right, top, back], [left, top, back], wall, 0)
+  addQuad(target, [oppositeX, bottom, back], [oppositeX, bottom, front], [oppositeX, top, front], [oppositeX, top,
+    back], wall, 0)
+  addQuad(target, [doorX, bottom, back], [doorX, bottom, doorBack], [doorX, top, doorBack], [doorX, top, back], wall, 0)
+  addQuad(target, [doorX, bottom, doorFront], [doorX, bottom, front], [doorX, top, front], [doorX, top, doorFront],
+    wall, 0)
+  addQuad(target, [doorX, bottom + outsideToiletDoor.height, doorBack], [doorX, bottom + outsideToiletDoor.height,
+    doorFront], [doorX, top, doorFront], [doorX, top, doorBack], wall, 0)
+  addBox(target, outsideToilets.x, top + 0.08, outsideToilets.z, outsideToilets.width + 0.36, 0.16,
+    outsideToilets.depth + 0.36, roof, 0)
+  addBox(target, doorX + doorSide * 0.04, floor + outsideToiletDoor.height / 2, doorBack - 0.04, 0.12,
+    outsideToiletDoor.height, 0.12, doorGlow, 1.3)
+  addBox(target, doorX + doorSide * 0.04, floor + outsideToiletDoor.height / 2, doorFront + 0.04, 0.12,
+    outsideToiletDoor.height, 0.12, doorGlow, 1.3)
+  addBox(target, doorX + doorSide * 0.04, floor + outsideToiletDoor.height + 0.05, outsideToiletDoor.z, 0.12, 0.1,
+    outsideToiletDoor.width + 0.22, doorGlow, 1.3)
+  addBox(target, dividerX, floor + 1.38, outsideToilets.z, outsideToilets.width - 1.32, 2.1, 0.12, trim, 0)
+  for (const z of [outsideToilets.z - 1.05, outsideToilets.z + 1.05]) {
+    addBox(target, fixtureX, floor + 0.22, z, 0.52, 0.28, 0.68, [0.92, 0.9, 0.84], 0)
+    addDisc(target, [outsideToilets.x - doorSide * 1.18, floor + 0.42, z], 0.26, 0.2, 'y', [0.95, 0.95, 0.9], 0)
+    addBox(target, outsideToilets.x - doorSide * 1.55, floor + 0.9, z, 0.1, 0.72, 0.54, [0.9, 0.88, 0.82], 0)
+  }
 }
 
 function addTent(target: Vertex[], floor: number) {

@@ -45,6 +45,14 @@ export const outsideCouches: (Bounds & { color: Vec3; face: 'east' | 'north' | '
   { x: 16.1, z: 16.3, width: 2.15, depth: 0.82, color: [0.06, 0.38, 0.42], face: 'north' },
   { x: 17.7, z: 18.05, width: 0.82, depth: 2, color: [0.5, 0.18, 0.05], face: 'west' },
 ]
+export const outsideToilets: Bounds = { x: -21.2, z: -8.8, width: 5.2, depth: 4.1 }
+export const outsideToiletDoor = {
+  side: 'east',
+  x: outsideToilets.x + outsideToilets.width / 2,
+  z: outsideToilets.z - 0.95,
+  width: 1.35,
+  height: 2.2,
+} as const
 export const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625, normal: [0, 0, 1] as Vec3 }
 export const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
 export const tent = {

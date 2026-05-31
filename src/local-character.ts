@@ -7,7 +7,7 @@ import {
   smoothAngle,
 } from './math.ts'
 import { findPath } from './pathfinding.ts'
-import { collideRoom, seatAt, walkHeight } from './scene.ts'
+import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
 import type { Seat } from './scene.ts'
 import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 
@@ -253,6 +253,8 @@ export function createLocalCharacter(keys: Set<string>) {
         mode = motionBlend > 0.5 ? 'run' : 'stand'
       }
 
+      const previousPosition: Vec3 = [position[0], position[1], position[2]]
+
       if (moving) {
         normalizeInto(input)
         const sin = Math.sin(cameraTurn)
@@ -293,7 +295,7 @@ export function createLocalCharacter(keys: Set<string>) {
           return
         }
 
-        collideRoom(position, outsideTree)
+        collideRoom(position, outsideTree, isOutside(position), previousPosition)
         turn = smoothAngle(turn, Math.atan2(direction[0], direction[2]), 10, delta)
       }
 
@@ -321,7 +323,7 @@ export function createLocalCharacter(keys: Set<string>) {
         }
       }
 
-      collideRoom(position, outsideTree)
+      collideRoom(position, outsideTree, isOutside(position), previousPosition)
     },
   }
 }
