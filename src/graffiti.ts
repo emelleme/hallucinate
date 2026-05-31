@@ -26,6 +26,8 @@ const wallYMin = characterFloor + 0.03
 const wallYMax = 5
 const wallMargin = 0.03
 const wallEpsilon = 0.09
+const splatBaseScale = 0.38
+const splatRadiusScale = 1.9
 
 const walls = [
   { axis: 'z', value: roomBounds.front, min: roomBounds.left, max: roomBounds.right, normal: [0, 0, 1] as Vec3 },
@@ -146,7 +148,7 @@ function addGraffitiSplat(target: Vertex[], splat: GraffitiSplat) {
   const tangent: Vec3 = wall.axis === 'x' ? [0, 0, 1] : [1, 0, 0]
   const up: Vec3 = [0, 1, 0]
   const center = wallPoint(splat.wall, splat.x, splat.y)
-  const scale = 0.38 + splat.radius / 255 * 0.72
+  const scale = graffitiSplatScale(splat.radius)
   const count = 3 + splat.seed % 3
 
   for (let i = 0; i < count; i++) {
@@ -221,7 +223,7 @@ function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSp
   const [x, y] = splatCanvasPoint(splat)
   const pixelsPerMeterX = graffitiCellSize / (wall.max - wall.min)
   const pixelsPerMeterY = graffitiCellSize / (wallYMax - wallYMin)
-  const scale = 0.38 + splat.radius / 255 * 0.72
+  const scale = graffitiSplatScale(splat.radius)
   const count = 3 + splat.seed % 3
 
   context.save()
@@ -269,6 +271,10 @@ function splatCanvasPoint(splat: GraffitiSplat) {
     cellX + u * graffitiCellSize,
     cellY + v * graffitiCellSize,
   ]
+}
+
+function graffitiSplatScale(radius: number) {
+  return splatBaseScale + radius / 255 * splatRadiusScale
 }
 
 function offset(center: Vec3, tangent: Vec3, up: Vec3, x: number, y: number): Vec3 {
