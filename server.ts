@@ -1043,13 +1043,14 @@ function setVideoPlaylistOrder(zone: VideoZone, sourceIds: string[], now: number
 }
 
 function shuffleVideoIds(ids: string[], currentId: string) {
-  const startIndexes = ids
+  const uniqueIds = [...new Set(ids)]
+  const startIndexes = uniqueIds
     .map((id, index) => ({ id, index }))
     .filter(entry => entry.id !== currentId)
   const startIndex = startIndexes[Math.floor(Math.random() * startIndexes.length)]?.index
-    ?? Math.floor(Math.random() * ids.length)
-  const start = ids[startIndex]!
-  const shuffled = ids.filter((_, index) => index !== startIndex)
+    ?? Math.floor(Math.random() * uniqueIds.length)
+  const start = uniqueIds[startIndex]!
+  const shuffled = uniqueIds.filter((_, index) => index !== startIndex)
 
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -1271,30 +1272,70 @@ async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) 
 
 async function randomizeVideoTracks() {
   const now = Date.now()
+  let changed = false
 
   for (const zone of Object.keys(videoPlaylists) as VideoZone[]) {
     const order = videoPlaylistOrders.find(entry => entry.zone === zone)?.ids
 
     if (!order) {
-      throw new Error(`Missing video playlist order ${zone}`)
+      console.log(`Admin random track skipped: missing playlist order ${zone}`)
+      continue
     }
 
     const current = videoState.find(entry => entry.zone === zone)!
-    const id = randomVideoId(order, current.id)
+    const live = liveVideoIds(zone)
+    const currentId = mostReportedVideoId(live) ?? current.id
+    const id = randomVideoId(order, currentId, new Set(live.keys()))
 
+    console.log(`[video] random ${zone}: current=${currentId} next=${id} order=${order.length}`)
     videoState = videoState.map(entry => entry.zone === zone
       ? { zone, id, time: 0, updatedAt: now }
       : entry)
+    changed = true
+  }
+
+  if (!changed) {
+    console.log('Admin random track skipped: no playlist orders')
+    return
   }
 
   await saveVideoState()
   broadcastVideoStateNow()
 }
 
-function randomVideoId(ids: string[], currentId: string) {
-  const choices = ids.filter(id => id !== currentId)
+function liveVideoIds(zone: VideoZone) {
+  const ids = new Map<string, number>()
 
-  return choices[Math.floor(Math.random() * choices.length)] ?? ids[Math.floor(Math.random() * ids.length)]!
+  for (const client of clients.values()) {
+    if (client.video?.zone === zone) {
+      ids.set(client.video.id, (ids.get(client.video.id) ?? 0) + 1)
+    }
+  }
+
+  return ids
+}
+
+function mostReportedVideoId(ids: Map<string, number>) {
+  let id: string | undefined
+  let count = 0
+
+  for (const [nextId, nextCount] of ids) {
+    if (nextCount > count) {
+      id = nextId
+      count = nextCount
+    }
+  }
+
+  return id
+}
+
+function randomVideoId(ids: string[], currentId: string, live: Set<string>) {
+  const uniqueIds = [...new Set(ids)]
+  const notLive = uniqueIds.filter(id => id !== currentId && !live.has(id))
+  const notCurrent = uniqueIds.filter(id => id !== currentId)
+  const choices = notLive.length > 0 ? notLive : notCurrent
+
+  return choices[Math.floor(Math.random() * choices.length)] ?? uniqueIds[Math.floor(Math.random() * uniqueIds.length)]!
 }
 
 async function banClient(id: number) {

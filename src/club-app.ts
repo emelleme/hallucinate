@@ -316,6 +316,12 @@ adminBanIdSubmit.addEventListener('click', () => {
 adminRandomTrackSubmit.addEventListener('click', () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
+  const playlists = djVideoUi.playlists()
+
+  if (playlists.length > 0) {
+    multiplayer.sendVideoPlaylist(playlists)
+  }
+
   multiplayer.sendAdmin(adminPass, 'randomTrack', 0)
 })
 

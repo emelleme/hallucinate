@@ -140,6 +140,17 @@ export function createDjVideoUi(
         }
 
         if (ready[state.zone]) {
+          if (immediate && state.zone === zone) {
+            delete pendingEnded[state.zone]
+            delete pendingTracks[state.zone]
+            trackIds[state.zone] = state.id
+            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            pendingStarts[state.zone] = times[state.zone]
+            loadDirectVideoFromTime(state.zone, players, pendingStarts, times, trackIds)
+            pauseOtherVideos(state.zone, players, ready)
+            continue
+          }
+
           if (sameTrack && state.zone === zone) {
             if (pendingEnded[state.zone] && pendingTracks[state.zone]) {
               playPendingTrack(state.zone, players, pendingStarts, pendingEnded, pendingTracks, times, trackIds)
@@ -188,6 +199,11 @@ export function createDjVideoUi(
       for (const entry of entries) {
         playlistOrders[entry.zone] = entry.ids
       }
+    },
+    playlists() {
+      return videoZones()
+        .filter(area => playlistIds[area]?.length)
+        .map(area => ({ zone: area, ids: playlistIds[area]! }))
     },
     load() {
       const youtube = window as YouTubeWindow
@@ -429,6 +445,20 @@ function loadVideoFromTime(
       startSeconds: times[area],
     })
   }
+}
+
+function loadDirectVideoFromTime(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  pendingStarts: Partial<Record<VideoZone, number>>,
+  times: Record<VideoZone, number>,
+  trackIds: Record<VideoZone, string>,
+) {
+  pendingStarts[area] = times[area]
+  players[area]!.loadVideoById({
+    videoId: trackIds[area],
+    startSeconds: times[area],
+  })
 }
 
 function playVideoFromTime(
