@@ -964,7 +964,7 @@ function videoAuthorityActive(id: number, zone: VideoZone) {
 
 async function applyVideoState(client: Client, entries: VideoStateEntry[]) {
   const zone = clientVideoZone(client)
-  const entry = entries.find(entry => entry.zone === zone)!
+  let entry = entries.find(entry => entry.zone === zone)!
   const now = Date.now()
   const current = videoState.find(current => current.zone === zone)!
   const trackChanged = current.id !== entry.id
@@ -974,14 +974,27 @@ async function applyVideoState(client: Client, entries: VideoStateEntry[]) {
     return
   }
 
+  if (trackChanged && videoPlaylists[zone]) {
+    entry = nextVideoPlaylistState(zone)
+  }
+
   client.video = { ...entry, updatedAt: now }
   videoState = videoState.map(current => current.zone === zone
     ? { ...entry, updatedAt: now }
     : current)
   if (trackChanged) {
     await saveVideoState()
-    broadcastVideoState(client)
+    broadcastVideoState()
   }
+}
+
+function nextVideoPlaylistState(zone: VideoZone): VideoStateEntry {
+  const current = videoState.find(entry => entry.zone === zone)!
+  const order = videoPlaylistOrders.find(entry => entry.zone === zone)!.ids
+  const index = order.indexOf(current.id)
+  const next = order[(index + 1) % order.length]!
+
+  return { zone, id: next, time: 0 }
 }
 
 async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]) {
