@@ -134,8 +134,16 @@ export function createDjVideoUi(
     applyStates(states: Array<{ zone: VideoZone; id: string; time: number }>, preserveSameTrack = false, immediate = false) {
       for (const state of states) {
         const sameTrack = trackIds[state.zone] === state.id
+        const time = videoStateTime(state.zone, state.id, state.time)
 
         if (sameTrack && preserveSameTrack && !(pendingEnded[state.zone] && pendingTracks[state.zone])) {
+          continue
+        }
+
+        if (!ready[state.zone]) {
+          trackIds[state.zone] = state.id
+          times[state.zone] = time
+          pendingStarts[state.zone] = time
           continue
         }
 
@@ -144,7 +152,7 @@ export function createDjVideoUi(
             delete pendingEnded[state.zone]
             delete pendingTracks[state.zone]
             trackIds[state.zone] = state.id
-            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            times[state.zone] = time
             pendingStarts[state.zone] = times[state.zone]
             loadDirectVideoFromTime(state.zone, players, pendingStarts, times, trackIds)
             pauseOtherVideos(state.zone, players, ready)
@@ -157,27 +165,27 @@ export function createDjVideoUi(
               pauseOtherVideos(state.zone, players, ready)
               continue
             }
-            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            times[state.zone] = time
             pendingStarts[state.zone] = times[state.zone]
             if (!preserveSameTrack) {
               playVideoFromTime(state.zone, players, pendingStarts, times)
             }
           }
           else if (sameTrack) {
-            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            times[state.zone] = time
             pendingStarts[state.zone] = times[state.zone]
             cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             players[state.zone]!.pauseVideo()
           }
           else if (state.zone !== zone) {
             trackIds[state.zone] = state.id
-            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            times[state.zone] = time
             pendingStarts[state.zone] = times[state.zone]
             cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             players[state.zone]!.pauseVideo()
           }
-          else if (videoPlaylists[state.zone] && !immediate) {
-            pendingTracks[state.zone] = { id: state.id, time: videoStateTime(state.zone, state.id, state.time) }
+          else if (videoPlaylists[state.zone] && preserveSameTrack && !immediate) {
+            pendingTracks[state.zone] = { id: state.id, time }
             if (pendingEnded[state.zone]) {
               playPendingTrack(state.zone, players, pendingStarts, pendingEnded, pendingTracks, times, trackIds)
               pauseOtherVideos(state.zone, players, ready)
@@ -187,7 +195,7 @@ export function createDjVideoUi(
             delete pendingEnded[state.zone]
             delete pendingTracks[state.zone]
             trackIds[state.zone] = state.id
-            times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+            times[state.zone] = time
             pendingStarts[state.zone] = times[state.zone]
             loadVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             pauseOtherVideos(state.zone, players, ready)
@@ -557,7 +565,7 @@ function shouldLoadPlaylist(
   trackIds: Record<VideoZone, string>,
   playlistIds: Partial<Record<VideoZone, string[]>>,
 ) {
-  return Boolean(videoPlaylists[area] && (trackIds[area] === videoTracks[area] || playlistIds[area]?.includes(trackIds[area])))
+  return Boolean(videoPlaylists[area] && trackIds[area] === videoTracks[area] && !playlistIds[area]?.length)
 }
 
 function trackIdForLoop(area: VideoZone, players: Partial<Record<VideoZone, YouTubePlayer>>) {

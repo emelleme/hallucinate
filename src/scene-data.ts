@@ -95,7 +95,7 @@ export const videoTracks: Record<VideoZone, string> = {
 export const videoStartTimes: Record<VideoZone, number> = {
   inside: 0,
   outside: 0,
-  tent: 60,
+  tent: 0,
 }
 export const videoPlaylists: Partial<Record<VideoZone, string>> = {
   inside: 'PLdfk8NH4EncB_75qaHdSR96vP8L7Lowpv',
