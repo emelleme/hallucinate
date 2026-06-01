@@ -868,16 +868,16 @@ function currentVideoState(now = Date.now()): VideoStateEntry[] {
 }
 
 function currentVideoStateForJoin(now = Date.now()): VideoStateEntry[] {
-  return videoState.map(entry => videoStateFromRandomClient(entry.zone, now) ?? {
+  return videoState.map(entry => videoStateFromRandomClient(entry.zone, entry.id, now) ?? {
     id: entry.id,
     time: entry.time + (now - entry.updatedAt) / 1000,
     zone: entry.zone,
   })
 }
 
-function videoStateFromRandomClient(zone: VideoZone, now: number) {
+function videoStateFromRandomClient(zone: VideoZone, id: string, now: number) {
   const entries = [...clients.values()]
-    .filter(client => client.video?.zone === zone)
+    .filter(client => client.video?.zone === zone && client.video.id === id)
     .map(client => client.video!)
   const entry = entries[Math.floor(Math.random() * entries.length)]
 
@@ -1294,8 +1294,17 @@ async function randomizeVideoTrack(zone: VideoZone) {
   videoState = videoState.map(entry => entry.zone === zone
     ? { zone, id, time: 0, updatedAt: now }
     : entry)
+  clearClientVideoState(zone)
   await saveVideoState()
   broadcastVideoStateNow()
+}
+
+function clearClientVideoState(zone: VideoZone) {
+  for (const client of clients.values()) {
+    if (client.video?.zone === zone) {
+      client.video = undefined
+    }
+  }
 }
 
 function liveVideoIds(zone: VideoZone) {
