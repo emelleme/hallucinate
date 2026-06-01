@@ -76,7 +76,6 @@ type StoredVideoStateEntry = VideoStateEntry & {
 
 type StoredVideoPlaylistEntry = VideoPlaylistEntry & {
   sourceIds: string[]
-  shuffledAt: number
 }
 
 type SocketData = {
@@ -103,7 +102,6 @@ const videoDb = open<StoredVideoState | StoredVideoPlaylists>({ path: videoDbPat
 let videoState = await loadVideoState()
 let videoPlaylistOrders = await loadVideoPlaylists()
 const videoAuthorities: Partial<Record<VideoZone, number>> = {}
-const videoPlaylistShuffleInterval = 60 * 60_000
 let beachBalls = createBeachBalls()
 const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
@@ -116,7 +114,6 @@ const bannedIps = await loadBannedIps()
 let graffitiSplats = await loadGraffitiSplats()
 let nextGraffitiId = (graffitiSplats.at(-1)?.id ?? 0) + 1
 
-await shuffleExpiredVideoPlaylists(Date.now(), false)
 let nextId = 1
 
 type MemoryAsset = {
@@ -334,9 +331,6 @@ console.log(`[server]: http://localhost:${server.port}`)
 
 setInterval(syncRooms, heartbeatInterval)
 setInterval(logStats, 60_000)
-setInterval(() => {
-  shuffleExpiredVideoPlaylists().catch(error => console.error(error))
-}, 60_000)
 
 function clientIp(request: Request) {
   return request.headers.get('cf-connecting-ip')
@@ -1005,7 +999,7 @@ async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]
     const current = videoPlaylistOrders.find(current => current.zone === entry.zone)
     const sourceKey = entry.ids.join('\n')
 
-    if (current && current.sourceIds.join('\n') === sourceKey && now - current.shuffledAt < videoPlaylistShuffleInterval) {
+    if (current && current.sourceIds.join('\n') === sourceKey) {
       continue
     }
 
@@ -1028,37 +1022,27 @@ function currentVideoPlaylist(): VideoPlaylistEntry[] {
   }))
 }
 
-async function shuffleExpiredVideoPlaylists(now = Date.now(), broadcastChanges = true) {
-  const expired = videoPlaylistOrders.filter(entry => now - entry.shuffledAt >= videoPlaylistShuffleInterval)
-
-  for (const entry of expired) {
-    setVideoPlaylistOrder(entry.zone, entry.sourceIds, now)
-  }
-
-  if (expired.length > 0) {
-    await saveVideoPlaylists()
-    await saveVideoState()
-    if (broadcastChanges) {
-      broadcastVideoPlaylist()
-      broadcastVideoState()
-    }
-  }
-}
-
 function setVideoPlaylistOrder(zone: VideoZone, sourceIds: string[], now: number) {
-  const ids = shuffleVideoIds(sourceIds)
+  const current = videoState.find(entry => entry.zone === zone)!
+  const ids = shuffleVideoIds(sourceIds, current.id)
 
   videoPlaylistOrders = [
     ...videoPlaylistOrders.filter(entry => entry.zone !== zone),
-    { zone, ids, sourceIds, shuffledAt: now },
+    { zone, ids, sourceIds },
   ]
   videoState = videoState.map(entry => entry.zone === zone
     ? { zone, id: ids[0]!, time: 0, updatedAt: now }
     : entry)
 }
 
-function shuffleVideoIds(ids: string[]) {
-  const shuffled = [...ids]
+function shuffleVideoIds(ids: string[], currentId: string) {
+  const startIndexes = ids
+    .map((id, index) => ({ id, index }))
+    .filter(entry => entry.id !== currentId)
+  const startIndex = startIndexes[Math.floor(Math.random() * startIndexes.length)]?.index
+    ?? Math.floor(Math.random() * ids.length)
+  const start = ids[startIndex]!
+  const shuffled = ids.filter((_, index) => index !== startIndex)
 
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -1068,7 +1052,7 @@ function shuffleVideoIds(ids: string[]) {
     shuffled[j] = id
   }
 
-  return shuffled
+  return [start, ...shuffled]
 }
 
 function clientVideoZone(client: Client) {
