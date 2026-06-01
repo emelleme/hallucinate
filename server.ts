@@ -103,6 +103,7 @@ const videoDb = open<StoredVideoState | StoredVideoPlaylists>({ path: videoDbPat
 let videoState = await loadVideoState()
 let videoPlaylistOrders = await loadVideoPlaylists()
 const videoAuthorities: Partial<Record<VideoZone, number>> = {}
+const forcedVideoJoins: Partial<Record<VideoZone, StoredVideoStateEntry>> = {}
 let beachBalls = createBeachBalls()
 const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
@@ -868,11 +869,19 @@ function currentVideoState(now = Date.now()): VideoStateEntry[] {
 }
 
 function currentVideoStateForJoin(now = Date.now()): VideoStateEntry[] {
-  return videoState.map(entry => videoStateFromRandomClient(entry.zone, entry.id, now) ?? {
+  return videoState.map(entry => forcedVideoJoinState(entry.zone, now) ?? videoStateFromRandomClient(entry.zone, entry.id, now) ?? {
     id: entry.id,
     time: entry.time + (now - entry.updatedAt) / 1000,
     zone: entry.zone,
   })
+}
+
+function forcedVideoJoinState(zone: VideoZone, now: number) {
+  const entry = forcedVideoJoins[zone]
+
+  return entry
+    ? { zone, id: entry.id, time: entry.time + (now - entry.updatedAt) / 1000 }
+    : undefined
 }
 
 function videoStateFromRandomClient(zone: VideoZone, id: string, now: number) {
@@ -985,6 +994,7 @@ async function applyVideoState(client: Client, entries: VideoStateEntry[]) {
     : current)
   if (trackChanged) {
     await saveVideoState()
+    delete forcedVideoJoins[zone]
     broadcastVideoState()
   }
 }
@@ -1294,6 +1304,7 @@ async function randomizeVideoTrack(zone: VideoZone) {
   videoState = videoState.map(entry => entry.zone === zone
     ? { zone, id, time: 0, updatedAt: now }
     : entry)
+  forcedVideoJoins[zone] = { zone, id, time: 0, updatedAt: now }
   clearClientVideoState(zone)
   await saveVideoState()
   broadcastVideoStateNow()
