@@ -29,3 +29,4 @@ Skip the summary of what you did. Just do the thing.
 AssemblyScript code requires all variables to be explicitly typed and all casts done manually, i.e from f64 to f32 or i32 to f32 etc.
 In AssemblyScript Map get operations required a .has() check first.
 You should run code to test things using `bun -e`.
+You should typecheck with `bunx tsc --noEmit`.

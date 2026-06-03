@@ -75,6 +75,7 @@ export type YouTubePlayer = {
   cueVideoById(options: { videoId: string; startSeconds: number }): void
   cuePlaylist(options: { index: number; list: string; listType: 'playlist'; startSeconds: number }): void
   getCurrentTime(): number
+  getDuration(): number
   getVideoData(): { video_id: string }
   getPlaylist(): string[] | undefined
   getPlaylistIndex(): number

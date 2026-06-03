@@ -983,13 +983,19 @@ async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]
     const current = videoPlaylistOrders.find(current => current.zone === entry.zone)
     const ids = uniqueVideoIds(entry.ids)
     const sourceKey = ids.join('\n')
+    const queue = videoQueue(entry.zone)
 
-    if (current && current.ids.join('\n') === sourceKey && videoQueue(entry.zone)) {
+    if (current && current.ids.join('\n') === sourceKey && queue) {
       continue
     }
 
     setVideoPlaylistOrder(entry.zone, ids)
-    setRandomVideoQueue(entry.zone, now)
+    if (queue) {
+      setRandomNextVideo(entry.zone, ids)
+    }
+    else {
+      setRandomVideoQueue(entry.zone, now)
+    }
     changedZones.add(entry.zone)
   }
 
@@ -1027,6 +1033,13 @@ function setRandomVideoQueue(zone: VideoZone, now: number) {
 
   setVideoQueue({ zone, currentId, nextId, time: 0, updatedAt: now })
   clearClientVideoProgress(zone)
+}
+
+function setRandomNextVideo(zone: VideoZone, ids = videoPlaylist(zone).ids) {
+  const queue = videoQueue(zone)!
+  const nextId = randomVideoId(ids, new Set([queue.currentId]))
+
+  setVideoQueue({ ...queue, nextId })
 }
 
 function setVideoQueue(entry: StoredVideoQueueEntry) {
@@ -1270,10 +1283,16 @@ async function randomizeVideoTrack(zone: VideoZone) {
     return
   }
 
-  setRandomVideoQueue(zone, now)
+  if (videoQueue(zone)) {
+    setRandomNextVideo(zone)
+  }
+  else {
+    setRandomVideoQueue(zone, now)
+  }
+
   const queue = videoQueue(zone)!
 
-  console.log(`[video] random ${zone}: current=${queue.currentId} next=${queue.nextId}`)
+  console.log(`[video] random queued ${zone}: current=${queue.currentId} next=${queue.nextId}`)
   await saveVideoQueues()
   broadcastVideoSync(new Set([zone]))
 }

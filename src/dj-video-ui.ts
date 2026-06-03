@@ -14,8 +14,10 @@ type VideoTrackState = {
 }
 
 const endedState = 0
+const endedTimeTolerance = 5
 const playlistDiscoveryDelay = 1000
 const playlistDiscoveryAttempts = 5
+const syncSeekTolerance = 2
 
 export function videoZones(): VideoZone[] {
   return ['inside', 'outside', 'tent']
@@ -156,6 +158,12 @@ export function createDjVideoUi(
                 }
 
                 if (event.data === endedState) {
+                  if (!videoFinished(area)) {
+                    players[area]!.seekTo(states[area]!.time, true)
+                    players[area]!.playVideo()
+                    return
+                  }
+
                   playQueuedTrack(area)
                   pauseOtherVideos(area, players, ready)
                   return
@@ -290,7 +298,13 @@ export function createDjVideoUi(
 
     state.time = time
     if (loadedId === state.currentId) {
-      player.seekTo(time, true)
+      const currentTime = player.getCurrentTime()
+      const shouldSeek = !shouldPlay || time > currentTime + syncSeekTolerance
+
+      state.time = shouldSeek ? time : currentTime
+      if (shouldSeek) {
+        player.seekTo(time, true)
+      }
       if (shouldPlay) {
         player.playVideo()
       }
@@ -325,6 +339,17 @@ export function createDjVideoUi(
     players[area]!.loadVideoById({ videoId: state.currentId, startSeconds: 0 })
     players[area]!.playVideo()
     options.onEnded?.({ zone: area, id: endedId })
+  }
+
+  function videoFinished(area: VideoZone) {
+    const state = states[area]!
+    const player = players[area]!
+    const time = Math.max(state.time, player.getCurrentTime())
+    const duration = player.getDuration()
+
+    state.time = time
+
+    return duration > 0 && time + endedTimeTolerance >= duration
   }
 
   function requestPlaylist(area: VideoZone) {
