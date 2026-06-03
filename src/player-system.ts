@@ -31,6 +31,7 @@ const randomPause = [2, 5] as const
 const blockedPause = [10, 30] as const
 const initialSeatedPlayerCount = 4
 const leaveSeatTime = 1.4
+const treeDestinationSpots = 12
 const doorInside: Vec3 = [backDoor.x, characterFloor, roomBounds.front - 0.75]
 const doorOutside: Vec3 = [backDoor.x, characterFloor, roomBounds.front + 0.75]
 
@@ -633,7 +634,9 @@ function seatDestination(
 }
 
 function treeDestination(seed: number, step: number, outsideTree: CircleBounds): PlayerDestination {
-  const angle = seededRange(seed, step + 106, 0, Math.PI * 2)
+  const spot = Math.floor(seededRange(seed, step + 106, 0, treeDestinationSpots))
+  const spread = Math.PI / treeDestinationSpots
+  const angle = spot / treeDestinationSpots * Math.PI * 2 + seededRange(seed, step + 109, -spread, spread)
   const distance = seededRange(seed, step + 107, outsideTree.radius + treeDestinationRadius[0],
     outsideTree.radius + treeDestinationRadius[1])
 
