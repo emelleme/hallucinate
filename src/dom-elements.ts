@@ -2,7 +2,9 @@ export function getDomElements() {
   const canvas = document.createElement('canvas')
   const djVideo = document.createElement('div')
   const chatForm = document.createElement('form')
+  const nicknameInput = document.createElement('input')
   const chatInput = document.createElement('input')
+  const chatSubmit = document.createElement('button')
   const chatBubble = document.createElement('div')
   const onlineIndicator = document.createElement('div')
   const onlineCount = document.createElement('div')
@@ -29,9 +31,17 @@ export function getDomElements() {
   chatForm.id = 'chat-form'
   chatForm.className = 'absolute opacity-0'
 
+  nicknameInput.id = 'nickname-input'
+  nicknameInput.maxLength = 32
+  nicknameInput.placeholder = 'nickname'
+  nicknameInput.setAttribute('autocomplete', 'nickname')
+
   chatInput.id = 'chat-input'
   chatInput.maxLength = 120
   chatInput.autocomplete = 'off'
+
+  chatSubmit.type = 'submit'
+  chatSubmit.hidden = true
 
   chatBubble.id = 'chat-bubble'
   chatBubble.className = 'absolute left-0 top-0 z-20'
@@ -63,7 +73,7 @@ export function getDomElements() {
   introStart.textContent = 'enter'
   introProgress.textContent = '0%'
 
-  chatForm.append(chatInput)
+  chatForm.append(nicknameInput, chatInput, chatSubmit)
   onlineIndicator.append(chatLog, onlineCount)
   introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
@@ -75,6 +85,7 @@ export function getDomElements() {
     canvas,
     djVideo,
     chatForm,
+    nicknameInput,
     chatInput,
     chatBubble,
     chatLog,

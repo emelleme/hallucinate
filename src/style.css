@@ -721,6 +721,9 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
 }
 
 #chat-form {
+  align-items: center;
+  display: flex;
+  gap: 6px;
   pointer-events: none;
 }
 
@@ -732,6 +735,7 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
   pointer-events: auto;
 }
 
+#nickname-input,
 #chat-input,
 .chat-bubble {
   max-width: 42dvw;
@@ -744,10 +748,18 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
   box-shadow: 0 0 18px rgb(255 0 0 / 0.18);
 }
 
+#nickname-input,
 #chat-input {
-  width: 220px;
   padding: 7px 10px;
   outline: none;
+}
+
+#nickname-input {
+  width: 112px;
+}
+
+#chat-input {
+  width: 220px;
 }
 
 #chat-bubble {

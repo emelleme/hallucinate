@@ -94,6 +94,7 @@ const {
   canvas,
   djVideo,
   chatForm,
+  nicknameInput,
   chatInput,
   chatBubble,
   chatLog,
@@ -192,6 +193,7 @@ const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
 let nickname = savedState?.nickname ?? ''
+nicknameInput.value = nickname
 const adminIdRoot = document.createElement('div')
 let sendVideoEndedNow = (_entry: VideoEndedEntry) => {}
 let sendVideoPlaylistNow = (_zone: VideoZone, _ids: string[]) => {}
@@ -1097,17 +1099,18 @@ const styleActions: Record<
   },
 }
 
-function promptNickname() {
-  const next = prompt('nickname', nickname)
-
-  if (next !== null) {
-    nickname = next.trim()
-    saveCurrentClubState(true)
-  }
-}
-
 function messageWithNickname(text: string) {
   return nickname && text ? `<${nickname}> ${text}` : text
+}
+
+function syncNickname() {
+  const next = nicknameInput.value.trim()
+
+  if (next !== nickname) {
+    nickname = next
+    nicknameInput.value = nickname
+    saveCurrentClubState(true)
+  }
 }
 
 function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(roomAt(characterPosition))) {
@@ -1127,14 +1130,13 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(r
 }
 
 bindKeyboardInput({
-  activeInput: chatInput,
+  activeInputs: [nicknameInput, chatInput],
   keys,
   startJumping: () => localCharacter.startJumping(),
   stopJumping: () => localCharacter.stopJumping(),
   startWave: () => localCharacter.startWave(),
   stopWave: () => localCharacter.stopWave(),
   openChatInput: () => chatUi.open(),
-  promptNickname,
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
     const open = helpUi.toggle()
@@ -1279,6 +1281,7 @@ function graffitiKey(splat: import('./types.ts').GraffitiSplat) {
 }
 
 function sendChatMessage(message: string) {
+  syncNickname()
   const text = multiplayer.sendMessage(messageWithNickname(message))
 
   if (text) {
@@ -1288,6 +1291,8 @@ function sendChatMessage(message: string) {
     chatUi.show(multiplayer.selfId, text, characterPosition, performance.now(), color)
   }
 }
+
+nicknameInput.addEventListener('change', syncNickname)
 
 chatForm.addEventListener('submit', event => {
   event.preventDefault()

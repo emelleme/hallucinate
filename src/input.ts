@@ -20,10 +20,9 @@ export function setAlternativeInput(value: boolean) {
 }
 
 export function bindKeyboardInput(options: {
-  activeInput: HTMLInputElement
+  activeInputs: HTMLInputElement[]
   keys: Set<string>
   openChatInput: () => void
-  promptNickname: () => void
   setAlternativeInput: (value: boolean) => void
   toggleHelp: () => void
   startJumping: () => void
@@ -39,7 +38,7 @@ export function bindKeyboardInput(options: {
   cycleAccessory: (direction: number) => void
 }) {
   addEventListener('keydown', event => {
-    if (document.activeElement === options.activeInput) {
+    if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
       return
     }
 
@@ -61,12 +60,6 @@ export function bindKeyboardInput(options: {
 
     if (key === 'h') {
       options.toggleHelp()
-      return
-    }
-
-    if (key === 'n') {
-      event.preventDefault()
-      options.promptNickname()
       return
     }
 

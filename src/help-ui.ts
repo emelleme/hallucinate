@@ -20,7 +20,6 @@ const leftRows: HelpKey[][] = [
     { keys: ['z', 'x'], label: 'bottom wear' },
     { keys: ['v'], label: 'wave' },
     { keys: ['b'], label: 'bounce' },
-    { keys: ['n'], label: 'nickname' },
   ],
 ]
 
@@ -41,7 +40,6 @@ const alternativeLeftRows: HelpKey[][] = [
     { keys: ['m', ','], label: 'bottom wear' },
     { keys: ['v'], label: 'wave' },
     { keys: ['b'], label: 'bounce' },
-    { keys: ['n'], label: 'nickname' },
   ],
 ]
 

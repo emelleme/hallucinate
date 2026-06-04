@@ -53,6 +53,9 @@ export function createChatUi(
 
       form.dataset.open = 'false'
       input.blur()
+      if (document.activeElement instanceof HTMLElement && form.contains(document.activeElement)) {
+        document.activeElement.blur()
+      }
 
       return text
     },
