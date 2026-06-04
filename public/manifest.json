@@ -1,12 +1,23 @@
 {
-  "name": "Hallucinate - Massively Multiplayer Online Rave",
+  "name": "Hallucinate",
   "short_name": "Hallucinate",
   "description": "Massively Multiplayer Online Rave",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "background_color": "#000000",
   "theme_color": "#000000",
+  "categories": [
+    "games",
+    "music",
+    "social"
+  ],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "icon-192x192.png",

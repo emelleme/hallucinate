@@ -454,7 +454,7 @@ async function fileResponse(path: string, request: Request) {
   const modified = new Date(file.lastModified)
   const tag = `"${file.size.toString(16)}-${file.lastModified.toString(16)}"`
 
-  headers.set('content-type', file.type || contentType(path))
+  headers.set('content-type', assetContentType(path, file))
   headers.set('etag', tag)
   headers.set('last-modified', modified.toUTCString())
 
@@ -500,6 +500,12 @@ function contentType(path: string) {
   }
 
   return type
+}
+
+function assetContentType(path: string, file: Bun.BunFile) {
+  return path.endsWith('manifest.json')
+    ? 'application/manifest+json; charset=utf-8'
+    : file.type || contentType(path)
 }
 
 const contentTypes = new Map([
@@ -568,7 +574,7 @@ async function memoryAsset(path: string, file: Bun.BunFile) {
     source,
     size: file.size,
     tag,
-    type: file.type || contentType(path),
+    type: assetContentType(path, file),
   }
 
   memoryAssets.set(path, asset)

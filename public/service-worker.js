@@ -1,4 +1,4 @@
-const cacheName = 'hallucinate-v1'
+const cacheName = 'hallucinate-v2'
 const shell = [
   '/',
   '/manifest.json',
