@@ -1,6 +1,7 @@
-const cacheName = 'hallucinate-v2'
-const shell = [
+const CACHE_NAME = 'hallucinate-v3'
+const urlsToCache = [
   '/',
+  '/index.html',
   '/manifest.json',
   '/favicon-180x180.png',
   '/icon-192x192.png',
@@ -10,14 +11,18 @@ const shell = [
 ]
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)))
-  self.skipWaiting()
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+      .then(() => self.skipWaiting())
+      .catch(e => console.error(e)),
+  )
 })
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(names => Promise.all(names.filter(name => name !== cacheName).map(name => caches.delete(name))))
+      .then(names => Promise.all(names.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))))
       .then(() => self.clients.claim()),
   )
 })
@@ -25,32 +30,56 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request
 
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
+  if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) {
     return
   }
 
-  if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request))
+  const url = new URL(request.url)
+  const isHtmlRequest = request.mode === 'navigate'
+    || request.headers.get('accept')?.includes('text/html')
+    || url.pathname === '/'
+    || url.pathname.endsWith('.html')
+  const isHardRefresh = request.cache === 'reload'
+
+  if (isHtmlRequest || isHardRefresh) {
+    event.respondWith(networkFirst(request, isHtmlRequest))
     return
   }
 
-  event.respondWith(cacheFirst(request))
+  event.respondWith(staleWhileRevalidate(request))
 })
 
-async function networkFirst(request) {
-  const cache = await caches.open(cacheName)
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
+
+async function networkFirst(request, isHtmlRequest) {
+  const cache = await caches.open(CACHE_NAME)
 
   try {
     const response = await fetch(request)
 
-    cache.put(request, response.clone())
+    if (response.ok && response.type === 'basic') {
+      cache.put(request, response.clone())
+    }
+
     return response
   }
   catch (e) {
-    const cached = await cache.match(request)
+    const cached = await caches.match(request)
 
     if (cached) {
       return cached
+    }
+
+    if (isHtmlRequest) {
+      const index = await caches.match('/index.html')
+
+      if (index) {
+        return index
+      }
     }
 
     console.error(e)
@@ -58,19 +87,22 @@ async function networkFirst(request) {
   }
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(cacheName)
-  const cached = await cache.match(request)
+async function staleWhileRevalidate(request) {
+  const cached = await caches.match(request)
+  const fetchPromise = fetch(request)
+    .then(async response => {
+      if (response.ok && response.type === 'basic') {
+        const cache = await caches.open(CACHE_NAME)
 
-  if (cached) {
-    return cached
-  }
+        cache.put(request, response.clone())
+      }
 
-  const response = await fetch(request)
+      return response
+    })
+    .catch(e => {
+      console.error(e)
+      throw e
+    })
 
-  if (response.ok) {
-    cache.put(request, response.clone())
-  }
-
-  return response
+  return cached ?? fetchPromise
 }
