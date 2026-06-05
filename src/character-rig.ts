@@ -1,4 +1,4 @@
-import { identity, mix, nodeTransform, transformOrigin } from './math.ts'
+import { identity, nodeTransform, transformOrigin } from './math.ts'
 import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMode, CharacterRig, Mat4, PoseBlendCache,
   Quat, RigNode, SampledPose, Vec3 } from './types.ts'
 
@@ -15,6 +15,7 @@ type PoseSamplePlan = {
 }
 type KeyArray = [number, Vec3 | Quat][]
 type KeyInterval = { inverse: number; start: number }
+type UpperPosePlan = { anchorIndex: number; indices: number[] }
 
 const identityMatrix = identity()
 const identityQuat: Quat = [1, 0, 0, 0]
@@ -25,6 +26,7 @@ const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
 const keyIntervals = new WeakMap<KeyArray, KeyInterval>()
 const keyIntervalsMissing = new WeakSet<KeyArray>()
+const upperPosePlans = new WeakMap<string[], UpperPosePlan>()
 const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
 const waveLoopEnd = 62 / 30
@@ -185,36 +187,58 @@ export function sampleCharacterPose(
 }
 
 function blendCharacterPose(stand: Vec3[], run: Vec3[], blend: number, characterPoseJoints: string[]) {
-  const pose = new Array<Vec3>(characterPoseJoints.length)
+  const pose = createPose(characterPoseJoints.length)
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
     const point = stand[i]!
     const next = run[i]!
+    const target = pose[i]!
 
-    pose[i] = [
-      mix(point[0], next[0], blend),
-      mix(point[1], next[1], blend),
-      mix(point[2], next[2], blend),
-    ]
+    target[0] = point[0] + (next[0] - point[0]) * blend
+    target[1] = point[1] + (next[1] - point[1]) * blend
+    target[2] = point[2] + (next[2] - point[2]) * blend
   }
 
   return pose
 }
 
 function blendUpperPose(pose: Vec3[], wave: Vec3[], characterPoseJoints: string[]) {
-  const anchorIndex = characterPoseJoints.indexOf('mixamorig:Spine2')
-  const anchor = pose[anchorIndex]!
-  const waveAnchor = wave[anchorIndex]!
+  const plan = upperPosePlan(characterPoseJoints)
+  const anchor = pose[plan.anchorIndex]!
+  const waveAnchor = wave[plan.anchorIndex]!
+
+  for (const i of plan.indices) {
+    const target = pose[i]!
+    const source = wave[i]!
+
+    target[0] = anchor[0] + source[0] - waveAnchor[0]
+    target[1] = anchor[1] + source[1] - waveAnchor[1]
+    target[2] = anchor[2] + source[2] - waveAnchor[2]
+  }
+}
+
+function upperPosePlan(characterPoseJoints: string[]) {
+  let plan = upperPosePlans.get(characterPoseJoints)
+
+  if (plan) {
+    return plan
+  }
+
+  const indices: number[] = []
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
     if (upperPoseJoint(characterPoseJoints[i]!)) {
-      pose[i] = [
-        anchor[0] + wave[i]![0] - waveAnchor[0],
-        anchor[1] + wave[i]![1] - waveAnchor[1],
-        anchor[2] + wave[i]![2] - waveAnchor[2],
-      ]
+      indices.push(i)
     }
   }
+
+  plan = {
+    anchorIndex: characterPoseJoints.indexOf('mixamorig:Spine2'),
+    indices,
+  }
+  upperPosePlans.set(characterPoseJoints, plan)
+
+  return plan
 }
 
 function upperPoseJoint(name: string) {
@@ -243,7 +267,7 @@ function placeBlendedCharacterPose(
   characterPoseJoints: string[],
   characterGroundJointIndices: number[],
   characterScale: number,
-  target = new Array<Vec3>(characterPoseJoints.length),
+  target = createPose(characterPoseJoints.length),
 ) {
   let ground = Infinity
   const sin = Math.sin(turn)
@@ -253,28 +277,23 @@ function placeBlendedCharacterPose(
     const point = stand[index]!
     const next = run[index]!
 
-    ground = Math.min(ground, mix(point[1], next[1], blend))
+    ground = Math.min(ground, point[1] + (next[1] - point[1]) * blend)
   }
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
     const point = stand[i]!
     const next = run[i]!
-    const x = mix(point[0], next[0], blend) * characterScale
-    const y = (mix(point[1], next[1], blend) - ground) * characterScale
-    const z = mix(point[2], next[2], blend) * characterScale
+    const x = (point[0] + (next[0] - point[0]) * blend) * characterScale
+    const y = (point[1] + (next[1] - point[1]) * blend - ground) * characterScale
+    const z = (point[2] + (next[2] - point[2]) * blend) * characterScale
     const placed = target[i]
     const px = position[0] + x * cos + z * sin
     const py = position[1] + y
     const pz = position[2] - x * sin + z * cos
 
-    if (placed) {
-      placed[0] = px
-      placed[1] = py
-      placed[2] = pz
-    }
-    else {
-      target[i] = [px, py, pz]
-    }
+    placed[0] = px
+    placed[1] = py
+    placed[2] = pz
   }
 
   return target
