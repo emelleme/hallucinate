@@ -271,6 +271,7 @@ function createLabel(root: HTMLDivElement, owner: number, position: Vec3): ChatL
   }
 
   element.className = 'chat-label'
+  element.dataset.visible = 'false'
   root.append(element)
 
   return label
@@ -290,6 +291,7 @@ function createBubble(root: HTMLDivElement, owner: number, position: Vec3): Chat
   }
 
   element.className = 'chat-bubble'
+  element.dataset.visible = 'false'
   root.append(element)
 
   return bubble
@@ -348,6 +350,7 @@ function createReactionBubble(
   }
 
   element.className = 'chat-reaction'
+  element.dataset.visible = 'false'
   for (let i = 0; i < reactionParticleCount; i++) {
     const particle = document.createElement('span')
     const seed = owner * 131 + key * 47 + i * 29
