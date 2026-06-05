@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hallucinate-v3'
+const CACHE_NAME = 'hallucinate-v4'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -35,6 +35,11 @@ self.addEventListener('fetch', event => {
   }
 
   const url = new URL(request.url)
+
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+    return
+  }
+
   const isHtmlRequest = request.mode === 'navigate'
     || request.headers.get('accept')?.includes('text/html')
     || url.pathname === '/'

@@ -1682,7 +1682,7 @@ async function fetchLoftRoom(slug: string): Promise<LoftRoomPayload> {
     throw new Error(`Room lookup failed ${response.status}`)
   }
 
-  return await response.json() as LoftRoomPayload
+  return await jsonApiResponse<LoftRoomPayload>(response, 'Room lookup')
 }
 
 async function fetchLoftRooms(): Promise<LoftRoomListEntry[]> {
@@ -1692,7 +1692,7 @@ async function fetchLoftRooms(): Promise<LoftRoomListEntry[]> {
     throw new Error(`Room list failed ${response.status}`)
   }
 
-  return (await response.json() as { rooms: LoftRoomListEntry[] }).rooms
+  return (await jsonApiResponse<{ rooms: LoftRoomListEntry[] }>(response, 'Room list')).rooms
 }
 
 async function claimLoftRoom(slug: string, password: string): Promise<LoftRoomPayload> {
@@ -1706,7 +1706,7 @@ async function claimLoftRoom(slug: string, password: string): Promise<LoftRoomPa
     throw new Error(`Room claim failed ${response.status}`)
   }
 
-  return await response.json() as LoftRoomPayload
+  return await jsonApiResponse<LoftRoomPayload>(response, 'Room claim')
 }
 
 async function deleteLoftRoom(slug: string, pass: string) {
@@ -1732,7 +1732,17 @@ async function setLoftMusic(slug: string, pass: string, source: string): Promise
     throw new Error(`Room music failed ${response.status}`)
   }
 
-  return await response.json() as LoftRoomPayload
+  return await jsonApiResponse<LoftRoomPayload>(response, 'Room music')
+}
+
+async function jsonApiResponse<T>(response: Response, label: string): Promise<T> {
+  const type = response.headers.get('content-type') ?? ''
+
+  if (!type.includes('application/json')) {
+    throw new Error(`${label} returned ${type || 'unknown content-type'}`)
+  }
+
+  return await response.json() as T
 }
 
 async function updateLoftMusic(pass: string, source: string) {
