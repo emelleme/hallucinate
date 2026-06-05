@@ -47,6 +47,7 @@ export function getDomElements() {
   chatInput.maxLength = 120
   chatInput.placeholder = 'message...'
   chatInput.autocomplete = 'off'
+  chatInput.enterKeyHint = 'done'
 
   chatSubmit.type = 'submit'
   chatSubmit.hidden = true

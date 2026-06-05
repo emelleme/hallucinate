@@ -91,6 +91,7 @@ export function createChatUi(
       }
       else {
         input.value = ''
+        input.blur()
       }
 
       return text

@@ -2361,6 +2361,15 @@ function toggleChatInput(focus = true) {
 nicknameInput.addEventListener('change', () => syncNickname(nicknameInput.value))
 nicknameInput.addEventListener('input', syncChatFormColor)
 
+chatInput.addEventListener('keydown', event => {
+  if (event.key !== 'Enter') {
+    return
+  }
+
+  event.preventDefault()
+  chatForm.requestSubmit()
+})
+
 chatForm.addEventListener('submit', event => {
   event.preventDefault()
   sendChatMessage(chatUi.submit(document.documentElement.dataset.touchControls !== 'true'))
