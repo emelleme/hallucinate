@@ -2844,13 +2844,16 @@ function updateIntro() {
     lastIntroStartReady = startReady
   }
 
+  if (characterRenderSystem.assetsLoaded) {
+    startPostEntryLoads()
+  }
+
   const ready = characterRenderSystem.assetsLoaded && videoPlaying
 
   if (ready && !introHidden) {
     introHidden = true
     intro.dataset.hidden = 'true'
     introEffectRenderer.stop()
-    requestAnimationFrame(startPostEntryLoads)
 
     if (helpSeen) {
       helpUi.hide()
