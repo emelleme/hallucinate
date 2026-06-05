@@ -114,13 +114,40 @@ function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
 
 const beachBallRows = 8
 const beachBallColumns = 16
-const beachBallA: Vec3 = [0, 0, 0]
-const beachBallB: Vec3 = [0, 0, 0]
-const beachBallC: Vec3 = [0, 0, 0]
-const beachBallD: Vec3 = [0, 0, 0]
+const beachBallUnitVertices = createBeachBallUnitVertices()
 
 function writeBeachBall(target: VertexWriter, ball: BeachBall) {
   const color = palette[ball.id]!
+  const data = target.data
+  let offset = target.length
+
+  for (let i = 0; i < beachBallUnitVertices.length; i += 3) {
+    offset = writeVertex(data, offset, ball.position[0] + beachBallUnitVertices[i]! * beachBallRadius,
+      ball.position[1] + beachBallUnitVertices[i + 1]! * beachBallRadius,
+      ball.position[2] + beachBallUnitVertices[i + 2]! * beachBallRadius, color)
+  }
+
+  target.length = offset
+}
+
+function writeVertex(data: Float32Array, offset: number, x: number, y: number, z: number, color: Vec3) {
+  data[offset] = x
+  data[offset + 1] = y
+  data[offset + 2] = z
+  data[offset + 3] = color[0]
+  data[offset + 4] = color[1]
+  data[offset + 5] = color[2]
+  data[offset + 6] = glow
+  data[offset + 7] = 0
+  data[offset + 8] = 0
+  data[offset + 9] = 0
+  data[offset + 10] = 0
+
+  return offset + 11
+}
+
+function createBeachBallUnitVertices() {
+  const vertices: number[] = []
 
   for (let y = 0; y < beachBallRows; y++) {
     const top = -Math.PI / 2 + Math.PI * y / beachBallRows
@@ -130,55 +157,24 @@ function writeBeachBall(target: VertexWriter, ball: BeachBall) {
       const left = Math.PI * 2 * x / beachBallColumns
       const right = Math.PI * 2 * (x + 1) / beachBallColumns
 
-      writeBallQuad(target, ball.position, top, bottom, left, right, color)
+      addUnitQuad(vertices, top, bottom, left, right)
     }
   }
+
+  return new Float32Array(vertices)
 }
 
-function writeBallQuad(
-  target: VertexWriter,
-  center: Vec3,
-  top: number,
-  bottom: number,
-  left: number,
-  right: number,
-  color: Vec3,
-) {
-  spherePointInto(center, top, left, beachBallA)
-  spherePointInto(center, top, right, beachBallB)
-  spherePointInto(center, bottom, right, beachBallC)
-  spherePointInto(center, bottom, left, beachBallD)
-
-  writeVertex(target, beachBallA, color)
-  writeVertex(target, beachBallB, color)
-  writeVertex(target, beachBallC, color)
-  writeVertex(target, beachBallA, color)
-  writeVertex(target, beachBallC, color)
-  writeVertex(target, beachBallD, color)
+function addUnitQuad(target: number[], top: number, bottom: number, left: number, right: number) {
+  addUnitPoint(target, top, left)
+  addUnitPoint(target, top, right)
+  addUnitPoint(target, bottom, right)
+  addUnitPoint(target, top, left)
+  addUnitPoint(target, bottom, right)
+  addUnitPoint(target, bottom, left)
 }
 
-function spherePointInto(center: Vec3, vertical: number, horizontal: number, target: Vec3) {
-  const radius = Math.cos(vertical) * beachBallRadius
+function addUnitPoint(target: number[], vertical: number, horizontal: number) {
+  const radius = Math.cos(vertical)
 
-  target[0] = center[0] + Math.cos(horizontal) * radius
-  target[1] = center[1] + Math.sin(vertical) * beachBallRadius
-  target[2] = center[2] + Math.sin(horizontal) * radius
-}
-
-function writeVertex(target: VertexWriter, point: Vec3, color: Vec3) {
-  const offset = target.length
-  const data = target.data
-
-  data[offset] = point[0]
-  data[offset + 1] = point[1]
-  data[offset + 2] = point[2]
-  data[offset + 3] = color[0]
-  data[offset + 4] = color[1]
-  data[offset + 5] = color[2]
-  data[offset + 6] = glow
-  data[offset + 7] = 0
-  data[offset + 8] = 0
-  data[offset + 9] = 0
-  data[offset + 10] = 0
-  target.length += 11
+  target.push(Math.cos(horizontal) * radius, Math.sin(vertical), Math.sin(horizontal) * radius)
 }

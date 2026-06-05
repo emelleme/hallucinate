@@ -1,6 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
-import { lengthSq, mix } from './math.ts'
+import { lengthSq } from './math.ts'
 import {
   angleToProtocol,
   decodeKeys,
@@ -394,7 +394,7 @@ export function updateRemotePlayers(players: Iterable<Player>, delta: number, ou
   for (const player of players) {
     const moving = lengthSq(player.input) > 0
 
-    player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
+    player.motionBlend += ((moving ? 1 : 0) - player.motionBlend) * (1 - Math.exp(-8 * delta))
     if (player.mode === 'jump' || player.mode === 'wave' || player.mode === 'waveOut') {
       player.modeTime = (player.modeTime ?? 0) + delta
 

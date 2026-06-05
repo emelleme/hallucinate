@@ -1,6 +1,6 @@
 import { characterFloor, hairPalette, jewelPalette, skinPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
-import { clamp, lengthSq, mix, smoothAngle } from './math.ts'
+import { clamp, lengthSq, smoothAngle } from './math.ts'
 import {
   backDoor,
   djBooth,
@@ -160,7 +160,7 @@ export function updatePlayers(
       player.travelLateralDirection = undefined
     }
     else if (updateRandomPause(player, time)) {
-      player.motionBlend = mix(player.motionBlend, 0, 1 - Math.exp(-7 * delta))
+      player.motionBlend += (0 - player.motionBlend) * (1 - Math.exp(-7 * delta))
       player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
       player.position[1] = walkHeight(player.position[0], player.position[1], player.position[2])
       continue
@@ -179,7 +179,7 @@ export function updatePlayers(
     const inputLengthSq = lengthSq(player.input)
     const moving = inputLengthSq > 0
 
-    player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-7 * delta))
+    player.motionBlend += ((moving ? 1 : 0) - player.motionBlend) * (1 - Math.exp(-7 * delta))
     player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
 
     if (moving) {
@@ -714,7 +714,7 @@ function danceFloorDestination(
 }
 
 function seededRange(seed: number, salt: number, min: number, max: number) {
-  return mix(min, max, seededRandom(seed, salt))
+  return min + (max - min) * seededRandom(seed, salt)
 }
 
 function seededRandom(seed: number, salt: number) {

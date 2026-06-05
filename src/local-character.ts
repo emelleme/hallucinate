@@ -2,7 +2,6 @@ import { characterFloor } from './character-data.ts'
 import { readMoveInput } from './input.ts'
 import {
   lengthSq,
-  mix,
   normalizeInto,
   smoothAngle,
 } from './math.ts'
@@ -284,17 +283,17 @@ export function createLocalCharacter(keys: Set<string>) {
         motionBlend = 0
       }
       else if (waveActive) {
-        motionBlend = mix(motionBlend, 1, 1 - Math.exp(-8 * delta))
+        motionBlend += (1 - motionBlend) * (1 - Math.exp(-8 * delta))
         mode = 'wave'
       }
       else if (mode === 'waveOut' && !moving) {
         motionBlend = 0
       }
       else if (mode === 'waveOut') {
-        motionBlend = mix(motionBlend, 1, 1 - Math.exp(-8 * delta))
+        motionBlend += (1 - motionBlend) * (1 - Math.exp(-8 * delta))
       }
       else {
-        motionBlend = mix(motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
+        motionBlend += ((moving ? 1 : 0) - motionBlend) * (1 - Math.exp(-8 * delta))
         mode = motionBlend > 0.5 ? 'run' : 'stand'
       }
 
