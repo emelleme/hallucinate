@@ -27,6 +27,7 @@ import {
 } from './graffiti.ts'
 import { createHelpUi } from './help-ui.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
+import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
@@ -112,6 +113,7 @@ const {
   roomsButton,
   supportLink,
   intro,
+  introEffect,
   introBar,
   introNicknameInput,
   introProgress,
@@ -1028,6 +1030,7 @@ const projectorViewport: Viewport = {
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, projectorViewport)
 const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
+const introEffectRenderer = createIntroEffect(introEffect)
 const feedbackMaxAmount = 0.91
 const feedbackToiletRampSeconds = 60
 const feedbackSitResetSeconds = 3
@@ -1073,6 +1076,18 @@ intro.addEventListener('touchmove', event => {
     scrollTo(0, 0)
   }
 }, { passive: false })
+intro.addEventListener('pointermove', event => {
+  const bounds = intro.getBoundingClientRect()
+
+  introEffectRenderer.setPointer((event.clientX - bounds.left) / bounds.width,
+    1 - (event.clientY - bounds.top) / bounds.height)
+})
+intro.addEventListener('pointerdown', event => {
+  const bounds = intro.getBoundingClientRect()
+
+  introEffectRenderer.setPointer((event.clientX - bounds.left) / bounds.width,
+    1 - (event.clientY - bounds.top) / bounds.height)
+})
 
 function startIntro() {
   syncNickname(introNicknameInput.value)
@@ -2821,6 +2836,7 @@ function updateIntro() {
   if (progress !== lastIntroProgress) {
     introProgress.textContent = `${progress}%`
     introBar.style.transform = `scaleX(${progress / 100})`
+    introEffectRenderer.setProgress(progress / 100)
     lastIntroProgress = progress
   }
   if (startReady !== lastIntroStartReady) {
@@ -2833,6 +2849,7 @@ function updateIntro() {
   if (ready && !introHidden) {
     introHidden = true
     intro.dataset.hidden = 'true'
+    introEffectRenderer.stop()
     requestAnimationFrame(startPostEntryLoads)
 
     if (helpSeen) {
@@ -2871,6 +2888,7 @@ function takeRemoteSeats(stamp: number) {
 
 import.meta.hot?.dispose(() => {
   cancelAnimationFrame(frameId)
+  introEffectRenderer.stop()
   multiplayer.close()
 })
 

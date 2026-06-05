@@ -15,6 +15,7 @@ export function getDomElements() {
   const roomsButton = document.createElement('button')
   const supportLink = document.createElement('a')
   const intro = document.createElement('div')
+  const introEffect = document.createElement('canvas')
   const introPanel = document.createElement('div')
   const introLogo = document.createElement('div')
   const introLogoTitle = document.createElement('div')
@@ -73,6 +74,7 @@ export function getDomElements() {
   supportLink.textContent = '💊'
 
   intro.id = 'intro'
+  introEffect.id = 'intro-effect'
   introPanel.id = 'intro-panel'
   introLogo.id = 'intro-logo'
   introLogoTitle.id = 'intro-logo-title'
@@ -103,11 +105,10 @@ export function getDomElements() {
   chatForm.append(nicknameInput, chatInput, chatSubmit)
   onlineCount.append(onlineSelf, onlineText)
   onlineIndicator.append(chatLog, onlineCount)
-  introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
-  introPanel.append(introLogo, introTrack, introProgress, introNicknameInput, introStart)
+  introPanel.append(introTrack, introProgress, introNicknameInput, introStart)
   introGithub.append(introGithubIcon)
-  intro.append(introPanel, introGithub)
+  intro.append(introEffect, introPanel, introGithub)
   document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, roomsButton,
     supportLink, intro)
 
@@ -127,6 +128,7 @@ export function getDomElements() {
     roomsButton,
     supportLink,
     intro,
+    introEffect,
     introBar,
     introNicknameInput,
     introProgress,
