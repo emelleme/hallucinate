@@ -295,13 +295,10 @@ void main() {
     discard;
   }
 
-  if (strobeId < 0.0) {
-    discard;
-  }
-
   float white = step(0.3, min(shade.r, min(shade.g, shade.b)));
-  float random = fract(sin(strobeId * 17.13 + time * 9.27) * 43758.5453);
-  float strobe = mix(1.0, step(0.82, random), white);
+  float trailAlpha = strobeId < 0.0 ? clamp(-strobeId, 0.0, 1.0) : 1.0;
+  float random = fract(sin(max(strobeId, 0.0) * 17.13 + time * 9.27) * 43758.5453);
+  float strobe = strobeId < 0.0 ? 1.0 : mix(1.0, step(0.82, random), white);
   float receiverShadow = texture(treeShadowMap, patternUv).a;
 
   if (bloomPass == 1) {
@@ -309,7 +306,7 @@ void main() {
       discard;
     }
 
-    pixel = vec4(shade * light * 2.2 * strobe, 1.0);
+    pixel = vec4(shade * light * 2.2 * strobe * trailAlpha, trailAlpha);
     return;
   }
 
@@ -335,7 +332,7 @@ void main() {
 
   vec3 base = hazeAmount > 1.5 ? grassColor() : shade;
   vec3 emissive = shade * light * 2.2 * strobe;
-  float alpha = hazeAmount > 3.5 ? 0.34 : 1.0;
+  float alpha = (hazeAmount > 3.5 ? 0.34 : 1.0) * trailAlpha;
 
   pixel = vec4(base + emissive, alpha);
 }

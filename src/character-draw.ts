@@ -278,7 +278,7 @@ function addRenderedCharacter(
   if (style.accessory) {
     if (style.accessoryKind === 'glowstick') {
       addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection,
-        localReflection ? options.drawCache?.glowstickTrails : undefined, player.glowstickTrailKey ?? 0, options.time)
+        options.drawCache?.glowstickTrails, player.glowstickTrailKey ?? 0, options.time)
     }
     else {
       addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
