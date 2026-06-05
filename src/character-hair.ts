@@ -42,20 +42,42 @@ function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
 
   const localPoints = normalizeHairPoints(points, turnRightSideForward).map(hairLocalPoint)
   const localTriangles: number[] = []
+  const localTriangleCenters: number[] = []
+  const localTriangleNormals: number[] = []
 
   for (const face of mesh.faces) {
     if (face.length === 3) {
       const a = localPoints[face[0]!]!
       const b = localPoints[face[1]!]!
       const c = localPoints[face[2]!]!
+      const ux = c[0] - a[0]
+      const uy = c[1] - a[1]
+      const uz = c[2] - a[2]
+      const vx = b[0] - a[0]
+      const vy = b[1] - a[1]
+      const vz = b[2] - a[2]
+      const nx = uy * vz - uz * vy
+      const ny = uz * vx - ux * vz
+      const nz = ux * vy - uy * vx
+      const area = nx * nx + ny * ny + nz * nz
+
+      if (area <= 0.00000001) {
+        continue
+      }
+
+      const length = Math.sqrt(area)
 
       localTriangles.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
+      localTriangleCenters.push((a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3)
+      localTriangleNormals.push(nx / length, ny / length, nz / length)
     }
   }
 
   return {
     index: -1,
     name: `${source}:${mesh.name}`,
+    localTriangleCenters: new Float32Array(localTriangleCenters),
+    localTriangleNormals: new Float32Array(localTriangleNormals),
     localTriangles: new Float32Array(localTriangles),
   }
 }

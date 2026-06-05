@@ -56,7 +56,6 @@ export function createCharacterRenderSystem(options: {
     basePose: undefined,
     basePoses: new Map(),
     boxInstances: { data: new Float32Array(0), length: 0 },
-    glowstickTrails: new Map(),
     hairInstances: { data: new Float32Array(0), length: 0 },
     npcBlendCache: new Map(),
     poses: [],
@@ -160,7 +159,6 @@ export function createCharacterRenderSystem(options: {
         motionBlend: options.localCharacter.motionBlend,
         mode: options.localCharacter.mode,
         modeTime: options.localCharacter.modeTime,
-        glowstickTrailKey: 0,
         idleClipIndex: options.idleClipIndex(),
         style: {
           topStyleIndex: options.styleController.topStyleIndex,

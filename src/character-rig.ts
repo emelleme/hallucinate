@@ -3,9 +3,10 @@ import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMo
   Quat, RigNode, SampledPose, Vec3 } from './types.ts'
 
 type PoseSamplePlan = {
-  channels: WeakMap<CharacterClip, (PackedChannel | undefined)[]>
+  channels: WeakMap<CharacterClip, PoseSampleChannel[]>
   entries: PoseSampleEntry[]
 }
+type PoseSampleChannel = PackedChannel | Mat4 | undefined
 type PoseSampleEntry = {
   helper: boolean
   local: Mat4
@@ -18,8 +19,11 @@ type PoseSampleEntry = {
 }
 type PackedChannel = {
   position?: PackedVec3Track
+  positionConstant?: Vec3
   rotation?: PackedQuatTrack
+  rotationConstant?: Quat
   scale?: PackedVec3Track
+  scaleConstant?: Vec3
 }
 type PackedVec3Track = {
   stepInverse: number
@@ -37,13 +41,13 @@ type UpperPosePlan = { anchorIndex: number; indices: number[] }
 
 const identityMatrix = identity()
 const identityQuat: Quat = [1, 0, 0, 0]
-const unitScale: Vec3 = [1, 1, 1]
 const samplePosition: Vec3 = [0, 0, 0]
 const sampleRotation: Quat = [1, 0, 0, 0]
 const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
 const packedChannels = new WeakMap<AssimpChannel, PackedChannel>()
 const upperPosePlans = new WeakMap<string[], UpperPosePlan>()
+const jumpStartGrounds = new WeakMap<CharacterRig, WeakMap<Set<string>, number>>()
 const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
 const waveLoopEnd = 62 / 30
@@ -137,21 +141,16 @@ export function sampleCharacterPose(
   cacheFrame = 0,
 ) {
   if (player.mode === 'jump') {
-    const pose = sampleClipPose(rig, rig.clips[player.mode], player.modeTime ?? time, characterPoseJoints, characterPoseJointSet,
-      blendCache?.get(cacheFrame) ?? placedPose)
-    const startPose = sampleClipPose(rig, rig.clips[player.mode], 0, characterPoseJoints, characterPoseJointSet)
-
-    blendCache?.set(cacheFrame, pose)
+    const pose = sampleDirectClipPose(rig, rig.clips[player.mode], player.modeTime ?? time, characterPoseJoints,
+      characterPoseJointSet, blendCache, cacheFrame, placedPose)
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-      characterScale, placedPose, poseGround(startPose, characterGroundJointIndices))
+      characterScale, placedPose, jumpStartGround(rig, characterPoseJoints, characterPoseJointSet, characterGroundJointIndices))
   }
 
   if (player.mode === 'manSitting' || player.mode === 'womanSitting') {
-    const pose = sampleClipPose(rig, rig.clips[player.mode], player.modeTime ?? time, characterPoseJoints, characterPoseJointSet,
-      blendCache?.get(cacheFrame) ?? placedPose)
-
-    blendCache?.set(cacheFrame, pose)
+    const pose = sampleDirectClipPose(rig, rig.clips[player.mode], player.modeTime ?? time, characterPoseJoints,
+      characterPoseJointSet, blendCache, cacheFrame, placedPose)
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
       characterScale, placedPose)
@@ -201,6 +200,58 @@ export function sampleCharacterPose(
 
   return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
     characterScale, placedPose)
+}
+
+function sampleDirectClipPose(
+  rig: CharacterRig,
+  clip: CharacterClip,
+  time: number,
+  characterPoseJoints: string[],
+  characterPoseJointSet: Set<string>,
+  blendCache: PoseBlendCache | undefined,
+  cacheFrame: number,
+  placedPose?: Vec3[],
+) {
+  if (blendCache) {
+    const cached = blendCache.get(cacheFrame)
+
+    if (cached) {
+      return cached
+    }
+
+    const pose = sampleClipPose(rig, clip, time, characterPoseJoints, characterPoseJointSet)
+
+    blendCache.set(cacheFrame, pose)
+
+    return pose
+  }
+
+  return sampleClipPose(rig, clip, time, characterPoseJoints, characterPoseJointSet, placedPose)
+}
+
+function jumpStartGround(
+  rig: CharacterRig,
+  characterPoseJoints: string[],
+  characterPoseJointSet: Set<string>,
+  characterGroundJointIndices: number[],
+) {
+  let bySet = jumpStartGrounds.get(rig)
+
+  if (!bySet) {
+    bySet = new WeakMap()
+    jumpStartGrounds.set(rig, bySet)
+  }
+
+  let ground = bySet.get(characterPoseJointSet)
+
+  if (ground === undefined) {
+    const startPose = sampleClipPose(rig, rig.clips.jump, 0, characterPoseJoints, characterPoseJointSet)
+
+    ground = poseGround(startPose, characterGroundJointIndices)
+    bySet.set(characterPoseJointSet, ground)
+  }
+
+  return ground
 }
 
 function blendCharacterPose(stand: Vec3[], run: Vec3[], blend: number, characterPoseJoints: string[]) {
@@ -348,8 +399,11 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
     const channel = channels[i]
     const matrix = entry.helper
       ? parent
-      : multiplyAffineInto(parent, channel ? sampleChannelTransform(entry.origin, channel, tick, entry.local) : entry.transform,
-        entry.world)
+      : multiplyAffineInto(parent, channel
+        ? Array.isArray(channel)
+          ? channel
+          : sampleChannelTransform(entry.origin, channel, tick, entry.local)
+        : entry.transform, entry.world)
     const poseSlot = entry.poseSlot
 
     entry.world = matrix
@@ -371,15 +425,21 @@ function setTransformOrigin(matrix: Mat4, target: Vec3[], index: number) {
 }
 
 function sampleChannelTransform(origin: Vec3, channel: PackedChannel, tick: number, target: Mat4) {
-  return composeInto(
-    channel.position ? sampleVec3TrackInto(channel.position, tick, samplePosition) : origin,
-    channel.rotation ? sampleQuatTrackInto(channel.rotation, tick, sampleRotation) : identityQuat,
-    channel.scale ? sampleVec3TrackInto(channel.scale, tick, sampleScale) : unitScale,
-    target,
-  )
+  const position = channel.position ? sampleVec3TrackInto(channel.position, tick, samplePosition)
+    : channel.positionConstant ?? origin
+  const rotation = channel.rotation ? sampleQuatTrackInto(channel.rotation, tick, sampleRotation)
+    : channel.rotationConstant ?? identityQuat
+
+  if (channel.scale) {
+    return composeScaledInto(position, rotation, sampleVec3TrackInto(channel.scale, tick, sampleScale), target)
+  }
+
+  return channel.scaleConstant
+    ? composeScaledInto(position, rotation, channel.scaleConstant, target)
+    : composeInto(position, rotation, target)
 }
 
-function composeInto(position: Vec3, rotation: Quat, nextScale: Vec3, target: Mat4) {
+function composeInto(position: Vec3, rotation: Quat, target: Mat4) {
   const w = rotation[0]
   const x = rotation[1]
   const y = rotation[2]
@@ -394,22 +454,37 @@ function composeInto(position: Vec3, rotation: Quat, nextScale: Vec3, target: Ma
   const wy = w * y
   const wz = w * z
 
-  target[0] = (1 - 2 * (yy + zz)) * nextScale[0]
-  target[1] = 2 * (xy - wz) * nextScale[1]
-  target[2] = 2 * (xz + wy) * nextScale[2]
+  target[0] = 1 - 2 * (yy + zz)
+  target[1] = 2 * (xy - wz)
+  target[2] = 2 * (xz + wy)
   target[3] = position[0]
-  target[4] = 2 * (xy + wz) * nextScale[0]
-  target[5] = (1 - 2 * (xx + zz)) * nextScale[1]
-  target[6] = 2 * (yz - wx) * nextScale[2]
+  target[4] = 2 * (xy + wz)
+  target[5] = 1 - 2 * (xx + zz)
+  target[6] = 2 * (yz - wx)
   target[7] = position[1]
-  target[8] = 2 * (xz - wy) * nextScale[0]
-  target[9] = 2 * (yz + wx) * nextScale[1]
-  target[10] = (1 - 2 * (xx + yy)) * nextScale[2]
+  target[8] = 2 * (xz - wy)
+  target[9] = 2 * (yz + wx)
+  target[10] = 1 - 2 * (xx + yy)
   target[11] = position[2]
   target[12] = 0
   target[13] = 0
   target[14] = 0
   target[15] = 1
+
+  return target
+}
+
+function composeScaledInto(position: Vec3, rotation: Quat, nextScale: Vec3, target: Mat4) {
+  composeInto(position, rotation, target)
+  target[0] *= nextScale[0]
+  target[1] *= nextScale[1]
+  target[2] *= nextScale[2]
+  target[4] *= nextScale[0]
+  target[5] *= nextScale[1]
+  target[6] *= nextScale[2]
+  target[8] *= nextScale[0]
+  target[9] *= nextScale[1]
+  target[10] *= nextScale[2]
 
   return target
 }
@@ -474,7 +549,11 @@ function sampleVec3TrackInto(track: PackedVec3Track, tick: number, target: Vec3)
     return setPackedVec3(values, lastIndex * 3, target)
   }
 
-  const index = nextPackedKeyIndex(track, tick)
+  let index = track.stepInverse > 0 ? Math.ceil((tick - track.start) * track.stepInverse) : 0
+
+  if (!(index > 0 && index < times.length && tick <= times[index]! && tick > times[index - 1]!)) {
+    index = binaryPackedKeyIndex(times, tick)
+  }
 
   if (index > 0) {
     const fromIndex = index - 1
@@ -508,7 +587,11 @@ function sampleQuatTrackInto(track: PackedQuatTrack, tick: number, target: Quat)
     return setPackedQuat(values, lastIndex * 4, target)
   }
 
-  const index = nextPackedKeyIndex(track, tick)
+  let index = track.stepInverse > 0 ? Math.ceil((tick - track.start) * track.stepInverse) : 0
+
+  if (!(index > 0 && index < times.length && tick <= times[index]! && tick > times[index - 1]!)) {
+    index = binaryPackedKeyIndex(times, tick)
+  }
 
   if (index > 0) {
     const fromIndex = index - 1
@@ -566,7 +649,8 @@ function slerpPackedInto(values: Float64Array, fromOffset: number, toOffset: num
     target[2] = ay + (by - ay) * t
     target[3] = az + (bz - az) * t
 
-    const length = Math.hypot(target[0], target[1], target[2], target[3])
+    const length = Math.sqrt(target[0] * target[0] + target[1] * target[1] + target[2] * target[2]
+      + target[3] * target[3])
 
     target[0] /= length
     target[1] /= length
@@ -695,12 +779,18 @@ function getPoseSampleChannels(clip: CharacterClip, plan: PoseSamplePlan) {
   let channels = plan.channels.get(clip)
 
   if (!channels) {
-    channels = new Array<PackedChannel | undefined>(plan.entries.length)
+    channels = new Array<PoseSampleChannel>(plan.entries.length)
 
     for (let i = 0; i < plan.entries.length; i++) {
-      const channel = clip.channels.get(plan.entries[i]!.name)
+      const entry = plan.entries[i]!
+      const channel = clip.channels.get(entry.name)
+      const packed = channel ? packedChannel(channel) : undefined
 
-      channels[i] = channel ? packedChannel(channel) : undefined
+      channels[i] = packed
+        ? dynamicPackedChannel(packed)
+          ? packed
+          : constantChannelMatrix(entry.origin, packed)
+        : undefined
     }
 
     plan.channels.set(clip, channels)
@@ -713,15 +803,107 @@ function packedChannel(channel: AssimpChannel) {
   let packed = packedChannels.get(channel)
 
   if (!packed) {
+    const position = channel.positionkeys?.length ? packVec3TrackOrConstant(channel.positionkeys) : undefined
+    let rotation = channel.rotationkeys?.length ? packQuatTrackOrConstant(channel.rotationkeys) : undefined
+    let scale = channel.scalingkeys?.length ? packVec3TrackOrConstant(channel.scalingkeys) : undefined
+
+    if (rotation?.constant && identityRotation(rotation.constant)) {
+      rotation = undefined
+    }
+    if (scale?.constant && unitVec3(scale.constant)) {
+      scale = undefined
+    }
+
     packed = {
-      position: channel.positionkeys?.length ? packVec3Track(channel.positionkeys) : undefined,
-      rotation: channel.rotationkeys?.length ? packQuatTrack(channel.rotationkeys) : undefined,
-      scale: channel.scalingkeys?.length ? packVec3Track(channel.scalingkeys) : undefined,
+      position: position?.track,
+      positionConstant: position?.constant,
+      rotation: rotation?.track,
+      rotationConstant: rotation?.constant,
+      scale: scale?.track,
+      scaleConstant: scale?.constant,
     }
     packedChannels.set(channel, packed)
   }
 
   return packed
+}
+
+function dynamicPackedChannel(channel: PackedChannel) {
+  return Boolean(channel.position || channel.rotation || channel.scale)
+}
+
+function constantChannelMatrix(origin: Vec3, channel: PackedChannel) {
+  const target = identity()
+  const position = channel.positionConstant ?? origin
+  const rotation = channel.rotationConstant ?? identityQuat
+
+  return channel.scaleConstant
+    ? composeScaledInto(position, rotation, channel.scaleConstant, target)
+    : composeInto(position, rotation, target)
+}
+
+function packVec3TrackOrConstant(keys: [number, Vec3][]) {
+  if (keys.length === 1 || vec3KeysConstant(keys)) {
+    const value = keys[0]![1]
+
+    return { constant: [value[0], value[1], value[2]] as Vec3 }
+  }
+
+  return { track: packVec3Track(keys) }
+}
+
+function packQuatTrackOrConstant(keys: [number, Quat][]) {
+  if (keys.length === 1) {
+    return { constant: normalizedQuat(keys[0]![1]) }
+  }
+
+  const first = normalizedQuat(keys[0]![1])
+
+  if (quatKeysConstant(keys, first)) {
+    return { constant: first }
+  }
+
+  return { track: packQuatTrack(keys) }
+}
+
+function vec3KeysConstant(keys: [number, Vec3][]) {
+  const value = keys[0]![1]
+
+  for (let i = 1; i < keys.length; i++) {
+    const next = keys[i]![1]
+
+    if (next[0] !== value[0] || next[1] !== value[1] || next[2] !== value[2]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function quatKeysConstant(keys: [number, Quat][], first: Quat) {
+  for (let i = 1; i < keys.length; i++) {
+    const next = normalizedQuat(keys[i]![1])
+
+    if (next[0] !== first[0] || next[1] !== first[1] || next[2] !== first[2] || next[3] !== first[3]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function normalizedQuat(value: Quat): Quat {
+  const length = Math.sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2] + value[3] * value[3])
+
+  return [value[0] / length, value[1] / length, value[2] / length, value[3] / length]
+}
+
+function identityRotation(value: Quat) {
+  return Math.abs(value[0]) === 1 && value[1] === 0 && value[2] === 0 && value[3] === 0
+}
+
+function unitVec3(value: Vec3) {
+  return value[0] === 1 && value[1] === 1 && value[2] === 1
 }
 
 function packVec3Track(keys: [number, Vec3][]): PackedVec3Track {
@@ -754,7 +936,8 @@ function packQuatTrack(keys: [number, Quat][]): PackedQuatTrack {
     const key = keys[i]!
     const offset = i * 4
     const value = key[1]
-    const length = Math.hypot(value[0], value[1], value[2], value[3])
+    const length = Math.sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2] + value[3]
+      * value[3])
 
     times[i] = key[0]
     values[offset] = value[0] / length
@@ -787,17 +970,7 @@ function uniformStepInverse(times: Float64Array) {
   return 1 / step
 }
 
-function nextPackedKeyIndex(track: PackedVec3Track | PackedQuatTrack, tick: number) {
-  const times = track.times
-
-  if (track.stepInverse > 0) {
-    const index = Math.ceil((tick - track.start) * track.stepInverse)
-
-    if (index > 0 && index < times.length && tick <= times[index]! && tick > times[index - 1]!) {
-      return index
-    }
-  }
-
+function binaryPackedKeyIndex(times: Float64Array, tick: number) {
   let low = 1
   let high = times.length - 1
 

@@ -82,7 +82,7 @@ export function addCharacterBox(
   const dx = b[0] - a[0]
   const dy = b[1] - a[1]
   const dz = b[2] - a[2]
-  const length = Math.hypot(dx, dy, dz)
+  const length = Math.sqrt(dx * dx + dy * dy + dz * dz)
   const nx = dx / length
   const ny = dy / length
   const nz = dz / length
@@ -100,7 +100,7 @@ export function addCharacterBox(
     sideX = basis.side[0] - nx * dot
     sideY = basis.side[1] - ny * dot
     sideZ = basis.side[2] - nz * dot
-    const sideLength = Math.hypot(sideX, sideY, sideZ)
+    const sideLength = Math.sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ)
 
     if (sideLength === 0) {
       throw new Error('Cannot orient box with parallel side')
@@ -120,7 +120,7 @@ export function addCharacterBox(
     upZ = turnCos
   }
   else {
-    const sideLength = Math.hypot(-nz, nx)
+    const sideLength = Math.sqrt(nz * nz + nx * nx)
 
     sideX = -nz / sideLength
     sideZ = nx / sideLength
@@ -128,7 +128,7 @@ export function addCharacterBox(
     upY = sideZ * nx - sideX * nz
     upZ = sideX * ny
 
-    const upLength = Math.hypot(upX, upY, upZ)
+    const upLength = Math.sqrt(upX * upX + upY * upY + upZ * upZ)
 
     upX /= upLength
     upY /= upLength

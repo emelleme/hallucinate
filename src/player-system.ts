@@ -91,7 +91,6 @@ export function createPlayers(count: number, outsideTree: CircleBounds, occupied
       position,
       turn: seededRange(seed, 12, -Math.PI, Math.PI),
       motionBlend: 0,
-      glowstickTrailKey: seed,
       idleClipIndex: Math.floor(seededRange(seed, 18, 1, 20)),
       input: [0, 0, 0],
       nextDecision: seededRange(seed, 13, 0.3, 2.8),
@@ -192,7 +191,7 @@ export function updatePlayers(
       const turnCos = Math.cos(player.turn)
       const inputX = turnSin * player.input[2] + turnCos * player.input[0]
       const inputZ = turnCos * player.input[2] - turnSin * player.input[0]
-      const inputLength = Math.hypot(inputX, inputZ)
+      const inputLength = Math.sqrt(inputX * inputX + inputZ * inputZ)
       const directionX = inputX / inputLength
       const directionZ = inputZ / inputLength
 

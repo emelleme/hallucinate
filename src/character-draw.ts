@@ -33,16 +33,9 @@ type CharacterInput = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
-  glowstickTrailKey?: number
   idleClipIndex: number
   style: PlayerStyle
   resolvedStyle?: ResolvedPlayerStyle
-}
-
-type GlowstickTrailPoint = {
-  a: Vec3
-  b: Vec3
-  time: number
 }
 
 type BuildOptions = {
@@ -69,7 +62,6 @@ export type CharacterDrawCache = {
   basePose?: SampledPose
   basePoses: Map<number, SampledPose>
   boxInstances: VertexWriter
-  glowstickTrails: Map<number, GlowstickTrailPoint[]>
   hairInstances: VertexWriter
   npcBlendCache: PoseBlendCache
   poses: Vec3[][]
@@ -121,11 +113,6 @@ const hairForward: Vec3 = [0, 0, 0]
 const glowstickA: Vec3 = [0, 0, 0]
 const glowstickB: Vec3 = [0, 0, 0]
 const glowstickSide: Vec3 = [0, 0, 0]
-const trailA: Vec3 = [0, 0, 0]
-const trailB: Vec3 = [0, 0, 0]
-const trailC: Vec3 = [0, 0, 0]
-const trailD: Vec3 = [0, 0, 0]
-const trailColor: Vec3 = [0, 0, 0]
 const sprayCanNozzleSide: Vec3 = [0, 1, 0]
 const sprayCanCapA: Vec3 = [0, 0, 0]
 const sprayCanCapB: Vec3 = [0, 0, 0]
@@ -133,10 +120,6 @@ const sprayCanNozzleA: Vec3 = [0, 0, 0]
 const sprayCanNozzleB: Vec3 = [0, 0, 0]
 const playerVisibility = { depth: 0, distanceSq: 0, visible: false }
 const farHairDistanceSq = 34 * 34
-const glowstickTrailDuration = 0.42
-const glowstickTrailSamples = 10
-const glowstickTrailFastSpeed = 2.2
-const glowstickTrailSpeedAge = 0.028
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -163,7 +146,6 @@ export function buildCharacterDrawData(options: BuildOptions) {
   resetVertexWriter(hairInstances)
   usedBasePoseKeys.clear()
   usedNpcBlendKeys.clear()
-  pruneGlowstickTrails(cache?.glowstickTrails, options.time)
 
   addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true, basePose, undefined,
     poseCache(poses, poseIndex))
@@ -180,6 +162,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
       const sampleKey = playerIdleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       const directClip = usesDirectClip(player)
+      const poseKey = directClip ? directClipPoseKey(player, sampledTime) : sampleKey
       const includeRun = player.motionBlend > 0 || player.mode === 'wave' || player.mode === 'waveOut'
       let sampledBasePose = directClip
         ? undefined
@@ -194,10 +177,10 @@ export function buildCharacterDrawData(options: BuildOptions) {
       if (!directClip) {
         usedBasePoseKeys.add(sampleKey)
       }
-      usedNpcBlendKeys.add(directClip ? sampleKey : blendKey)
+      usedNpcBlendKeys.add(directClip ? poseKey : blendKey)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
-        npcBlendCache, poseCache(poses, poseIndex), sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
+        npcBlendCache, poseCache(poses, poseIndex), sampledTime, poseKey, visibility.distanceSq <= farHairDistanceSq)
       poseIndex++
     }
   }
@@ -239,6 +222,21 @@ function usesDirectClip(character: CharacterInput) {
   return character.mode === 'jump' || character.mode === 'manSitting' || character.mode === 'womanSitting'
 }
 
+function directClipPoseKey(character: CharacterInput, time: number) {
+  return -(directClipModeKey(character.mode) * 1000000 + Math.round((character.modeTime ?? time) * 60))
+}
+
+function directClipModeKey(mode: CharacterMode | undefined) {
+  if (mode === 'manSitting') {
+    return 1
+  }
+  if (mode === 'womanSitting') {
+    return 2
+  }
+
+  return 3
+}
+
 function addRenderedCharacter(
   target: VertexWriter,
   boxInstances: VertexWriter,
@@ -278,8 +276,7 @@ function addRenderedCharacter(
 
   if (style.accessory) {
     if (style.accessoryKind === 'glowstick') {
-      addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection,
-        options.drawCache?.glowstickTrails, player.glowstickTrailKey ?? 0, options.time)
+      addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection)
     }
     else {
       addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
@@ -305,16 +302,13 @@ function addGlowsticks(
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
-  trails: Map<number, GlowstickTrailPoint[]> | undefined,
-  trailKey: number,
-  time: number,
 ) {
   const torso = pose[spine2Index]!
 
   addGlowstick(target, boxInstances, torso, pose[leftForeArmIndex]!, pose[leftHandIndex]!, player, turn, style, light,
-    localReflection, trails, trailKey * 2, time)
+    localReflection)
   addGlowstick(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style, light,
-    localReflection, trails, trailKey * 2 + 1, time)
+    localReflection)
 }
 
 function addGlowstick(
@@ -328,9 +322,6 @@ function addGlowstick(
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
-  trails: Map<number, GlowstickTrailPoint[]> | undefined,
-  trailKey: number,
-  time: number,
 ) {
   const dx = hand[0] - foreArm[0]
   const dy = hand[1] - foreArm[1]
@@ -341,7 +332,7 @@ function addGlowstick(
   const crossX = -dy * sideZ
   const crossY = dz * sideX - dx * sideZ
   const crossZ = dy * sideX
-  const crossLength = Math.hypot(crossX, crossY, crossZ)
+  const crossLength = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ)
   const stickX = crossX / crossLength
   const stickY = crossY / crossLength
   const stickZ = crossZ / crossLength
@@ -359,104 +350,8 @@ function addGlowstick(
   glowstickSide[0] = sideX * handSide
   glowstickSide[1] = 0
   glowstickSide[2] = sideZ * handSide
-  addGlowstickTrail(target, style, light, trails, trailKey, time)
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.025, 0.025, style.accessory!, 1.4, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: glowstickSide })
-}
-
-function addGlowstickTrail(
-  target: VertexWriter,
-  style: ResolvedPlayerStyle,
-  light: CharacterLight,
-  trails: Map<number, GlowstickTrailPoint[]> | undefined,
-  trailKey: number,
-  time: number,
-) {
-  if (!trails) {
-    return
-  }
-
-  const cutoff = time - glowstickTrailDuration
-  const trail = trails.get(trailKey) ?? []
-  let start = 0
-
-  while (trail[start] && trail[start]!.time < cutoff) {
-    start++
-  }
-
-  if (start > 0) {
-    trail.splice(0, start)
-  }
-
-  const last = trail.at(-1)
-  const moved = !last || Math.hypot(glowstickA[0] - last.a[0], glowstickA[1] - last.a[1],
-    glowstickA[2] - last.a[2]) > 0.025
-
-  if (moved) {
-    trail.push({
-      a: [glowstickA[0], glowstickA[1], glowstickA[2]],
-      b: [glowstickB[0], glowstickB[1], glowstickB[2]],
-      time,
-    })
-  }
-
-  while (trail.length > glowstickTrailSamples) {
-    trail.shift()
-  }
-
-  for (let i = 0; i < trail.length - 1; i++) {
-    const from = trail[i]!
-    const to = trail[i + 1]!
-    const speedAge = trailSegmentSpeedAge(from, to)
-    const fade = clamp((to.time - cutoff - speedAge) / glowstickTrailDuration, 0, 1)
-    const falloff = fade * fade * fade
-    const glow = falloff * 0.72
-    const alpha = falloff * 0.46
-
-    trailA[0] = from.a[0]
-    trailA[1] = from.a[1]
-    trailA[2] = from.a[2]
-    trailB[0] = from.b[0]
-    trailB[1] = from.b[1]
-    trailB[2] = from.b[2]
-    trailC[0] = to.b[0]
-    trailC[1] = to.b[1]
-    trailC[2] = to.b[2]
-    trailD[0] = to.a[0]
-    trailD[1] = to.a[1]
-    trailD[2] = to.a[2]
-    trailColor[0] = style.accessory![0] * (0.28 + falloff * 0.72)
-    trailColor[1] = style.accessory![1] * (0.28 + falloff * 0.72)
-    trailColor[2] = style.accessory![2] * (0.28 + falloff * 0.72)
-    addCharacterQuad(target, trailA, trailB, trailC, trailD, trailColor, glow, false, light, -alpha)
-  }
-
-  trails.set(trailKey, trail)
-}
-
-function trailSegmentSpeedAge(from: GlowstickTrailPoint, to: GlowstickTrailPoint) {
-  const fromX = (from.a[0] + from.b[0]) * 0.5
-  const fromY = (from.a[1] + from.b[1]) * 0.5
-  const fromZ = (from.a[2] + from.b[2]) * 0.5
-  const toX = (to.a[0] + to.b[0]) * 0.5
-  const toY = (to.a[1] + to.b[1]) * 0.5
-  const toZ = (to.a[2] + to.b[2]) * 0.5
-  const distance = Math.hypot(toX - fromX, toY - fromY, toZ - fromZ)
-  const speed = distance / Math.max(1 / 90, to.time - from.time)
-
-  return clamp((speed - glowstickTrailFastSpeed) * glowstickTrailSpeedAge, 0, glowstickTrailDuration * 0.75)
-}
-
-function pruneGlowstickTrails(trails: Map<number, GlowstickTrailPoint[]> | undefined, time: number) {
-  if (!trails) {
-    return
-  }
-
-  for (const [key, trail] of trails) {
-    if (trail.length === 0 || time - trail.at(-1)!.time > glowstickTrailDuration) {
-      trails.delete(key)
-    }
-  }
 }
 
 function addSprayCan(
@@ -779,12 +674,23 @@ function addCharacterHair(
   const basis = characterHairBasis(pose)
   const head = pose[headIndex]!
   const triangles = mesh.localTriangles
+  const centers = mesh.localTriangleCenters
+  const normals = mesh.localTriangleNormals
   const centerX = head[0] - basis.up[0] * 0.035
   const centerY = head[1] - basis.up[1] * 0.035
   const centerZ = head[2] - basis.up[2] * 0.035
+  const sideX = basis.side[0]
+  const sideY = basis.side[1]
+  const sideZ = basis.side[2]
+  const upX = basis.up[0]
+  const upY = basis.up[1]
+  const upZ = basis.up[2]
+  const forwardX = basis.forward[0]
+  const forwardY = basis.forward[1]
+  const forwardZ = basis.forward[2]
 
   reserveFloats(target, triangles.length / 3 * 11)
-  for (let i = 0; i < triangles.length; i += 9) {
+  for (let i = 0, normalIndex = 0; i < triangles.length; i += 9, normalIndex += 3) {
     const a0 = triangles[i]!
     const a1 = triangles[i + 1]!
     const a2 = triangles[i + 2]!
@@ -794,39 +700,32 @@ function addCharacterHair(
     const c0 = triangles[i + 6]!
     const c1 = triangles[i + 7]!
     const c2 = triangles[i + 8]!
-    const ax = centerX + basis.side[0] * a0 + basis.up[0] * a1 + basis.forward[0] * a2
-    const ay = centerY + basis.side[1] * a0 + basis.up[1] * a1 + basis.forward[1] * a2
-    const az = centerZ + basis.side[2] * a0 + basis.up[2] * a1 + basis.forward[2] * a2
-    const bx = centerX + basis.side[0] * b0 + basis.up[0] * b1 + basis.forward[0] * b2
-    const by = centerY + basis.side[1] * b0 + basis.up[1] * b1 + basis.forward[1] * b2
-    const bz = centerZ + basis.side[2] * b0 + basis.up[2] * b1 + basis.forward[2] * b2
-    const cx = centerX + basis.side[0] * c0 + basis.up[0] * c1 + basis.forward[0] * c2
-    const cy = centerY + basis.side[1] * c0 + basis.up[1] * c1 + basis.forward[1] * c2
-    const cz = centerZ + basis.side[2] * c0 + basis.up[2] * c1 + basis.forward[2] * c2
-    const ux = cx - ax
-    const uy = cy - ay
-    const uz = cz - az
-    const vx = bx - ax
-    const vy = by - ay
-    const vz = bz - az
-    const nx = uy * vz - uz * vy
-    const ny = uz * vx - ux * vz
-    const nz = ux * vy - uy * vx
-    const area = nx * nx + ny * ny + nz * nz
+    const center0 = centers[normalIndex]!
+    const center1 = centers[normalIndex + 1]!
+    const center2 = centers[normalIndex + 2]!
+    const normal0 = normals[normalIndex]!
+    const normal1 = normals[normalIndex + 1]!
+    const normal2 = normals[normalIndex + 2]!
+    const ax = centerX + sideX * a0 + upX * a1 + forwardX * a2
+    const ay = centerY + sideY * a0 + upY * a1 + forwardY * a2
+    const az = centerZ + sideZ * a0 + upZ * a1 + forwardZ * a2
+    const bx = centerX + sideX * b0 + upX * b1 + forwardX * b2
+    const by = centerY + sideY * b0 + upY * b1 + forwardY * b2
+    const bz = centerZ + sideZ * b0 + upZ * b1 + forwardZ * b2
+    const cx = centerX + sideX * c0 + upX * c1 + forwardX * c2
+    const cy = centerY + sideY * c0 + upY * c1 + forwardY * c2
+    const cz = centerZ + sideZ * c0 + upZ * c1 + forwardZ * c2
 
-    if (area > 0.00000001) {
-      const length = Math.sqrt(area)
-      hairLightPoint[0] = (ax + bx + cx) / 3
-      hairLightPoint[1] = (ay + by + cy) / 3
-      hairLightPoint[2] = (az + bz + cz) / 3
-      hairLightNormal[0] = nx / length
-      hairLightNormal[1] = ny / length
-      hairLightNormal[2] = nz / length
+    hairLightPoint[0] = centerX + sideX * center0 + upX * center1 + forwardX * center2
+    hairLightPoint[1] = centerY + sideY * center0 + upY * center1 + forwardY * center2
+    hairLightPoint[2] = centerZ + sideZ * center0 + upZ * center1 + forwardZ * center2
+    hairLightNormal[0] = sideX * normal0 + upX * normal1 + forwardX * normal2
+    hairLightNormal[1] = sideY * normal0 + upY * normal1 + forwardY * normal2
+    hairLightNormal[2] = sideZ * normal0 + upZ * normal1 + forwardZ * normal2
 
-      const shade = light(color, hairLightPoint, hairLightNormal, hairShade)
+    const shade = light(color, hairLightPoint, hairLightNormal, hairShade)
 
-      addReservedFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, shade, 0)
-    }
+    addReservedFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, shade, 0)
   }
 }
 
@@ -838,7 +737,7 @@ function characterHairBasis(pose: Vec3[]) {
   const upX = top[0] - head[0]
   const upY = top[1] - head[1]
   const upZ = top[2] - head[2]
-  const upLength = Math.hypot(upX, upY, upZ)
+  const upLength = Math.sqrt(upX * upX + upY * upY + upZ * upZ)
 
   hairUp[0] = upX / upLength
   hairUp[1] = upY / upLength
@@ -853,7 +752,7 @@ function characterHairBasis(pose: Vec3[]) {
   hairSide[1] = sideY - hairUp[1] * sideDotUp
   hairSide[2] = sideZ - hairUp[2] * sideDotUp
 
-  const sideLength = Math.hypot(hairSide[0], hairSide[1], hairSide[2])
+  const sideLength = Math.sqrt(hairSide[0] * hairSide[0] + hairSide[1] * hairSide[1] + hairSide[2] * hairSide[2])
 
   hairSide[0] /= sideLength
   hairSide[1] /= sideLength

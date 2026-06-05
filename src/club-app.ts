@@ -1164,6 +1164,7 @@ function submitIntroNickname() {
 introStart.addEventListener('click', startIntro)
 introNicknameInput.addEventListener('change', () => syncNickname(introNicknameInput.value))
 introNicknameInput.addEventListener('input', syncChatFormColor)
+
 function handleIntroNicknameKey(event: KeyboardEvent) {
   if (event.key !== 'Enter') {
     return
@@ -1173,18 +1174,26 @@ function handleIntroNicknameKey(event: KeyboardEvent) {
   submitIntroNickname()
 }
 introNicknameInput.addEventListener('keydown', handleIntroNicknameKey)
-introNicknameInput.addEventListener('keyup', handleIntroNicknameKey)
-addEventListener('keydown', event => {
-  if (!introHidden && event.key === 'Enter' && document.activeElement !== chatInput) {
-    event.preventDefault()
-    if (document.activeElement === introNicknameInput) {
-      submitIntroNickname()
-      return
-    }
+addEventListener('keydown', handleIntroStartKey)
 
-    startIntro()
+function handleIntroStartKey(event: KeyboardEvent) {
+  if (introHidden) {
+    removeEventListener('keydown', handleIntroStartKey)
+    return
   }
-})
+
+  if (event.key !== 'Enter' || document.activeElement === chatInput) {
+    return
+  }
+
+  event.preventDefault()
+  if (document.activeElement === introNicknameInput) {
+    submitIntroNickname()
+    return
+  }
+
+  startIntro()
+}
 let wasOutside = isOutside(characterPosition)
 let wasInLoftMusicSpot = false
 let doorCoverReleased = true
@@ -3202,6 +3211,7 @@ function updateIntro() {
 
   if (ready && !introHidden) {
     introHidden = true
+    removeEventListener('keydown', handleIntroStartKey)
     intro.dataset.hidden = 'true'
     introEffectRenderer.stop()
 

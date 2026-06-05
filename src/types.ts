@@ -65,6 +65,8 @@ export type CharacterClip = {
 export type HairMesh = {
   index: number
   name: string
+  localTriangleCenters: Float32Array
+  localTriangleNormals: Float32Array
   localTriangles: Float32Array
 }
 
@@ -190,7 +192,6 @@ export type Player = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
-  glowstickTrailKey?: number
   idleClipIndex: number
   input: Vec3
   nextDecision: number

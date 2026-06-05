@@ -4,9 +4,6 @@ import { clamp, smoothstep } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import type { CharacterLight, CircleBounds, Vec3, Vertex } from './types.ts'
 
-const nearestWallLightZ = createNearestValue([-2, -6, -10, -14, -18, -22])
-const nearestBackLightX = createNearestValue([-4.5, 0, 4.5])
-
 export function createSceneLighting(options: {
   getTree: () => CircleBounds
   strobeReflection: (point: Vec3, normal: Vec3) => number
@@ -114,23 +111,12 @@ function orangeReflection(point: Vec3, normal: Vec3) {
   return orangeLightAmount(point, normal, x, point[1], z)
 }
 
-function createNearestValue(values: number[]) {
-  const thresholds: number[] = []
-  const ascending = values[values.length - 1]! > values[0]!
+function nearestWallLightZ(target: number) {
+  return -2 - clamp(Math.round((-2 - target) / 4), 0, 5) * 4
+}
 
-  for (let i = 0; i < values.length - 1; i++) {
-    thresholds.push((values[i]! + values[i + 1]!) * 0.5)
-  }
-
-  return (target: number) => {
-    for (let i = 0; i < thresholds.length; i++) {
-      if (ascending ? target <= thresholds[i]! : target >= thresholds[i]!) {
-        return values[i]!
-      }
-    }
-
-    return values[values.length - 1]!
-  }
+function nearestBackLightX(target: number) {
+  return target < -2.25 ? -4.5 : target > 2.25 ? 4.5 : 0
 }
 
 function orangeLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
