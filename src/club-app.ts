@@ -391,36 +391,41 @@ function renderChatLogText(target: HTMLElement, text: string) {
   const tokens = text.split(/(\s+)/)
 
   for (const token of tokens) {
-    const slug = roomSlugFromToken(token)
+    const match = roomSlugFromToken(token)
 
-    if (!slug) {
+    if (!match) {
       target.append(document.createTextNode(token))
       continue
     }
 
     const link = document.createElement('a')
 
-    link.href = `/${slug}`
+    link.href = `/${match.slug}`
     link.className = 'chat-room-link'
-    link.textContent = `🏘️ ${slug}`
+    link.textContent = `🏘️ /${match.slug}`
     link.addEventListener('click', event => {
       event.preventDefault()
-      void openLoftRoute(slug, true)
+      void openLoftRoute(match.slug, true)
     })
+    target.append(document.createTextNode(match.prefix))
     target.append(link)
+    target.append(document.createTextNode(match.suffix))
   }
 }
 
 function roomSlugFromToken(token: string) {
-  if (/^\/[A-Za-z0-9_-]+$/.test(token)) {
-    return token.slice(1)
+  const bare = /^([^/A-Za-z0-9_-]*?)\/([A-Za-z0-9_-]+)([^A-Za-z0-9_-]*?)$/.exec(token)
+
+  if (bare) {
+    return { prefix: bare[1]!, slug: bare[2]!, suffix: bare[3]! }
   }
 
   try {
-    const url = new URL(token)
+    const match = /^(\W*?)(https?:\/\/\S+?)([.,!?;:)]*)$/.exec(token)
+    const url = new URL(match?.[2] ?? token)
 
     if (url.origin === location.origin && /^\/[A-Za-z0-9_-]+$/.test(url.pathname)) {
-      return url.pathname.slice(1)
+      return { prefix: match?.[1] ?? '', slug: url.pathname.slice(1), suffix: match?.[3] ?? '' }
     }
   }
   catch (e) {
