@@ -147,8 +147,10 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const basePoses = cache?.basePoses ?? new Map()
   const usedBasePoseKeys = cache?.usedBasePoseKeys ?? new Set<number>()
   const usedNpcBlendKeys = cache?.usedNpcBlendKeys ?? new Set<number>()
+  const localNeedsRun = options.character.motionBlend > 0 || options.character.mode === 'wave'
+    || options.character.mode === 'waveOut'
   const basePose = sampleBasePose(options.rig, options.time, characterPoseJoints, characterPoseJointSet,
-    idleClipIndex(options.character), cache?.basePose)
+    idleClipIndex(options.character), cache?.basePose, localNeedsRun)
 
   if (cache) {
     cache.basePose = basePose
@@ -177,10 +179,16 @@ export function buildCharacterDrawData(options: BuildOptions) {
       const sampleKey = playerIdleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       const directClip = usesDirectClip(player)
-      const sampledBasePose = directClip
+      const includeRun = player.motionBlend > 0 || player.mode === 'wave' || player.mode === 'waveOut'
+      let sampledBasePose = directClip
         ? undefined
         : basePoses.get(sampleKey)
-          ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex)
+          ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex, includeRun)
+
+      if (sampledBasePose && includeRun && !sampledBasePose.run) {
+        sampledBasePose = sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex,
+          true)
+      }
 
       if (!directClip) {
         usedBasePoseKeys.add(sampleKey)
@@ -528,8 +536,10 @@ function sampleAndCacheBasePose(
   basePoses: Map<number, SampledPose>,
   key: number,
   idleClipIndex: number,
+  includeRun: boolean,
 ) {
-  const pose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, idleClipIndex)
+  const pose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, idleClipIndex,
+    basePoses.get(key), includeRun)
 
   basePoses.set(key, pose)
 

@@ -144,10 +144,12 @@ export function sampleCharacterPose(
       characterScale, placedPose)
   }
 
-  const { stand, run } = basePose ?? sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet,
-    player.idleClipIndex ?? 0)
+  const base = basePose ?? sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet,
+    player.idleClipIndex ?? 0, undefined, player.motionBlend > 0 || player.mode === 'wave' || player.mode === 'waveOut')
+  const { stand } = base
 
   if (player.mode === 'wave' || player.mode === 'waveOut') {
+    const run = base.run ?? sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet)
     const pose = blendCharacterPose(stand, run, player.motionBlend, characterPoseJoints)
     const wave = sampleClipPose(rig, rig.clips.wave, waveClipTime(player.mode, player.modeTime ?? time),
       characterPoseJoints, characterPoseJointSet)
@@ -157,6 +159,13 @@ export function sampleCharacterPose(
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
       characterScale, placedPose)
   }
+
+  if (blend === 0) {
+    return placeCharacterPose(stand, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
+      characterScale, placedPose)
+  }
+
+  const run = base.run ?? sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet)
 
   if (!blendCache) {
     return placeBlendedCharacterPose(stand, run, blend, player.position, player.turn, characterPoseJoints,
@@ -274,11 +283,14 @@ export function sampleBasePose(
   characterPoseJointSet: Set<string>,
   idleClipIndex = 0,
   target?: SampledPose,
+  includeRun = true,
 ): SampledPose {
   return {
+    run: includeRun
+      ? sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet, target?.run)
+      : target?.run,
     stand: sampleClipPose(rig, idleClip(rig, idleClipIndex), time, characterPoseJoints, characterPoseJointSet,
       target?.stand),
-    run: sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet, target?.run),
   }
 }
 

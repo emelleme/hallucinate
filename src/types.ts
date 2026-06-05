@@ -224,8 +224,8 @@ export type GraffitiSplat = {
 }
 
 export type SampledPose = {
+  run?: Vec3[]
   stand: Vec3[]
-  run: Vec3[]
 }
 
 export type PoseBlendCache = Map<number, Vec3[]>

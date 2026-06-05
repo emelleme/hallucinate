@@ -774,13 +774,16 @@ function identityColor(name: string) {
   return chatPalette[chatNicknameHash(name) % chatPalette.length]!
 }
 
-function selfLabel() {
-  return nicknameLabel(identityName(multiplayer.selfId || 0, nickname))
-}
-
 function syncOnlineSelf() {
-  const label = selfLabel()
-  const name = identityName(multiplayer.selfId || 0, nickname)
+  const name = identityName(multiplayer?.selfId || 0, nickname)
+  if (name === lastOnlineSelfName && onlineCountValue === lastOnlineCountValue) {
+    return
+  }
+
+  lastOnlineSelfName = name
+  lastOnlineCountValue = onlineCountValue
+
+  const label = nicknameLabel(name)
   const color = identityColor(name)
   const text = ` ${onlineCountValue} online`
 
@@ -1055,8 +1058,10 @@ let lastChatFormSelfId = -1
 let lastChatFormColor = ''
 let lastIntroNicknameColor = ''
 let lastOnlineSelfColor = ''
+let lastOnlineSelfName = ''
 let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
+let lastOnlineCountValue = -1
 let introWaveSent = false
 
 intro.addEventListener('touchmove', event => {
