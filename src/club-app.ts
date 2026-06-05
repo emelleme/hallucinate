@@ -800,7 +800,19 @@ function syncOnlineSelf() {
 
 function syncChatFormColor() {
   const next = activeNicknameInput().value.trim()
-  const color = identityColor(identityName(multiplayer.selfId || 0, next))
+  const selfId = multiplayer?.selfId || 0
+
+  if (next === lastChatFormIdentity && selfId === lastChatFormSelfId) {
+    if (selfId > 0) {
+      syncOnlineSelf()
+    }
+    return
+  }
+
+  lastChatFormIdentity = next
+  lastChatFormSelfId = selfId
+
+  const color = identityColor(identityName(selfId, next))
 
   if (color !== lastChatFormColor) {
     chatForm.style.color = color
@@ -810,7 +822,7 @@ function syncChatFormColor() {
     introNicknameInput.style.color = color
     lastIntroNicknameColor = color
   }
-  if (multiplayer?.selfId > 0) {
+  if (selfId > 0) {
     syncOnlineSelf()
   }
 }
@@ -1038,6 +1050,8 @@ let lastPixelRatio = 0
 let lastBloomScale = 0
 let lastIntroProgress = -1
 let lastIntroStartReady = false
+let lastChatFormIdentity = ''
+let lastChatFormSelfId = -1
 let lastChatFormColor = ''
 let lastIntroNicknameColor = ''
 let lastOnlineSelfColor = ''

@@ -430,9 +430,21 @@ function sampleVec3Into(keys: [number, Vec3][] | undefined, tick: number, fallba
   }
 
   if (keys.length === 1 || tick <= keys[0]![0]) {
-    target[0] = keys[0]![1][0]
-    target[1] = keys[0]![1][1]
-    target[2] = keys[0]![1][2]
+    const value = keys[0]![1]
+
+    target[0] = value[0]
+    target[1] = value[1]
+    target[2] = value[2]
+
+    return target
+  }
+
+  const last = keys[keys.length - 1]!
+
+  if (tick >= last[0]) {
+    target[0] = last[1][0]
+    target[1] = last[1][1]
+    target[2] = last[1][2]
 
     return target
   }
@@ -443,17 +455,19 @@ function sampleVec3Into(keys: [number, Vec3][] | undefined, tick: number, fallba
     const from = keys[index - 1]!
     const to = keys[index]!
     const t = (tick - from[0]) / (to[0] - from[0])
+    const fromValue = from[1]
+    const toValue = to[1]
 
-    target[0] = mix(from[1][0], to[1][0], t)
-    target[1] = mix(from[1][1], to[1][1], t)
-    target[2] = mix(from[1][2], to[1][2], t)
+    target[0] = fromValue[0] + (toValue[0] - fromValue[0]) * t
+    target[1] = fromValue[1] + (toValue[1] - fromValue[1]) * t
+    target[2] = fromValue[2] + (toValue[2] - fromValue[2]) * t
 
     return target
   }
 
-  target[0] = keys[keys.length - 1]![1][0]
-  target[1] = keys[keys.length - 1]![1][1]
-  target[2] = keys[keys.length - 1]![1][2]
+  target[0] = last[1][0]
+  target[1] = last[1][1]
+  target[2] = last[1][2]
 
   return target
 }
@@ -469,10 +483,23 @@ function sampleQuatInto(keys: [number, Quat][] | undefined, tick: number, fallba
   }
 
   if (keys.length === 1 || tick <= keys[0]![0]) {
-    target[0] = keys[0]![1][0]
-    target[1] = keys[0]![1][1]
-    target[2] = keys[0]![1][2]
-    target[3] = keys[0]![1][3]
+    const value = keys[0]![1]
+
+    target[0] = value[0]
+    target[1] = value[1]
+    target[2] = value[2]
+    target[3] = value[3]
+
+    return target
+  }
+
+  const last = keys[keys.length - 1]!
+
+  if (tick >= last[0]) {
+    target[0] = last[1][0]
+    target[1] = last[1][1]
+    target[2] = last[1][2]
+    target[3] = last[1][3]
 
     return target
   }
@@ -486,10 +513,10 @@ function sampleQuatInto(keys: [number, Quat][] | undefined, tick: number, fallba
     return slerpInto(from[1], to[1], (tick - from[0]) / (to[0] - from[0]), target)
   }
 
-  target[0] = keys[keys.length - 1]![1][0]
-  target[1] = keys[keys.length - 1]![1][1]
-  target[2] = keys[keys.length - 1]![1][2]
-  target[3] = keys[keys.length - 1]![1][3]
+  target[0] = last[1][0]
+  target[1] = last[1][1]
+  target[2] = last[1][2]
+  target[3] = last[1][3]
 
   return target
 }
@@ -510,10 +537,10 @@ function slerpInto(a: Quat, b: Quat, t: number, target: Quat) {
   }
 
   if (value > 0.9995) {
-    target[0] = mix(a[0], bw, t)
-    target[1] = mix(a[1], bx, t)
-    target[2] = mix(a[2], by, t)
-    target[3] = mix(a[3], bz, t)
+    target[0] = a[0] + (bw - a[0]) * t
+    target[1] = a[1] + (bx - a[1]) * t
+    target[2] = a[2] + (by - a[2]) * t
+    target[3] = a[3] + (bz - a[3]) * t
 
     const length = Math.hypot(target[0], target[1], target[2], target[3])
 

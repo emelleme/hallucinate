@@ -245,24 +245,6 @@ export function addFlatTriangle(
   strobe = 0,
 ) {
   reserveVertices(target, 3)
-  addReservedFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, color, glow, strobe)
-}
-
-function addReservedFlatTriangle(
-  target: VertexWriter,
-  ax: number,
-  ay: number,
-  az: number,
-  bx: number,
-  by: number,
-  bz: number,
-  cx: number,
-  cy: number,
-  cz: number,
-  color: Vec3,
-  glow: number,
-  strobe = 0,
-) {
   addFlatVertex(target, ax, ay, az, color, glow, strobe)
   addFlatVertex(target, bx, by, bz, color, glow, strobe)
   addFlatVertex(target, cx, cy, cz, color, glow, strobe)
