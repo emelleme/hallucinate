@@ -201,7 +201,7 @@ const server = Bun.serve<SocketData>({
       return handlePhotoApi(request, url, ip)
     }
 
-    if (url.pathname.startsWith('/photos/')) {
+    if (url.pathname === '/photos' || url.pathname.startsWith('/photos/')) {
       return servePhoto(request, url)
     }
 
@@ -539,8 +539,13 @@ function cacheHeaders(path: string) {
 
   headers.set('x-content-type-options', 'nosniff')
 
-  if (path.endsWith('index.html')) {
+  if (path.endsWith('index.html') || path.endsWith('service-worker.js')) {
     headers.set('cache-control', 'no-cache')
+    return headers
+  }
+
+  if (path.startsWith(photoDir)) {
+    headers.set('cache-control', 'no-store')
     return headers
   }
 
@@ -665,6 +670,12 @@ async function handlePhotoApi(request: Request, url: URL, ip: string) {
     return jsonResponse(listPhotos(photoListOffset(url)))
   }
 
+  const photoFile = apiPhotoFileTimestamp(url.pathname)
+
+  if (request.method === 'GET' && photoFile !== undefined) {
+    return servePhotoFile(request, photoFile)
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/photos') {
     if (!photoUploadContentType(request)) {
       return new Response('Unsupported Media Type', { status: 415 })
@@ -725,6 +736,10 @@ async function servePhoto(request: Request, url: URL) {
     return new Response('Not Found', { status: 404 })
   }
 
+  return servePhotoFile(request, timestamp)
+}
+
+async function servePhotoFile(request: Request, timestamp: number) {
   return await fileResponse(photoPath(timestamp), request) ?? new Response('Not Found', { status: 404 })
 }
 
@@ -796,12 +811,18 @@ function photoFileTimestamp(path: string) {
   return match ? Number(match[1]) : undefined
 }
 
+function apiPhotoFileTimestamp(path: string) {
+  const match = /^\/api\/photos\/(\d+)\.jpg$/.exec(path)
+
+  return match ? Number(match[1]) : undefined
+}
+
 function photoPath(timestamp: number) {
   return join(photoDir, `${timestamp}.jpg`)
 }
 
 function photoUrl(timestamp: number) {
-  return `/photos/${timestamp}.jpg`
+  return `/api/photos/${timestamp}.jpg`
 }
 
 function jsonResponse(value: unknown, status = 200) {
@@ -1621,7 +1642,7 @@ function loadLoftRoom(slug: string): LoftRoom | undefined {
     WHERE slug = $slug
   `).get({ slug })
 
-  return row
+  return row ?? undefined
 }
 
 function activeLoftRoom(slug: string) {

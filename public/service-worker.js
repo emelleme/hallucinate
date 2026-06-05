@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hallucinate-v4'
+const CACHE_NAME = 'hallucinate-v6'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -36,7 +36,13 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url)
 
-  if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.pathname.startsWith('/photos/')) {
+  if (url.pathname.startsWith('/photos/')) {
+    url.pathname = `/api${url.pathname}`
+    event.respondWith(fetch(url))
+    return
+  }
+
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.pathname === '/photos') {
     return
   }
 
