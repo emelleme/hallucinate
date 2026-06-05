@@ -4,7 +4,7 @@ import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } 
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsideStage, outsideToiletDoor, outsideToilets, outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth,
+  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth,
   tentDjSpeakers, tentDoor, tentPole, tentDoorAngle, tentVideoAngle, tentVideoWall } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
@@ -35,6 +35,7 @@ export function addRoom(target: Vertex[]) {
   addQuad(target, [doorRight, -2, 4], [doorLeft, -2, 4], [doorLeft, -2 + backDoor.height, 4], [doorRight,
     -2 + backDoor.height, 4], [0.001, 0.001, 0.001], 0, 9001)
   addOutsideVideoBackdrop(target)
+  addOutsidePhotoBackdrop(target)
   addDoorPerimeterStripes(target)
   addBartenderBar(target)
   addDjBooth(target)
@@ -50,6 +51,25 @@ function addOutsideVideoBackdrop(target: Vertex[]) {
   const z = wall.z - 0.5
 
   addQuad(target, [right, bottom, z], [left, bottom, z], [left, top, z], [right, top, z], color, 0)
+}
+
+function addOutsidePhotoBackdrop(target: Vertex[]) {
+  const wall = outsidePhotoWall
+  const back = wall.z - wall.width / 2
+  const front = wall.z + wall.width / 2
+  const bottom = wall.y - wall.height / 2
+  const top = wall.y + wall.height / 2
+  const height = top - bottom
+  const x = wall.x - 0.06
+  const color: Vec3 = [0.002, 0.003, 0.006]
+  const frame: Vec3 = [0.02, 0.62, 0.92]
+  const glow = 2.2
+
+  addQuad(target, [x, bottom, front], [x, bottom, back], [x, top, back], [x, top, front], color, 0.02)
+  addBox(target, x, wall.y, back - 0.06, 0.12, height + 0.26, 0.12, frame, glow)
+  addBox(target, x, wall.y, front + 0.06, 0.12, height + 0.26, 0.12, frame, glow)
+  addBox(target, x, bottom - 0.06, wall.z, 0.12, 0.12, wall.width + 0.36, frame, glow)
+  addBox(target, x, top + 0.06, wall.z, 0.12, 0.12, wall.width + 0.36, frame, glow)
 }
 
 function addDoorPerimeterStripes(target: Vertex[]) {

@@ -33,6 +33,7 @@ import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './lo
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
+import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, Viewport } from './projection.ts'
@@ -101,6 +102,7 @@ clubGlobal.clubMultiplayerClose?.()
 const {
   canvas,
   djVideo,
+  photoWall,
   chatForm,
   nicknameInput,
   chatInput,
@@ -111,6 +113,7 @@ const {
   onlineSelf,
   onlineText,
   reactionButtons,
+  photoButton,
   roomsButton,
   supportLink,
   intro,
@@ -261,6 +264,10 @@ const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
       ? appSpace.musicSource
       : undefined,
   zone: () => currentVideoZone(),
+})
+const photoWallUi = createPhotoWallUi(photoWall, {
+  admin: () => ({ enabled: adminView, pass: adminPass }),
+  recoverFocus: () => canvas.focus(),
 })
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
@@ -497,6 +504,12 @@ const banMessage = document.createElement('p')
 const banCancel = document.createElement('button')
 const banSubmit = document.createElement('button')
 const banSubnetSubmit = document.createElement('button')
+const photoPreviewDialog = document.createElement('dialog')
+const photoPreviewPolaroid = document.createElement('div')
+const photoPreviewImage = document.createElement('img')
+const photoPreviewActions = document.createElement('div')
+const photoPreviewCancel = document.createElement('button')
+const photoPreviewSave = document.createElement('button')
 
 adminDialog.id = 'admin-dialog'
 adminForm.method = 'dialog'
@@ -551,7 +564,21 @@ banSubnetSubmit.textContent = '🌐'
 banSubnetSubmit.setAttribute('aria-label', 'ban subnet')
 banForm.append(banMessage, banCancel, banSubmit, banSubnetSubmit)
 banDialog.append(banForm)
-document.body.append(adminDialog, loftMusicDialog, banDialog)
+photoPreviewDialog.id = 'photo-preview-dialog'
+photoPreviewPolaroid.id = 'photo-preview-polaroid'
+photoPreviewImage.id = 'photo-preview-image'
+photoPreviewImage.alt = 'photo preview'
+photoPreviewActions.id = 'photo-preview-actions'
+photoPreviewCancel.type = 'button'
+photoPreviewCancel.textContent = '✕'
+photoPreviewCancel.setAttribute('aria-label', 'discard photo')
+photoPreviewSave.type = 'button'
+photoPreviewSave.textContent = '✓'
+photoPreviewSave.setAttribute('aria-label', 'save photo')
+photoPreviewActions.append(photoPreviewCancel, photoPreviewSave)
+photoPreviewPolaroid.append(photoPreviewImage, photoPreviewActions)
+photoPreviewDialog.append(photoPreviewPolaroid)
+document.body.append(adminDialog, loftMusicDialog, banDialog, photoPreviewDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
   adminInput.addEventListener(eventName, event => event.stopPropagation())
   adminBanIdInput.addEventListener(eventName, event => event.stopPropagation())
@@ -561,6 +588,7 @@ for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
 }
 
 let pendingBan: { id: number; message: string } | undefined
+let pendingPhoto: { blob: Blob; url: string } | undefined
 
 adminForm.addEventListener('submit', () => {
   adminPass = adminInput.value
@@ -630,6 +658,25 @@ banSubnetSubmit.addEventListener('click', () => {
   sendPendingBan('banSubnet')
 })
 
+photoPreviewCancel.addEventListener('click', () => {
+  dismissPhotoPreview()
+})
+
+photoPreviewDialog.addEventListener('cancel', event => {
+  event.preventDefault()
+  dismissPhotoPreview()
+})
+
+photoPreviewDialog.addEventListener('click', event => {
+  if (event.target === photoPreviewDialog) {
+    dismissPhotoPreview()
+  }
+})
+
+photoPreviewSave.addEventListener('click', () => {
+  void savePhotoPreview()
+})
+
 function sendPendingBan(command: 'ban' | 'banSubnet') {
   if (!pendingBan) {
     throw new Error('Missing pending ban')
@@ -662,6 +709,7 @@ function setAdminView(value: boolean) {
   chatLog.dataset.admin = String(adminView)
   adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
+  photoWallUi.syncAdmin()
   if (roomsDialog.open) {
     void refreshRoomsList()
   }
@@ -1061,6 +1109,8 @@ let introHidden = false
 let videoPlaying = false
 let lastPixelRatio = 0
 let lastBloomScale = 0
+let forcedPixelRatio: number | undefined
+let forcedBloomScale: number | undefined
 let lastIntroProgress = -1
 let lastIntroStartReady = false
 let lastChatFormIdentity = ''
@@ -2419,6 +2469,10 @@ chatForm.addEventListener('submit', event => {
   sendChatMessage(chatUi.submit(document.documentElement.dataset.touchControls !== 'true'))
 })
 
+photoButton.addEventListener('click', () => {
+  void takePhoto()
+})
+
 addEventListener('keydown', event => {
   if (event.key === 'Escape' && chatUi.isOpen()) {
     event.preventDefault()
@@ -2427,16 +2481,158 @@ addEventListener('keydown', event => {
   }
 })
 
+async function takePhoto() {
+  if (photoButton.disabled) {
+    return
+  }
+
+  photoButton.disabled = true
+  photoButton.dataset.loading = 'true'
+  try {
+    showPhotoPreview(await capturePhoto())
+  }
+  catch (e) {
+    console.error(e)
+  }
+  finally {
+    photoButton.disabled = false
+    delete photoButton.dataset.loading
+    if (!photoPreviewDialog.open) {
+      canvas.focus()
+    }
+  }
+}
+
+async function capturePhoto() {
+  const resume = !graphicsPaused
+  const previousPixelRatio = forcedPixelRatio
+  const previousBloomScale = forcedBloomScale
+
+  if (resume) {
+    pauseGraphics()
+  }
+
+  try {
+    forcedPixelRatio = window.devicePixelRatio
+    forcedBloomScale = 1
+    resize()
+    renderPhotoFrame(lastStamp || performance.now())
+    return await canvasJpegBlob(canvas, 0.98)
+  }
+  finally {
+    forcedPixelRatio = previousPixelRatio
+    forcedBloomScale = previousBloomScale
+    resizeDirty = true
+    if (resume) {
+      resumeGraphics()
+    }
+  }
+}
+
+function showPhotoPreview(blob: Blob) {
+  dismissPhotoPreview(false)
+  const url = URL.createObjectURL(blob)
+
+  pendingPhoto = { blob, url }
+  photoPreviewImage.src = url
+  photoPreviewSave.disabled = false
+  photoPreviewDialog.showModal()
+  photoPreviewSave.focus()
+}
+
+function dismissPhotoPreview(focus = true) {
+  if (pendingPhoto) {
+    URL.revokeObjectURL(pendingPhoto.url)
+    pendingPhoto = undefined
+  }
+
+  photoPreviewImage.removeAttribute('src')
+  photoPreviewSave.disabled = false
+  if (photoPreviewDialog.open) {
+    photoPreviewDialog.close()
+  }
+  if (focus) {
+    canvas.focus()
+  }
+}
+
+async function savePhotoPreview() {
+  if (!pendingPhoto) {
+    throw new Error('Missing pending photo')
+  }
+
+  photoPreviewSave.disabled = true
+  try {
+    await uploadPhoto(pendingPhoto.blob)
+    await photoWallUi.refreshLatest()
+    dismissPhotoPreview()
+  }
+  catch (e) {
+    console.error(e)
+    photoPreviewSave.disabled = false
+  }
+}
+
+async function uploadPhoto(photo: Blob) {
+  const response = await fetch('/api/photos', {
+    method: 'POST',
+    headers: { 'content-type': 'image/jpeg' },
+    body: photo,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Photo upload failed ${response.status}`)
+  }
+
+  return await jsonApiResponse<{ createdAt: number; timestamp: number; url: string }>(response, 'Photo upload')
+}
+
+function renderPhotoFrame(stamp: number) {
+  const inLoft = appSpace.kind === 'loft'
+  const zone = currentVideoZone()
+  const camera = cameraController.get()
+  const outside = !inLoft && isOutside(characterPosition)
+  const sky = !inLoft && zone === 'outside' && usesSkyBackground(camera)
+
+  strobeController.setFrame(Math.floor(stamp / 16.6667))
+  strobeController.updateInstances(stamp * 0.001, zone)
+  updateBeachBallBuffer()
+  renderCurrentSceneFrame({
+    camera,
+    characterCount: characterRenderSystem.update(stamp * 0.001),
+    doorCoverVisible: outside && doorCoverReleased,
+    inLoft,
+    outside,
+    sky,
+    stamp,
+    zone,
+  })
+}
+
+function canvasJpegBlob(target: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    target.toBlob(blob => {
+      if (!blob) {
+        reject(new Error('Photo encoding failed'))
+        return
+      }
+
+      resolve(blob)
+    }, 'image/jpeg', quality)
+  })
+}
+
 const resize = () => {
-  const ratio = pixelRatio.ratio()
+  const ratio = forcedPixelRatio ?? pixelRatio.ratio()
   const width = Math.floor(canvas.clientWidth * ratio)
   const height = Math.floor(canvas.clientHeight * ratio)
   projectorViewport.clientWidth = width / ratio
   projectorViewport.clientHeight = height / ratio
   projectorViewport.width = width
   projectorViewport.height = height
-  const bloomWidth = Math.max(1, Math.floor(width * bloomScale.scale()))
-  const bloomHeight = Math.max(1, Math.floor(height * bloomScale.scale()))
+  const bloom = forcedBloomScale ?? bloomScale.scale()
+  const bloomWidth = Math.max(1, Math.floor(width * bloom))
+  const bloomHeight = Math.max(1, Math.floor(height * bloom))
   const feedbackWidth = feedback.current.width
   const feedbackHeight = feedback.current.height
 
@@ -2551,6 +2747,107 @@ function resumeGraphics() {
   scheduleFrame()
 }
 
+function renderCurrentSceneFrame(options: {
+  camera: ReturnType<typeof cameraController.get>
+  characterCount: number
+  doorCoverVisible: boolean
+  inLoft: boolean
+  outside: boolean
+  sky: boolean
+  stamp: number
+  zone: VideoZone
+}) {
+  renderClubFrame({
+    arrays: {
+      character: characterArray,
+      characterBox: characterBoxArray,
+      light: lightArray,
+      post: postArray,
+      beachBalls: beachBallArray,
+      graffiti: graffitiArray,
+      room: array,
+      smoke: smokeArray,
+    },
+    bloomTarget,
+    camera: options.camera,
+    character: {
+      boxGeometry: characterBoxGeometry,
+      boxInstanceCount: characterRenderSystem.boxInstanceCount,
+      boxProgram: characterBoxProgram,
+      boxUniforms: characterBoxUniforms,
+      count: options.characterCount,
+      hairProgram,
+      hairRenderMeshes: characterRenderSystem.hairRenderMeshes,
+      hairUniforms,
+    },
+    characterPosition,
+    feedback,
+    gl,
+    height: canvas.height,
+    light: {
+      count: lightPoints.length / vertexSize,
+      program: lightProgram,
+      uniforms: {
+        renderZone: lightRenderZone!,
+        smokeMap: lightSmokeMap!,
+        time: lightTime!,
+        viewProjection: lightViewProjection!,
+      },
+    },
+    doorCoverVisible: options.doorCoverVisible,
+    outside: options.outside,
+    renderZone: renderZoneIndex(options.zone),
+    points,
+    beachBallPoints,
+    graffitiPoints: options.inLoft ? emptyPoints : graffitiPoints,
+    graffitiTexture,
+    post: {
+      bloom: postBloom!,
+      bloomResolution: postBloomResolution!,
+      feedback: postFeedback!,
+      feedbackAmount: postFeedbackAmount!,
+      program: postProgram,
+      renderSky: postRenderSky!,
+      scene: postScene!,
+      skyForward: postSkyForward!,
+      skyRight: postSkyRight!,
+      skyUp: postSkyUp!,
+      time: postTime,
+      tripKind: postTripKind,
+    },
+    program,
+    roomUniforms: {
+      bloomPass: bloomPass!,
+      cameraEye: cameraEye!,
+      doorCoverVisible: doorCoverVisible!,
+      graffitiMap: graffitiMap!,
+      renderZone: renderZone!,
+      treeShadowSampler: treeShadowSampler!,
+      viewProjection: viewProjection!,
+    },
+    skyline: options.inLoft,
+    sky: options.sky,
+    smoke: {
+      map: smokeMap,
+      points: smokePoints,
+      program: smokeProgram,
+      uniforms: {
+        cameraRight: roomSmokeCameraRight!,
+        cameraUp: roomSmokeCameraUp!,
+        smokeMap: roomSmokeMap!,
+        time: roomSmokeTime!,
+        viewProjection: roomSmokeViewProjection!,
+      },
+    },
+    strobeController,
+    target,
+    time: options.stamp * 0.001,
+    treeShadowMap,
+    vertexSize,
+    width: canvas.width,
+  })
+}
+
 const draw = (stamp: number) => {
   if (graphicsPaused) {
     return
@@ -2658,12 +2955,20 @@ const draw = (stamp: number) => {
   }
   const camera = cameraController.get()
   strobeController.updateInstances(stamp * 0.001, zone)
-  const lightCount = lightPoints.length / vertexSize
 
   const projector = createWallProjector(camera, projectorViewport, wallProjector)
 
   if (introHidden) {
     djVideoUi.update(camera, projector)
+    if (inLoft) {
+      photoWallUi.hide()
+    }
+    else {
+      photoWallUi.update(camera, projector)
+    }
+  }
+  else {
+    photoWallUi.hide()
   }
   chatUi.update(projector, stamp)
   updateAdminIdLabels(projector)
@@ -2690,94 +2995,15 @@ const draw = (stamp: number) => {
     updateIntro()
   }
 
-  renderClubFrame({
-    arrays: {
-      character: characterArray,
-      characterBox: characterBoxArray,
-      light: lightArray,
-      post: postArray,
-      beachBalls: beachBallArray,
-      graffiti: graffitiArray,
-      room: array,
-      smoke: smokeArray,
-    },
-    bloomTarget,
+  renderCurrentSceneFrame({
     camera,
-    character: {
-      boxGeometry: characterBoxGeometry,
-      boxInstanceCount: characterRenderSystem.boxInstanceCount,
-      boxProgram: characterBoxProgram,
-      boxUniforms: characterBoxUniforms,
-      count: characterCount,
-      hairProgram,
-      hairRenderMeshes: characterRenderSystem.hairRenderMeshes,
-      hairUniforms,
-    },
-    characterPosition,
-    feedback,
-    gl,
-    height: canvas.height,
-    light: {
-      count: lightCount,
-      program: lightProgram,
-      uniforms: {
-        renderZone: lightRenderZone,
-        smokeMap: lightSmokeMap,
-        time: lightTime,
-        viewProjection: lightViewProjection,
-      },
-    },
+    characterCount,
     doorCoverVisible: outside && doorCoverReleased,
+    inLoft,
     outside,
-    renderZone: renderZoneIndex(zone),
-    points,
-    beachBallPoints,
-    graffitiPoints: inLoft ? emptyPoints : graffitiPoints,
-    graffitiTexture,
-    post: {
-      bloom: postBloom,
-      bloomResolution: postBloomResolution,
-      feedback: postFeedback,
-      feedbackAmount: postFeedbackAmount,
-      program: postProgram,
-      renderSky: postRenderSky,
-      scene: postScene,
-      skyForward: postSkyForward,
-      skyRight: postSkyRight,
-      skyUp: postSkyUp,
-      time: postTime,
-      tripKind: postTripKind,
-    },
-    program,
-    roomUniforms: {
-      bloomPass,
-      cameraEye,
-      doorCoverVisible,
-      graffitiMap,
-      renderZone,
-      treeShadowSampler,
-      viewProjection,
-    },
-    skyline: inLoft,
     sky,
-    smoke: {
-      map: smokeMap,
-      points: smokePoints,
-      program: smokeProgram,
-      uniforms: {
-        cameraRight: roomSmokeCameraRight,
-        cameraUp: roomSmokeCameraUp,
-        smokeMap: roomSmokeMap,
-        time: roomSmokeTime,
-        viewProjection: roomSmokeViewProjection,
-      },
-    },
-    strobeController,
-    target,
-    time: stamp * 0.001,
-    treeShadowMap,
-    vertexSize,
-    width: canvas.width,
+    stamp,
+    zone,
   })
 
   scheduleFrame()

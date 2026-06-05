@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { mkdir, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
@@ -148,6 +149,10 @@ const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
+const photoDir = join(import.meta.dir, 'data', 'photos')
+const photoPageLimit = 30
+const photoRateLimit = 5
+const photoRateWindowMs = 60 * 60 * 1000
 const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
 const videoPlaylistRequestInterval = 3000
@@ -190,6 +195,14 @@ const server = Bun.serve<SocketData>({
 
     if (bannedIp(ip)) {
       return new Response('Forbidden', { status: 403 })
+    }
+
+    if (url.pathname === '/api/photos' || url.pathname.startsWith('/api/photos/')) {
+      return handlePhotoApi(request, url, ip)
+    }
+
+    if (url.pathname.startsWith('/photos/')) {
+      return servePhoto(request, url)
     }
 
     if (ipConnections(ip) >= maxConnectionsPerIp) {
@@ -645,6 +658,150 @@ async function handleRoomApi(request: Request, url: URL) {
     status: 405,
     headers: { allow: 'GET, POST, DELETE' },
   })
+}
+
+async function handlePhotoApi(request: Request, url: URL, ip: string) {
+  if (request.method === 'GET' && url.pathname === '/api/photos') {
+    return jsonResponse(listPhotos(photoListOffset(url)))
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/photos') {
+    if (!photoUploadContentType(request)) {
+      return new Response('Unsupported Media Type', { status: 415 })
+    }
+
+    if (photoUploadCount(ip, Date.now() - photoRateWindowMs) >= photoRateLimit) {
+      return new Response('Too Many Photos', { status: 429 })
+    }
+
+    const createdAt = Date.now()
+    const timestamp = nextPhotoTimestamp(createdAt)
+    const data = await request.arrayBuffer()
+
+    await mkdir(photoDir, { recursive: true })
+    await Bun.write(photoPath(timestamp), data)
+    db.query('INSERT INTO photos (timestamp, created_at, ip) VALUES ($timestamp, $createdAt, $ip)')
+      .run({ timestamp, createdAt, ip })
+
+    return jsonResponse({ timestamp, createdAt, url: photoUrl(timestamp) })
+  }
+
+  const timestamp = photoApiTimestamp(url.pathname)
+
+  if (request.method === 'DELETE' && timestamp !== undefined) {
+    const body = await request.json() as { pass?: string }
+
+    if (adminPass === '' || body.pass !== adminPass) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    if (!photoExists(timestamp)) {
+      return new Response('Not Found', { status: 404 })
+    }
+
+    await unlink(photoPath(timestamp))
+    db.query('DELETE FROM photos WHERE timestamp = $timestamp').run({ timestamp })
+
+    return jsonResponse({ ok: true })
+  }
+
+  return new Response('Method Not Allowed', {
+    status: 405,
+    headers: { allow: 'GET, POST, DELETE' },
+  })
+}
+
+async function servePhoto(request: Request, url: URL) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    })
+  }
+
+  const timestamp = photoFileTimestamp(url.pathname)
+
+  if (timestamp === undefined) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  return await fileResponse(photoPath(timestamp), request) ?? new Response('Not Found', { status: 404 })
+}
+
+function listPhotos(offset: number) {
+  const photos = db.query<{
+    createdAt: number
+    timestamp: number
+  }, { limit: number; offset: number }>(`
+    SELECT timestamp, created_at AS createdAt
+    FROM photos
+    ORDER BY created_at DESC, timestamp DESC
+    LIMIT $limit OFFSET $offset
+  `).all({ limit: photoPageLimit, offset })
+  const total = db.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM photos').get()!.count
+
+  return {
+    photos: photos.map(photo => ({ ...photo, url: photoUrl(photo.timestamp) })),
+    total,
+    offset,
+    limit: photoPageLimit,
+  }
+}
+
+function photoListOffset(url: URL) {
+  const offset = Number(url.searchParams.get('offset') ?? 0)
+
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error(`Invalid photo offset ${url.searchParams.get('offset')}`)
+  }
+
+  return offset
+}
+
+function photoUploadContentType(request: Request) {
+  return (request.headers.get('content-type') ?? '').toLowerCase().split(';')[0]?.trim() === 'image/jpeg'
+}
+
+function photoUploadCount(ip: string, since: number) {
+  return db.query<{ count: number }, { ip: string; since: number }>(
+    'SELECT COUNT(*) AS count FROM photos WHERE ip = $ip AND created_at >= $since',
+  ).get({ ip, since })!.count
+}
+
+function nextPhotoTimestamp(createdAt: number) {
+  let timestamp = createdAt
+
+  while (photoExists(timestamp)) {
+    timestamp++
+  }
+
+  return timestamp
+}
+
+function photoExists(timestamp: number) {
+  return !!db.query<{ timestamp: number }, { timestamp: number }>(
+    'SELECT timestamp FROM photos WHERE timestamp = $timestamp',
+  ).get({ timestamp })
+}
+
+function photoApiTimestamp(path: string) {
+  const match = /^\/api\/photos\/(\d+)$/.exec(path)
+
+  return match ? Number(match[1]) : undefined
+}
+
+function photoFileTimestamp(path: string) {
+  const match = /^\/photos\/(\d+)\.jpg$/.exec(path)
+
+  return match ? Number(match[1]) : undefined
+}
+
+function photoPath(timestamp: number) {
+  return join(photoDir, `${timestamp}.jpg`)
+}
+
+function photoUrl(timestamp: number) {
+  return `/photos/${timestamp}.jpg`
 }
 
 function jsonResponse(value: unknown, status = 200) {
@@ -1316,6 +1473,13 @@ function setupDb() {
       value TEXT NOT NULL,
       PRIMARY KEY (slug, value)
     );
+    CREATE TABLE IF NOT EXISTS photos (
+      timestamp INTEGER PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      ip TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS photos_created_at_index ON photos (created_at DESC, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS photos_ip_created_at_index ON photos (ip, created_at);
   `)
 }
 

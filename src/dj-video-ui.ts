@@ -1,12 +1,12 @@
+import { createDomWallProjection } from './dom-wall.ts'
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
-import { projectedQuadTransform, projectWallPointWithMinDepthInto } from './projection.ts'
-import type { ProjectedPoint, WallProjector } from './projection.ts'
+import type { WallProjector } from './projection.ts'
 import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists } from './scene-data.ts'
 import { roomAt } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
+import type { DomWall } from './dom-wall.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
-type Wall = typeof djVideoWall
 type VideoTrackState = {
   currentId: string
   nextId?: string
@@ -15,7 +15,6 @@ type VideoTrackState = {
 
 const endedState = 0
 const endedTimeTolerance = 5
-const videoNearDepth = 0.05
 const playlistDiscoveryDelay = 1000
 const playlistDiscoveryAttempts = 5
 const syncSeekTolerance = 2
@@ -54,19 +53,10 @@ export function createDjVideoUi(
   const reportedPlaylists: Partial<Record<VideoZone, string>> = {}
   let zone: VideoZone = currentZone()
   let playUnlocked = false
-  const setElementStyle = createStyleSetter(element.style)
+  const projection = createDomWallProjection(element, { opacity: '0.74' })
   const setInsideStyle = createStyleSetter(layers.inside.style)
   const setLoftStyle = createStyleSetter(layers.loft.style)
   const setOutsideStyle = createStyleSetter(layers.outside.style)
-  const cornerA: Vec3 = [0, 0, 0]
-  const cornerB: Vec3 = [0, 0, 0]
-  const cornerC: Vec3 = [0, 0, 0]
-  const cornerD: Vec3 = [0, 0, 0]
-  const pointA: ProjectedPoint = { x: 0, y: 0 }
-  const pointB: ProjectedPoint = { x: 0, y: 0 }
-  const pointC: ProjectedPoint = { x: 0, y: 0 }
-  const pointD: ProjectedPoint = { x: 0, y: 0 }
-  const points = [pointA, pointB, pointC, pointD]
   let pointerPassthroughUntil = 0
 
   addEventListener('blur', () => {
@@ -219,8 +209,7 @@ export function createDjVideoUi(
 
       const wall = videoWall(nextZone)
 
-      if (!djVideoFacesCamera(camera, wall)) {
-        setElementStyle('opacity', '0')
+      if (!projection.update(camera, projector, wall)) {
         setInsideStyle('pointerEvents', 'none')
         setLoftStyle('pointerEvents', 'none')
         setOutsideStyle('pointerEvents', 'none')
@@ -228,50 +217,6 @@ export function createDjVideoUi(
         return
       }
 
-      const bottom = wall.y - wall.height / 2
-      const top = wall.y + wall.height / 2
-      if (Math.abs(wall.normal[0]) > 0) {
-        const back = wall.z - wall.width / 2
-        const front = wall.z + wall.width / 2
-
-        if (wall.normal[0] < 0) {
-          setPoint(cornerA, wall.x, bottom, back)
-          setPoint(cornerB, wall.x, bottom, front)
-          setPoint(cornerC, wall.x, top, front)
-          setPoint(cornerD, wall.x, top, back)
-        }
-        else {
-          setPoint(cornerA, wall.x, bottom, front)
-          setPoint(cornerB, wall.x, bottom, back)
-          setPoint(cornerC, wall.x, top, back)
-          setPoint(cornerD, wall.x, top, front)
-        }
-      }
-      else if (wall.normal[2] < 0) {
-        const left = wall.x - wall.width / 2
-        const right = wall.x + wall.width / 2
-
-        setPoint(cornerA, right, bottom, wall.z)
-        setPoint(cornerB, left, bottom, wall.z)
-        setPoint(cornerC, left, top, wall.z)
-        setPoint(cornerD, right, top, wall.z)
-      }
-      else {
-        const left = wall.x - wall.width / 2
-        const right = wall.x + wall.width / 2
-
-        setPoint(cornerA, left, bottom, wall.z)
-        setPoint(cornerB, right, bottom, wall.z)
-        setPoint(cornerC, right, top, wall.z)
-        setPoint(cornerD, left, top, wall.z)
-      }
-
-      projectWallPointWithMinDepthInto(cornerA, projector, pointA, videoNearDepth)
-      projectWallPointWithMinDepthInto(cornerB, projector, pointB, videoNearDepth)
-      projectWallPointWithMinDepthInto(cornerC, projector, pointC, videoNearDepth)
-      projectWallPointWithMinDepthInto(cornerD, projector, pointD, videoNearDepth)
-
-      setElementStyle('opacity', '0.74')
       setInsideStyle('opacity', zone === 'inside' ? '1' : '0')
       setLoftStyle('opacity', zone === 'loft' ? '1' : '0')
       setOutsideStyle('opacity', zone === 'outside' ? '1' : '0')
@@ -282,13 +227,6 @@ export function createDjVideoUi(
       setLoftStyle('pointerEvents', zone === 'loft' ? pointerEvents : 'none')
       setOutsideStyle('pointerEvents', zone === 'outside' ? pointerEvents : 'none')
       layers.tent.style.pointerEvents = zone === 'tent' ? pointerEvents : 'none'
-      setElementStyle('width', `${wall.width * 120}px`)
-      setElementStyle('height', `${wall.height * 120}px`)
-      setElementStyle('transform', projectedQuadTransform(
-        wall.width * 120,
-        wall.height * 120,
-        points,
-      ))
     },
     play() {
       playUnlocked = true
@@ -426,7 +364,7 @@ export function createDjVideoUi(
   }
 }
 
-function videoWall(zone: VideoZone): Wall {
+function videoWall(zone: VideoZone): DomWall {
   if (zone === 'inside') {
     return djVideoWall
   }
@@ -466,13 +404,7 @@ function pauseOtherVideos(
   }
 }
 
-function setPoint(target: Vec3, x: number, y: number, z: number) {
-  target[0] = x
-  target[1] = y
-  target[2] = z
-}
-
-type StyleName = 'height' | 'opacity' | 'pointerEvents' | 'transform' | 'width'
+type StyleName = 'opacity' | 'pointerEvents'
 
 function createStyleSetter(style: CSSStyleDeclaration) {
   const values = new Map<StyleName, string>()
@@ -483,19 +415,4 @@ function createStyleSetter(style: CSSStyleDeclaration) {
       style[name] = value
     }
   }
-}
-
-function djVideoFacesCamera(camera: Camera, wall: Wall) {
-  const toCameraX = camera.eye[0] - wall.x
-  const toCameraY = camera.eye[1] - wall.y
-  const toCameraZ = camera.eye[2] - wall.z
-  const toVideoX = wall.x - camera.eye[0]
-  const toVideoY = wall.y - camera.eye[1]
-  const toVideoZ = wall.z - camera.eye[2]
-  const forwardX = camera.center[0] - camera.eye[0]
-  const forwardY = camera.center[1] - camera.eye[1]
-  const forwardZ = camera.center[2] - camera.eye[2]
-
-  return wall.normal[0] * toCameraX + wall.normal[1] * toCameraY + wall.normal[2] * toCameraZ > 0
-    && forwardX * toVideoX + forwardY * toVideoY + forwardZ * toVideoZ > 0
 }

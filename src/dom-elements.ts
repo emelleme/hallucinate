@@ -1,6 +1,7 @@
 export function getDomElements() {
   const canvas = document.createElement('canvas')
   const djVideo = document.createElement('div')
+  const photoWall = document.createElement('div')
   const chatForm = document.createElement('form')
   const nicknameInput = document.createElement('input')
   const chatInput = document.createElement('input')
@@ -12,6 +13,7 @@ export function getDomElements() {
   const onlineCount = document.createElement('div')
   const chatLog = document.createElement('div')
   const reactionButtons = document.createElement('div')
+  const photoButton = document.createElement('button')
   const roomsButton = document.createElement('button')
   const supportLink = document.createElement('a')
   const intro = document.createElement('div')
@@ -34,6 +36,9 @@ export function getDomElements() {
 
   djVideo.id = 'dj-video'
   djVideo.className = 'absolute border-0 opacity-0'
+
+  photoWall.id = 'photo-wall'
+  photoWall.className = 'absolute opacity-0'
 
   chatForm.id = 'chat-form'
   chatForm.className = 'absolute opacity-0'
@@ -63,6 +68,10 @@ export function getDomElements() {
   onlineText.textContent = ' 0 online'
   chatLog.id = 'chat-log'
   reactionButtons.id = 'reaction-buttons'
+  photoButton.id = 'photo-button'
+  photoButton.type = 'button'
+  photoButton.textContent = '📸'
+  photoButton.setAttribute('aria-label', 'take photo')
   roomsButton.id = 'rooms-button'
   roomsButton.type = 'button'
   roomsButton.textContent = '🏘️'
@@ -110,12 +119,13 @@ export function getDomElements() {
   introPanel.append(introTrack, introProgress, introNicknameInput, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
-  document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, roomsButton,
-    supportLink, intro)
+  document.body.prepend(canvas, djVideo, photoWall, chatForm, chatBubble, onlineIndicator, reactionButtons, photoButton,
+    roomsButton, supportLink, intro)
 
   return {
     canvas,
     djVideo,
+    photoWall,
     chatForm,
     nicknameInput,
     chatInput,
@@ -126,6 +136,7 @@ export function getDomElements() {
     onlineSelf,
     onlineText,
     reactionButtons,
+    photoButton,
     roomsButton,
     supportLink,
     intro,
