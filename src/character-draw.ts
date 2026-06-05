@@ -761,6 +761,7 @@ function addCharacterHair(
   const centerY = head[1] - basis.up[1] * 0.035
   const centerZ = head[2] - basis.up[2] * 0.035
 
+  reserveFloats(target, triangles.length / 3 * 11)
   for (let i = 0; i < triangles.length; i += 9) {
     const a0 = triangles[i]!
     const a1 = triangles[i + 1]!

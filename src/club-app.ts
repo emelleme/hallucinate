@@ -824,9 +824,9 @@ function syncNicknameLabels() {
 
   for (const [id, player] of multiplayer.players) {
     const name = identityName(id, playerNicknames.get(id))
-    const label = nicknameLabel(name)
+    const cached = cachedNicknameLabel(id, name)
 
-    chatUi.setLabel(id, label, player.position, identityColor(name))
+    chatUi.setLabel(id, cached.label, player.position, cached.color)
   }
 }
 
@@ -835,10 +835,28 @@ function syncRemoteNicknameLabel(id: number) {
 
   if (player) {
     const name = identityName(id, playerNicknames.get(id))
-    const label = nicknameLabel(name)
+    const cached = cachedNicknameLabel(id, name)
 
-    chatUi.setLabel(id, label, player.position, identityColor(name))
+    chatUi.setLabel(id, cached.label, player.position, cached.color)
   }
+}
+
+function cachedNicknameLabel(id: number, name: string) {
+  const cached = nicknameLabelCache.get(id)
+
+  if (cached?.name === name) {
+    return cached
+  }
+
+  const next = {
+    color: identityColor(name),
+    label: nicknameLabel(name),
+    name,
+  }
+
+  nicknameLabelCache.set(id, next)
+
+  return next
 }
 
 function cycleIdle(direction: number) {
@@ -1420,6 +1438,7 @@ let multiplayer: ReturnType<typeof createMultiplayer>
 let hasMultiplayer = false
 const predictedMessages = new Map<string, number>()
 const playerNicknames = new Map<number, string>()
+const nicknameLabelCache = new Map<number, { color: string; label: string; name: string }>()
 const beachBalls = createBeachBalls()
 let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -1427,6 +1446,7 @@ const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
 const graffitiSplats: import('./types.ts').GraffitiSplat[] = []
 const graffitiIds = new Set<number>()
+let nextRemoteSeatSyncAt = 0
 let graffitiSeed = Math.floor(Math.random() * 65536)
 let lastSprayAt = 0
 let sprayPointer = 0
@@ -1441,6 +1461,7 @@ function connectMultiplayer(spaceSlug?: string) {
   hasMultiplayer = true
   predictedMessages.clear()
   playerNicknames.clear()
+  nicknameLabelCache.clear()
   chatUi.clear()
   chatLog.replaceChildren()
   clearAdminIdLabels()
@@ -1500,11 +1521,15 @@ function connectMultiplayer(spaceSlug?: string) {
       }
       else {
         playerNicknames.delete(id)
+        nicknameLabelCache.delete(id)
       }
 
       syncRemoteNicknameLabel(id)
     },
-    onLeave: id => chatUi.remove(id),
+    onLeave: id => {
+      nicknameLabelCache.delete(id)
+      chatUi.remove(id)
+    },
     onOnlineCount: count => {
       onlineCountValue = count
       syncOnlineSelf()
@@ -2491,9 +2516,16 @@ const draw = (stamp: number) => {
   }
   updateRemotePlayers(multiplayer.players.values(), delta, outsideTree)
   syncNicknameLabels()
-  takeRemoteSeats()
+  takeRemoteSeats(stamp)
   renderPlayers.length = 0
-  renderPlayers.push(...(inLoft ? [] : npcPlayers), ...multiplayer.players.values())
+  if (!inLoft) {
+    for (const player of npcPlayers) {
+      renderPlayers.push(player)
+    }
+  }
+  for (const player of multiplayer.players.values()) {
+    renderPlayers.push(player)
+  }
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
     || dancing, localCharacter.jumping, inLoft)
@@ -2760,7 +2792,13 @@ function updateIntro() {
   return progress
 }
 
-function takeRemoteSeats() {
+function takeRemoteSeats(stamp: number) {
+  if (stamp < nextRemoteSeatSyncAt) {
+    return
+  }
+
+  nextRemoteSeatSyncAt = stamp + 100
+
   for (const seat of remoteSeats) {
     occupiedSeats.delete(seat)
   }

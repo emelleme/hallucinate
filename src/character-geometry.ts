@@ -279,8 +279,12 @@ function addFlatQuad(
   strobe = 0,
 ) {
   reserveVertices(target, 6)
-  addReservedFlatTriangle(target, a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], color, glow, strobe)
-  addReservedFlatTriangle(target, a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2], color, glow, strobe)
+  addFlatVertex(target, a[0], a[1], a[2], color, glow, strobe)
+  addFlatVertex(target, b[0], b[1], b[2], color, glow, strobe)
+  addFlatVertex(target, c[0], c[1], c[2], color, glow, strobe)
+  addFlatVertex(target, a[0], a[1], a[2], color, glow, strobe)
+  addFlatVertex(target, c[0], c[1], c[2], color, glow, strobe)
+  addFlatVertex(target, d[0], d[1], d[2], color, glow, strobe)
 }
 
 function addFlatVertex(
