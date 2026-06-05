@@ -983,6 +983,66 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
   display: none;
 }
 
+html[data-touch-controls="true"] #chat-form {
+  position: fixed;
+  left: auto;
+  right: 62px;
+  top: 12px;
+  z-index: 140;
+  display: flex;
+  width: min(360px, calc(100dvw - 86px));
+  box-sizing: border-box;
+  opacity: 0;
+  transform: none !important;
+}
+
+html[data-touch-controls="true"] #chat-form[data-open="true"] {
+  opacity: 1;
+}
+
+html[data-touch-controls="true"] #nickname-input,
+html[data-touch-controls="true"] #chat-input {
+  max-width: none;
+  min-width: 0;
+}
+
+html[data-touch-controls="true"] #nickname-input {
+  flex: 0 1 112px;
+}
+
+html[data-touch-controls="true"] #chat-input {
+  flex: 1 1 auto;
+}
+
+html[data-touch-controls="true"] #online-indicator {
+  left: auto;
+  right: 12px;
+  top: 62px;
+  bottom: auto;
+  display: none;
+  width: min(410px, calc(100dvw - 24px));
+  max-width: calc(100dvw - 24px);
+  max-height: calc(100dvh - 86px);
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+html[data-touch-controls="true"] #chat-form[data-open="true"] ~ #online-indicator {
+  display: grid;
+}
+
+html[data-touch-controls="true"] #online-indicator[data-hidden="true"] {
+  display: none;
+}
+
+html[data-touch-controls="true"] #chat-form[data-open="true"] ~ #online-indicator[data-hidden="true"] {
+  display: grid;
+}
+
+html[data-touch-controls="true"] #chat-log {
+  max-height: min(46dvh, calc(100dvh - 160px));
+}
+
 @media (max-width: 720px) {
   .help-cluster-left {
     left: 12px;
