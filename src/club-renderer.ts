@@ -170,6 +170,8 @@ export function renderClubFrame(options: {
   gl.depthMask(false)
   drawGraffiti(options)
   options.sceneOverlay?.draw(mainCameraMatrix)
+  // Scene overlays use their own program; the detailed local character is drawn with the room shader.
+  gl.useProgram(options.program)
   gl.depthMask(true)
   gl.depthFunc(gl.LESS)
   gl.enable(gl.BLEND)
