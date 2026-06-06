@@ -25,7 +25,7 @@ export const roomCount = 3
 export const messageMaxLength = 120
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 37
+export const protocolVersion = 38
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -61,6 +61,11 @@ export type MessagePacket = {
 export type NicknamePacket = {
   id: number
   text: string
+}
+
+export type OnlinePacket = {
+  count: number
+  idle: number
 }
 
 export type VideoSyncEntry = {
@@ -210,20 +215,24 @@ export function encodeHeartbeat() {
   return data
 }
 
-export function encodeOnline(count: number) {
-  const data = new ArrayBuffer(3)
+export function encodeOnline(packet: OnlinePacket) {
+  const data = new ArrayBuffer(5)
   const view = new DataView(data)
 
   view.setUint8(0, S_ONLINE)
-  view.setUint16(1, count)
+  view.setUint16(1, packet.count)
+  view.setUint16(3, packet.idle)
 
   return data
 }
 
-export function decodeOnline(view: DataView) {
-  expectSize(view, 3)
+export function decodeOnline(view: DataView): OnlinePacket {
+  expectSize(view, 5)
 
-  return view.getUint16(1)
+  return {
+    count: view.getUint16(1),
+    idle: view.getUint16(3),
+  }
 }
 
 export function encodeVideoSync(packet: VideoSyncPacket) {

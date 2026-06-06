@@ -44,6 +44,7 @@ import {
   S_ROOM_STATE,
   S_SPAWN,
   sceneToProtocol,
+  type OnlinePacket,
   type SpawnPacket,
   truncateMessage,
   VIDEO_PLAYLIST_REQUEST,
@@ -83,7 +84,7 @@ export function createMultiplayer(options: {
   onNickname: (id: number, text: string) => void
   onDeleteMessages: (id: number) => void
   onLeave: (id: number) => void
-  onOnlineCount: (count: number) => void
+  onOnlineCount: (online: OnlinePacket) => void
   onVideoPlaylistRequest: (zones: VideoPlaylistRequestPacket['zones']) => void
   onVideoSync: (entries: VideoSyncEntry[]) => void
   onBeachBalls: (balls: BeachBall[]) => void

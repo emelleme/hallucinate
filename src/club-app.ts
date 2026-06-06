@@ -251,6 +251,7 @@ const remoteSeats = new Set<string>()
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
+let onlineIdleValue = 0
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
@@ -969,16 +970,21 @@ function identityColor(name: string) {
 
 function syncOnlineSelf() {
   const name = identityName(multiplayer?.selfId || 0, nickname)
-  if (name === lastOnlineSelfName && onlineCountValue === lastOnlineCountValue) {
+  if (
+    name === lastOnlineSelfName
+    && onlineCountValue === lastOnlineCountValue
+    && onlineIdleValue === lastOnlineIdleValue
+  ) {
     return
   }
 
   lastOnlineSelfName = name
   lastOnlineCountValue = onlineCountValue
+  lastOnlineIdleValue = onlineIdleValue
 
   const label = nicknameLabel(name)
   const color = identityColor(name)
-  const text = ` ${onlineCountValue} online`
+  const text = ` ${onlineCountValue} online (${onlineIdleValue} idle)`
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
@@ -1266,6 +1272,7 @@ let lastOnlineSelfName = ''
 let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
 let lastOnlineCountValue = -1
+let lastOnlineIdleValue = -1
 let introWaveSent = false
 
 intro.addEventListener('touchmove', event => {
@@ -1790,8 +1797,9 @@ function connectMultiplayer(spaceSlug?: string) {
       nicknameLabelCache.delete(id)
       chatUi.remove(id)
     },
-    onOnlineCount: count => {
-      onlineCountValue = count
+    onOnlineCount: online => {
+      onlineCountValue = online.count
+      onlineIdleValue = online.idle
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),

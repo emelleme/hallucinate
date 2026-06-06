@@ -2565,7 +2565,7 @@ function broadcastOnline(space?: SpaceState) {
     return
   }
 
-  const online = onlineCount(space)
+  const online = onlineStats(space)
   const data = encodeOnline(online)
 
   for (const client of spaceClients(space)) {
@@ -2574,11 +2574,20 @@ function broadcastOnline(space?: SpaceState) {
 }
 
 function onlineCount(space = mainSpace) {
-  const now = Date.now()
+  return onlineStats(space).count
+}
 
-  return [...spaceClients(space)]
+function onlineStats(space = mainSpace) {
+  const now = Date.now()
+  const clients = [...spaceClients(space)]
+  const active = clients
     .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
     .length
+
+  return {
+    count: clients.length,
+    idle: clients.length - active,
+  }
 }
 
 function logStats() {
