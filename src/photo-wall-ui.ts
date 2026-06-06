@@ -136,8 +136,9 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       element.style.pointerEvents = 'none'
     },
     refresh,
-    refreshLatest() {
-      return refresh()
+    async refreshLatest() {
+      await refresh()
+      grid.scrollTop = 0
     },
     async previewUrls() {
       if (!loaded) {
@@ -182,7 +183,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       page = {
         ...next,
         offset: 0,
-        photos: [...page.photos, ...next.photos],
+        photos: sortedPhotos([...page.photos, ...next.photos]),
       }
       loaded = true
       refreshedAt = performance.now()
@@ -199,7 +200,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
   async function refreshFirstPage() {
     try {
-      page = await fetchPhotoPage(0)
+      page = normalizePhotoPage(await fetchPhotoPage(0))
       loaded = true
       refreshedAt = performance.now()
       render()
@@ -510,13 +511,27 @@ async function preloadPhoto(photo: Photo) {
 }
 
 async function fetchPhotoPage(offset: number) {
-  const response = await fetch(`/api/photos?offset=${offset}`)
+  const response = await fetch(`/api/photos?offset=${offset}`, { cache: 'no-store' })
 
   if (!response.ok) {
     throw new Error(`Photo list failed ${response.status}`)
   }
 
   return await jsonApiResponse<PhotoPage>(response, 'Photo list')
+}
+
+function normalizePhotoPage(page: PhotoPage): PhotoPage {
+  return {
+    ...page,
+    photos: sortedPhotos(page.photos),
+  }
+}
+
+function sortedPhotos(photos: Photo[]) {
+  const photosByTimestamp = new Map(photos.map(photo => [photo.timestamp, photo]))
+
+  return [...photosByTimestamp.values()].sort((a, b) =>
+    b.createdAt === a.createdAt ? b.timestamp - a.timestamp : b.createdAt - a.createdAt)
 }
 
 async function jsonApiResponse<T>(response: Response, label: string): Promise<T> {
