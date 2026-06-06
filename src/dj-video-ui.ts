@@ -2,7 +2,7 @@ import { createDomWallProjection } from './dom-wall.ts'
 import { createStyleSetter } from './style-setter.ts'
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
 import type { WallProjector } from './projection.ts'
-import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
+import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
 import type { Vec3, VideoPreview, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 import type { DomWall } from './dom-wall.ts'
@@ -379,7 +379,7 @@ function videoWall(zone: VideoZone): DomWall {
     return loftVideoWall
   }
   if (zone === 'outside') {
-    return outsideVideoWall
+    return outsideVideoScreenWall
   }
 
   return tentVideoWall

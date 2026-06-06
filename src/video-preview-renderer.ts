@@ -1,7 +1,7 @@
 import type { CameraMatrix } from './camera-matrix.ts'
 import { domWallCorners } from './dom-wall.ts'
 import type { DomWall } from './dom-wall.ts'
-import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall } from './scene-data.ts'
+import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall } from './scene-data.ts'
 import { videoPreviewFragment, videoPreviewVertex } from './shaders.ts'
 import type { Vec3, VideoPreview, VideoZone } from './types.ts'
 import { createProgram } from './webgl.ts'
@@ -15,7 +15,6 @@ type TextureEntry = {
 const vertexSize = 5
 const wallInset = 0.08
 const wallOffset = 0.035
-const outsideScreenOffset = 0.5
 const loftScreenFaceOffset = 0.06
 
 export function createVideoPreviewRenderer(gl: WebGL2RenderingContext) {
@@ -157,7 +156,7 @@ function videoPreviewGeometry(wall: DomWall) {
 
 function videoPreviewWall(zone: VideoZone): DomWall {
   if (zone === 'outside') {
-    return { ...outsideVideoWall, z: outsideVideoWall.z - outsideScreenOffset }
+    return outsideVideoScreenWall
   }
   if (zone === 'loft') {
     return { ...loftVideoWall, z: loftVideoWall.z + loftScreenFaceOffset }

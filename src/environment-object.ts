@@ -4,7 +4,7 @@ import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } 
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideVideoWall, roomBounds, tent, tentCenterBench, tentDjBooth,
+  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideVideoScreenWall, roomBounds, tent, tentCenterBench, tentDjBooth,
   tentDjSpeakers, tentDoor, tentPole, tentDoorAngle, tentVideoAngle, tentVideoWall } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
@@ -42,13 +42,13 @@ export function addRoom(target: Vertex[]) {
 }
 
 function addOutsideVideoBackdrop(target: Vertex[]) {
-  const wall = outsideVideoWall
+  const wall = outsideVideoScreenWall
   const left = wall.x - wall.width / 2
   const right = wall.x + wall.width / 2
   const bottom = wall.y - wall.height / 2
   const top = wall.y + wall.height / 2
   const color: Vec3 = [0.001, 0.001, 0.001]
-  const z = wall.z - 0.5
+  const z = wall.z
 
   addQuad(target, [right, bottom, z], [left, bottom, z], [left, top, z], [right, top, z], color, 0)
 }
