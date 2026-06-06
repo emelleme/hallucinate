@@ -50,6 +50,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   let page: PhotoPage = { limit: 30, offset: 0, photos: [], total: 0 }
   let visible = false
   let loading = false
+  let loadingPage: Promise<void> | undefined
   let loaded = false
   let refreshedAt = 0
 
@@ -138,6 +139,13 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     refreshLatest() {
       return refresh()
     },
+    async previewUrls() {
+      if (!loaded) {
+        await refresh()
+      }
+
+      return page.photos.slice(0, 9).map(photo => photo.url)
+    },
     syncAdmin() {
       render()
     },
@@ -152,23 +160,14 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   async function refresh() {
-    if (loading) {
+    if (loadingPage) {
+      await loadingPage
       return
     }
 
     loading = true
-    try {
-      page = await fetchPhotoPage(0)
-      loaded = true
-      refreshedAt = performance.now()
-      render()
-    }
-    catch (e) {
-      console.error(e)
-    }
-    finally {
-      loading = false
-    }
+    loadingPage = refreshFirstPage()
+    await loadingPage
   }
 
   async function loadMorePhotos() {
@@ -195,6 +194,22 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     finally {
       loading = false
       syncViewedPhoto()
+    }
+  }
+
+  async function refreshFirstPage() {
+    try {
+      page = await fetchPhotoPage(0)
+      loaded = true
+      refreshedAt = performance.now()
+      render()
+    }
+    catch (e) {
+      console.error(e)
+    }
+    finally {
+      loading = false
+      loadingPage = undefined
     }
   }
 

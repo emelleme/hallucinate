@@ -33,6 +33,7 @@ import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './lo
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
+import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
@@ -510,6 +511,7 @@ const banSubnetSubmit = document.createElement('button')
 const photoPreviewDialog = document.createElement('dialog')
 const photoPreviewPolaroid = document.createElement('div')
 const photoPreviewImage = document.createElement('img')
+const photoPreviewMessage = document.createElement('div')
 const photoPreviewActions = document.createElement('div')
 const photoPreviewCancel = document.createElement('button')
 const photoPreviewSave = document.createElement('button')
@@ -571,6 +573,9 @@ photoPreviewDialog.id = 'photo-preview-dialog'
 photoPreviewPolaroid.id = 'photo-preview-polaroid'
 photoPreviewImage.id = 'photo-preview-image'
 photoPreviewImage.alt = 'photo preview'
+photoPreviewMessage.id = 'photo-preview-message'
+photoPreviewMessage.setAttribute('role', 'status')
+photoPreviewMessage.setAttribute('aria-live', 'polite')
 photoPreviewActions.id = 'photo-preview-actions'
 photoPreviewCancel.type = 'button'
 photoPreviewCancel.textContent = '✕'
@@ -579,7 +584,7 @@ photoPreviewSave.type = 'button'
 photoPreviewSave.textContent = '✓'
 photoPreviewSave.setAttribute('aria-label', 'save photo')
 photoPreviewActions.append(photoPreviewCancel, photoPreviewSave)
-photoPreviewPolaroid.append(photoPreviewImage, photoPreviewActions)
+photoPreviewPolaroid.append(photoPreviewImage, photoPreviewMessage, photoPreviewActions)
 photoPreviewDialog.append(photoPreviewPolaroid)
 document.body.append(adminDialog, loftMusicDialog, banDialog, photoPreviewDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
@@ -1438,6 +1443,7 @@ gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
 
 const videoPreviewRenderer = createVideoPreviewRenderer(gl)
+const photoWallRenderer = createPhotoWallRenderer(gl)
 
 restoreClubState({
   camera: cameraController,
@@ -2523,12 +2529,20 @@ async function takePhoto() {
 
 async function capturePhoto() {
   const videoPreview = djVideoUi.preview(currentVideoZone())
+  const photoWallPreviewUrls = await photoWallUi.previewUrls()
   const resume = !graphicsPaused
   const previousPixelRatio = forcedPixelRatio
   const previousBloomScale = forcedBloomScale
 
   try {
     await videoPreviewRenderer.prepare(videoPreview)
+  }
+  catch (e) {
+    console.error(e)
+  }
+
+  try {
+    await photoWallRenderer.prepare(photoWallPreviewUrls)
   }
   catch (e) {
     console.error(e)
@@ -2542,7 +2556,7 @@ async function capturePhoto() {
     forcedPixelRatio = window.devicePixelRatio
     forcedBloomScale = 1
     resize()
-    renderPhotoFrame(lastStamp || performance.now(), videoPreview)
+    renderPhotoFrame(lastStamp || performance.now(), videoPreview, photoWallPreviewUrls.length > 0)
     return await canvasJpegBlob(canvas, 0.98)
   }
   finally {
@@ -2561,6 +2575,7 @@ function showPhotoPreview(blob: Blob) {
 
   pendingPhoto = { blob, url }
   photoPreviewImage.src = url
+  photoPreviewMessage.textContent = ''
   photoPreviewSave.disabled = false
   photoPreviewDialog.showModal()
   photoPreviewSave.focus()
@@ -2573,6 +2588,7 @@ function dismissPhotoPreview(focus = true) {
   }
 
   photoPreviewImage.removeAttribute('src')
+  photoPreviewMessage.textContent = ''
   photoPreviewSave.disabled = false
   if (photoPreviewDialog.open) {
     photoPreviewDialog.close()
@@ -2595,6 +2611,11 @@ async function savePhotoPreview() {
   }
   catch (e) {
     console.error(e)
+    photoPreviewMessage.textContent = e instanceof PhotoLimitError
+      ? 'No more than 5 photos per hour, try again later'
+      : e instanceof Error
+      ? e.message
+      : String(e)
     photoPreviewSave.disabled = false
   }
 }
@@ -2607,13 +2628,25 @@ async function uploadPhoto(photo: Blob) {
   })
 
   if (!response.ok) {
+    const text = await response.text()
+
+    if (response.status === 429 || response.status === 502 || text === 'Too Many Photos') {
+      throw new PhotoLimitError()
+    }
+
     throw new Error(`Photo upload failed ${response.status}`)
   }
 
   return await jsonApiResponse<{ createdAt: number; timestamp: number; url: string }>(response, 'Photo upload')
 }
 
-function renderPhotoFrame(stamp: number, videoPreview?: VideoPreview) {
+class PhotoLimitError extends Error {
+  constructor() {
+    super('No more than 5 photos per hour, try again later')
+  }
+}
+
+function renderPhotoFrame(stamp: number, videoPreview: VideoPreview | undefined, photoWallPreview: boolean) {
   const inLoft = appSpace.kind === 'loft'
   const zone = currentVideoZone()
   const camera = cameraController.get()
@@ -2631,6 +2664,7 @@ function renderPhotoFrame(stamp: number, videoPreview?: VideoPreview) {
     outside,
     sky,
     stamp,
+    photoWallPreview,
     videoPreview,
     zone,
   })
@@ -2782,6 +2816,7 @@ function renderCurrentSceneFrame(options: {
   outside: boolean
   sky: boolean
   stamp: number
+  photoWallPreview?: boolean
   videoPreview?: VideoPreview
   zone: VideoZone
 }) {
@@ -2867,11 +2902,14 @@ function renderCurrentSceneFrame(options: {
         viewProjection: roomSmokeViewProjection!,
       },
     },
-    sceneOverlay: options.videoPreview
+    sceneOverlay: options.videoPreview || options.photoWallPreview
       ? {
         draw: cameraMatrix => {
-          if (!videoPreviewRenderer.draw(options.videoPreview!, cameraMatrix)) {
+          if (options.videoPreview && !videoPreviewRenderer.draw(options.videoPreview, cameraMatrix)) {
             console.error(new Error(`Missing video preview texture ${options.videoPreview!.id}`))
+          }
+          if (options.photoWallPreview && !photoWallRenderer.draw(cameraMatrix)) {
+            console.error(new Error('Missing photo wall preview texture'))
           }
         },
       }
@@ -3333,7 +3371,7 @@ function loadMainWorldOnce() {
           name: 'palmtree.fbx',
           nodeTransforms: true,
           path: '/palmtree.fbx',
-          shadow: false,
+          shadow: true,
           sourceUp: 'y',
         })
           .then(() => {

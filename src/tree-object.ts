@@ -5,6 +5,7 @@ import type { AssimpNode, AssimpScene, CircleBounds, Mat4, TreeMesh, Vec3, Verte
 type EdgeBounds = { left: number; right: number; back: number; front: number }
 type MeshInstance = { index: number; transform: Mat4 }
 type SourceUp = 'y' | 'z'
+type TreeShadowCaster = { meshes: TreeMesh[]; position: Vec3 }
 type TreeMeshColor = (index: number) => Vec3
 
 export function createTreeMeshes(
@@ -266,8 +267,7 @@ function projectTreeShadow(point: Vec3, light: Vec3, ground: number): Vec3 {
 export function uploadTreeShadowMap(
   gl: WebGL2RenderingContext,
   texture: WebGLTexture,
-  meshes: TreeMesh[],
-  position: Vec3,
+  casters: TreeShadowCaster[],
   characterFloor: number,
   landscapeBounds: EdgeBounds,
   roomFront: number,
@@ -286,16 +286,18 @@ export function uploadTreeShadowMap(
   blurCanvas.height = size
   context.fillStyle = 'rgba(0,0,0,0.95)'
 
-  for (const mesh of meshes) {
-    for (const face of mesh.faces) {
-      const polygon = clipGroundPolygonFront([
-        projectTreeShadow(add(position, mesh.points[face[0]!]!), light, ground),
-        projectTreeShadow(add(position, mesh.points[face[1]!]!), light, ground),
-        projectTreeShadow(add(position, mesh.points[face[2]!]!), light, ground),
-      ], roomFront + 0.06)
+  for (const caster of casters) {
+    for (const mesh of caster.meshes) {
+      for (const face of mesh.faces) {
+        const polygon = clipGroundPolygonFront([
+          projectTreeShadow(add(caster.position, mesh.points[face[0]!]!), light, ground),
+          projectTreeShadow(add(caster.position, mesh.points[face[1]!]!), light, ground),
+          projectTreeShadow(add(caster.position, mesh.points[face[2]!]!), light, ground),
+        ], roomFront + 0.06)
 
-      if (polygon.length >= 3) {
-        drawShadowPolygon(context, polygon, size, landscapeBounds)
+        if (polygon.length >= 3) {
+          drawShadowPolygon(context, polygon, size, landscapeBounds)
+        }
       }
     }
   }

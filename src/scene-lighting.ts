@@ -74,7 +74,7 @@ export function createSceneLighting(options: {
       clamp(color[1] * baseLight * warmth[1] + blueLight * electricNavy[1], 0, 1),
       clamp(color[2] * baseLight * warmth[2] + blueLight * electricNavy[2], 0, 1),
     ]
-    const glow = color[1] > 0.6 && color[0] < 0.1 ? 0.15 : 0
+    const glow = night && color[1] > 0.6 && color[0] < 0.1 ? 0.15 : 0
 
     target.push(
       [a[0], a[1], a[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],

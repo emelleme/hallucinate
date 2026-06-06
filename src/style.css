@@ -186,6 +186,13 @@ canvas {
   background: rgb(12 12 14);
 }
 
+#photo-preview-message {
+  min-height: 18px;
+  color: rgb(138 20 30);
+  font: 800 14px/1.25 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+}
+
 #photo-viewer-previous,
 #photo-viewer-next,
 #photo-viewer-close,

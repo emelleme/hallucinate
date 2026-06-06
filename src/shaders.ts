@@ -749,13 +749,13 @@ vec3 tripColor(vec2 point) {
 }
 
 vec3 afternoonSky(vec2 point) {
-  vec3 horizon = vec3(0.96, 0.36, 0.2);
-  vec3 peach = vec3(0.9, 0.54, 0.34);
-  vec3 blue = vec3(0.28, 0.52, 0.86);
-  float lift = smoothstep(0.28, 0.92, point.y);
-  float warmth = 1.0 - smoothstep(0.18, 0.55, point.y);
+  vec3 horizon = vec3(1.0, 0.22, 0.08);
+  vec3 peach = vec3(1.0, 0.58, 0.24);
+  vec3 blue = vec3(0.24, 0.48, 0.9);
+  float lift = smoothstep(0.34, 0.95, point.y);
+  float warmth = 1.0 - smoothstep(0.12, 0.62, point.y);
 
-  return mix(mix(peach, blue, lift), horizon, warmth * 0.72);
+  return mix(mix(peach, blue, lift), horizon, warmth * 0.84);
 }
 
 vec3 hashStar(vec2 cell) {

@@ -5,7 +5,7 @@ import { outsideMotif } from './constants.ts'
 import { add } from './math.ts'
 import { landscapeBounds, roomBounds } from './scene-data.ts'
 import { addTreeShadowReceiver, createTreeMeshes, treeCollision, treeMeshColor, uploadTreeShadowMap } from './tree-object.ts'
-import type { CircleBounds, Vec3, Vertex } from './types.ts'
+import type { CircleBounds, TreeMesh, Vec3, Vertex } from './types.ts'
 
 type OutsideTreeOptions = {
   color: (index: number) => Vec3
@@ -16,6 +16,12 @@ type OutsideTreeOptions = {
   shadow: boolean
   sourceUp: 'y' | 'z'
 }
+
+const treeShadowCasters: Array<{
+  meshes: TreeMesh[]
+  position: Vec3
+}> = []
+let treeShadowReceiverAdded = false
 
 export async function loadOutsideTree(
   gl: WebGL2RenderingContext,
@@ -41,8 +47,13 @@ export async function loadOutsideTree(
   const collision = treeCollision(meshes, position)
 
   if (options.shadow && outsideMotif !== 'night') {
-    uploadTreeShadowMap(gl, treeShadowMap, meshes, position, characterFloor, landscapeBounds, roomBounds.front)
-    addTreeShadowReceiver(vertices, characterFloor, landscapeBounds)
+    treeShadowCasters.push({ meshes, position })
+    uploadTreeShadowMap(gl, treeShadowMap, treeShadowCasters, characterFloor, landscapeBounds, roomBounds.front)
+
+    if (!treeShadowReceiverAdded) {
+      addTreeShadowReceiver(vertices, characterFloor, landscapeBounds)
+      treeShadowReceiverAdded = true
+    }
   }
 
   for (const mesh of meshes) {
