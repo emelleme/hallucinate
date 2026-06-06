@@ -34,8 +34,9 @@ const hiddenPhotoWallOpacity = '0.01'
 const parkedPhotoWallSize = 12
 const photoWallColumns = 3
 const photoWallRows = 3
-const visiblePhotoSlots = photoWallColumns * photoWallRows
-const photoLoadAheadSlots = visiblePhotoSlots
+const paintedPhotoRows = photoWallRows + 1
+const paintedPhotoSlots = photoWallColumns * paintedPhotoRows
+const photoLoadAheadSlots = paintedPhotoSlots
 const viewerMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const viewerMotionDuration = 560
 const viewerSlideDuration = 420
@@ -342,7 +343,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     const start = Math.max(0, row * photoWallColumns)
 
     return {
-      end: Math.min(start + visiblePhotoSlots, photoElements.length),
+      end: Math.min(start + paintedPhotoSlots, photoElements.length),
       start,
     }
   }
