@@ -3,9 +3,9 @@ import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeomet
 import { createCameraController } from './camera-controller.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
 import { characterFloor } from './character-data.ts'
-import { createCharacterHairController } from './character-hair-control.ts'
 import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
 import type { VertexWriter } from './character-geometry.ts'
+import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createCharacterStyleController, glowstickColors } from './character-style.ts'
 import { createChatUi } from './chat-ui.ts'
@@ -14,12 +14,14 @@ import { renderClubFrame } from './club-renderer.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { getDomElements } from './dom-elements.ts'
+import { createDomWallProjection } from './dom-wall.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import {
   addGraffitiWallGeometry,
   createGraffitiCanvas,
   graffitiColors,
   graffitiRadiusForScreenDistance,
+  foodTruckGraffitiTriangle,
   maxGraffitiSplats,
   paintGraffitiSplats,
   paintLoftPaintingTextures,
@@ -41,7 +43,8 @@ import type { ProjectedPoint, Viewport } from './projection.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import { loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall, outsideBounds, outsideBuddha,
-  outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
+  outsideFoodTruck, outsideFoodTruckFoodWall, outsideFoodTruckTurn, outsidePalmTree, outsideToilets, roomBounds, tent,
+  tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -73,8 +76,8 @@ import type {
   GraffitiSplat,
   Player,
   Vec3,
-  VideoPreview,
   Vertex,
+  VideoPreview,
   VideoZone,
 } from './types.ts'
 import {
@@ -83,6 +86,7 @@ import {
   setupStrobeArray,
   setupVertexArray,
 } from './vertex-array-setup.ts'
+import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 import {
   createCharacterBoxGeometry,
   createProgram,
@@ -92,7 +96,6 @@ import {
   createTreeShadowMap,
   resizeTarget,
 } from './webgl.ts'
-import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -277,6 +280,18 @@ const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)
 const reactionSlotEmojis = loadReactionSlotEmojis()
+const foodTruckEmojis = [
+  '🍕', '🍔', '🌭', '🌮', '🌯', '🥙',
+  '🍟', '🍗', '🍖', '🥨', '🥐', '🥯',
+  '🍩', '🍪', '🧁', '🍰', '🍦', '🍧',
+  '🍉', '🍌', '🍓', '🥝', '🍍', '🥤',
+] as const
+const foodTruckWall = createFoodTruckWall()
+const foodTruckWallProjection = createDomWallProjection(foodTruckWall, {
+  opacity: '0.94',
+  pointerEvents: 'auto',
+  scale: 112,
+})
 function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -319,8 +334,34 @@ function setupReactionButtons() {
       sendChatMessage(reactionSlotEmojis[index]!)
       canvas.focus()
     })
-    reactionButtons.append(button)
+  reactionButtons.append(button)
   })
+}
+
+function createFoodTruckWall() {
+  const wall = document.createElement('div')
+
+  wall.id = 'food-truck-wall'
+  for (const emoji of foodTruckEmojis) {
+    const button = document.createElement('button')
+
+    button.type = 'button'
+    button.className = 'food-truck-emoji'
+    button.textContent = emoji
+    button.setAttribute('aria-label', emoji)
+    button.addEventListener('pointerdown', event => event.stopPropagation())
+    button.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      sendChatMessage(emoji)
+      canvas.focus()
+    })
+    wall.append(button)
+  }
+
+  document.body.append(wall)
+
+  return wall
 }
 
 function createReactionPicker() {
@@ -1115,6 +1156,7 @@ let palmTreeLoaded = false
 let rocksLoaded = false
 let treeLoaded = false
 let introHidden = false
+document.body.dataset.introVisible = String(!introHidden)
 let videoPlaying = false
 let lastPixelRatio = 0
 let lastBloomScale = 0
@@ -3036,6 +3078,12 @@ const draw = (stamp: number) => {
 
   if (introHidden) {
     djVideoUi.update(camera, projector)
+    if (!inLoft && isOutside(characterPosition)) {
+      foodTruckWallProjection.update(camera, projector, outsideFoodTruckFoodWall)
+    }
+    else {
+      foodTruckWallProjection.hide()
+    }
     if (inLoft) {
       photoWallUi.hide()
     }
@@ -3045,6 +3093,7 @@ const draw = (stamp: number) => {
   }
   else {
     photoWallUi.hide()
+    foodTruckWallProjection.hide()
   }
   chatUi.update(projector, stamp)
   updateAdminIdLabels(projector)
@@ -3251,6 +3300,7 @@ function updateIntro() {
 
   if (ready && !introHidden) {
     introHidden = true
+    document.body.dataset.introVisible = String(!introHidden)
     removeEventListener('keydown', handleIntroStartKey)
     intro.dataset.hidden = 'true'
     introEffectRenderer.stop()
@@ -3379,10 +3429,10 @@ function loadMainWorldOnce() {
             palmTreeLoaded = true
             refreshRoomBuffer()
           })
-        .catch((error: unknown) => {
-          console.error(error)
-          refreshRoomBuffer()
-        }),
+          .catch((error: unknown) => {
+            console.error(error)
+            refreshRoomBuffer()
+          }),
         loadStaticFbxObject(vertices, {
           color: [0.46, 0.42, 0.36],
           height: 2.9,
@@ -3394,6 +3444,22 @@ function loadMainWorldOnce() {
         }, addSunLitTriangle)
           .then(() => {
             buddhaLoaded = true
+            refreshRoomBuffer()
+          })
+          .catch((error: unknown) => {
+            console.error(error)
+          }),
+        loadStaticFbxObject(vertices, {
+          color: [0.72, 0.72, 0.68],
+          height: 2.4,
+          lightBounds: outsideFoodTruck,
+          path: '/foodtruck.fbx',
+          position: [outsideFoodTruck.x, characterFloor, outsideFoodTruck.z],
+          sourceUp: 'z',
+          trianglePattern: foodTruckGraffitiTriangle,
+          turn: outsideFoodTruckTurn,
+        }, addSunLitTriangle)
+          .then(() => {
             refreshRoomBuffer()
           })
           .catch((error: unknown) => {

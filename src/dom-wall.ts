@@ -4,6 +4,7 @@ import type { ProjectedPoint, WallProjector } from './projection.ts'
 import type { Vec3 } from './types.ts'
 
 export type DomWall = {
+  tangent?: Vec3
   x: number
   y: number
   z: number
@@ -17,7 +18,7 @@ type Camera = {
   eye: Vec3
 }
 
-type StyleName = 'height' | 'opacity' | 'transform' | 'width'
+type StyleName = 'height' | 'opacity' | 'pointerEvents' | 'transform' | 'width'
 
 const defaultMinDepth = 0.05
 const defaultScale = 120
@@ -25,11 +26,13 @@ const defaultScale = 120
 export function createDomWallProjection(element: HTMLElement, options: {
   minDepth?: number
   opacity?: string
+  pointerEvents?: string
   scale?: number
 } = {}) {
   const setStyle = createStyleSetter<StyleName>(element.style)
   const minDepth = options.minDepth ?? defaultMinDepth
   const opacity = options.opacity ?? '1'
+  const pointerEvents = options.pointerEvents
   const scale = options.scale ?? defaultScale
   const cornerA: Vec3 = [0, 0, 0]
   const cornerB: Vec3 = [0, 0, 0]
@@ -48,10 +51,16 @@ export function createDomWallProjection(element: HTMLElement, options: {
   return {
     hide() {
       setStyle('opacity', '0')
+      if (pointerEvents) {
+        setStyle('pointerEvents', 'none')
+      }
     },
     update(camera: Camera, projector: WallProjector, wall: DomWall) {
       if (!domWallFacesCamera(camera, wall)) {
         setStyle('opacity', '0')
+        if (pointerEvents) {
+          setStyle('pointerEvents', 'none')
+        }
         return false
       }
 
@@ -74,6 +83,9 @@ export function createDomWallProjection(element: HTMLElement, options: {
       }
 
       setStyle('opacity', opacity)
+      if (pointerEvents) {
+        setStyle('pointerEvents', pointerEvents)
+      }
       setStyle('width', widthPx)
       setStyle('height', heightPx)
       setStyle('transform', projectedQuadTransform(width, height, points))
@@ -86,6 +98,25 @@ export function createDomWallProjection(element: HTMLElement, options: {
 export function domWallCorners(wall: DomWall, a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
   const bottom = wall.y - wall.height / 2
   const top = wall.y + wall.height / 2
+
+  if (wall.tangent) {
+    const left: Vec3 = [
+      wall.x - wall.tangent[0] * wall.width / 2,
+      0,
+      wall.z - wall.tangent[2] * wall.width / 2,
+    ]
+    const right: Vec3 = [
+      wall.x + wall.tangent[0] * wall.width / 2,
+      0,
+      wall.z + wall.tangent[2] * wall.width / 2,
+    ]
+
+    setPoint(a, left[0], bottom, left[2])
+    setPoint(b, right[0], bottom, right[2])
+    setPoint(c, right[0], top, right[2])
+    setPoint(d, left[0], top, left[2])
+    return
+  }
 
   if (Math.abs(wall.normal[0]) > 0) {
     const back = wall.z - wall.width / 2

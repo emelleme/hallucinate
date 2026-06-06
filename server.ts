@@ -146,7 +146,7 @@ const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
 const maxClientStep = 1.2
 const maxHairIndex = 32
-const memoryAssetMaxSize = 2 * 1024 * 1024
+const memoryAssetMaxSize = 3 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
 const photoDir = join(import.meta.dir, 'data', 'photos')
@@ -1101,6 +1101,7 @@ function compressiblePath(path: string) {
 
   return extension === '.html'
     || extension === '.css'
+    || extension === '.fbx'
     || extension === '.js'
     || extension === '.json'
     || extension === '.map'

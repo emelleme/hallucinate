@@ -345,6 +345,13 @@ void main() {
   if (hazeAmount > 5.5) {
     vec4 paint = texture(graffitiMap, patternUv);
 
+    if (hazeAmount > 6.5) {
+      vec3 base = shade;
+
+      pixel = vec4(mix(base, paint.rgb, paint.a), 1.0);
+      return;
+    }
+
     if (paint.a < 0.04) {
       discard;
     }

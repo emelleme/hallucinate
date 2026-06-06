@@ -1,3 +1,4 @@
+import { characterFloor } from './character-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export const djBooth: Bounds = { x: 0, z: -21.55, width: 3.6, depth: 1.24 }
@@ -84,7 +85,8 @@ export const tentVideoWall = {
 }
 export const loftBounds = { left: -12, right: 12, back: -12, front: 12 }
 export const loftDoor = { x: 5.8, width: 2.05, height: 2.8 }
-export const loftVideoWall = { x: 0, y: 0.35, z: loftBounds.back + 0.04, width: 5.8, height: 3.25, normal: [0, 0, 1] as Vec3 }
+export const loftVideoWall = { x: 0, y: 0.35, z: loftBounds.back + 0.04, width: 5.8, height: 3.25,
+  normal: [0, 0, 1] as Vec3 }
 export const loftDjBooth: Bounds = { x: 0, z: loftBounds.back + 2.55, width: 3.6, depth: 1.24 }
 export const loftDjSpeakers: Bounds[] = [
   { x: -4.16, z: loftBounds.back + 2.47, width: 0.71, depth: 0.79 },
@@ -136,5 +138,33 @@ export const videoPlaylists: Partial<Record<VideoZone, string>> = {
 }
 export const backDoor = { x: -4.75, z: 4, width: 1.45, height: 2.55 }
 export const roomBounds = { left: -7, right: 7, back: -24, front: 4 }
+const foodTruckDistanceFromTent = tent.radius + 8.4
+const foodTruckToClubX = ((roomBounds.left + roomBounds.right) * 0.5) - tent.x
+const foodTruckToClubZ = ((roomBounds.back + roomBounds.front) * 0.5) - tent.z
+const foodTruckToClubLength = Math.hypot(foodTruckToClubX, foodTruckToClubZ)
+export const outsideFoodTruck: CircleBounds = {
+  x: tent.x + foodTruckToClubX / foodTruckToClubLength * foodTruckDistanceFromTent + 4.2,
+  z: tent.z + foodTruckToClubZ / foodTruckToClubLength * foodTruckDistanceFromTent - 2.8,
+  radius: 1.8,
+}
+export const outsideFoodTruckSize = { width: 2.46, depth: 5.5, height: 2.4 }
+export const outsideFoodTruckTurn = Math.atan2(outsideFoodTruck.z - tent.z + 8, outsideFoodTruck.x - tent.x) - Math.PI / 2
+const foodTruckRight: Vec3 = [Math.cos(outsideFoodTruckTurn), 0, Math.sin(outsideFoodTruckTurn)]
+const foodTruckForward: Vec3 = [-Math.sin(outsideFoodTruckTurn), 0, Math.cos(outsideFoodTruckTurn)]
+const foodTruckToStage: Vec3 = [outsideStage.x - outsideFoodTruck.x, 0, outsideStage.z - outsideFoodTruck.z]
+const foodTruckStageSide = foodTruckRight[0] * foodTruckToStage[0] + foodTruckRight[2] * foodTruckToStage[2] > 0 ? 1 : -1
+export const outsideFoodTruckFoodWall = {
+  x: outsideFoodTruck.x + foodTruckRight[0] * outsideFoodTruckSize.width / 2 * foodTruckStageSide,
+  y: characterFloor + outsideFoodTruckSize.height * 0.62,
+  z: outsideFoodTruck.z + foodTruckRight[2] * outsideFoodTruckSize.width / 2 * foodTruckStageSide,
+  width: outsideFoodTruckSize.depth * 0.62,
+  height: outsideFoodTruckSize.height * 0.46,
+  normal: [
+    foodTruckRight[0] * foodTruckStageSide,
+    0,
+    foodTruckRight[2] * foodTruckStageSide,
+  ] as Vec3,
+  tangent: foodTruckForward,
+}
 export const outsideBounds = { left: -24, right: 40, back: -32, front: 38 }
 export const landscapeBounds = { left: -72, right: 72, back: -84, front: 88 }

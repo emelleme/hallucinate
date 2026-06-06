@@ -25,6 +25,7 @@ type StaticObjectOptions = {
   path: string
   position: Vec3
   sourceUp: 'y' | 'z'
+  trianglePattern?: (a: Vec3, b: Vec3, c: Vec3) => [number, number][] | undefined
   turn: number
 }
 
@@ -80,9 +81,27 @@ function addStaticFbxObject(
       const c = add(options.position, mesh.points[face[2]!]!)
 
       if (triangleAreaSquared(a, b, c) > 0.00000001) {
+        const index = target.length
+
         addSunLitTriangle(target, a, b, c, mesh.color, options.lightBounds)
+        addTrianglePattern(target, index, options.trianglePattern?.(a, b, c))
       }
     }
+  }
+}
+
+function addTrianglePattern(target: Vertex[], index: number, pattern: [number, number][] | undefined) {
+  if (!pattern) {
+    return
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const vertex = target[index + i]!
+    const uv = pattern[i]!
+
+    vertex[8] = uv[0]
+    vertex[9] = uv[1]
+    vertex[10] = 7
   }
 }
 

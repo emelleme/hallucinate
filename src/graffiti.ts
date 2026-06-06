@@ -1,7 +1,17 @@
 import { characterFloor } from './character-data.ts'
 import { pack } from './geometry.ts'
 import type { WallProjector } from './projection.ts'
-import { outsideToiletDoor, outsideToilets, roomBounds, tent, tentDoor, tentDoorAngle } from './scene-data.ts'
+import {
+  outsideFoodTruck,
+  outsideFoodTruckSize,
+  outsideFoodTruckTurn,
+  outsideToiletDoor,
+  outsideToilets,
+  roomBounds,
+  tent,
+  tentDoor,
+  tentDoorAngle,
+} from './scene-data.ts'
 import type { GraffitiSplat, Vec3, Vertex } from './types.ts'
 
 export const maxGraffitiSplats = 60000
@@ -33,6 +43,17 @@ type PlaneGraffitiWall = {
   normal: Vec3
   sides: GraffitiSides
 }
+type OrientedPlaneGraffitiWall = {
+  kind: 'oriented-plane'
+  center: Vec3
+  tangent: Vec3
+  normal: Vec3
+  min: number
+  max: number
+  yMin: number
+  yMax: number
+  sides: GraffitiSides
+}
 type CylinderGraffitiWall = {
   kind: 'cylinder'
   x: number
@@ -60,7 +81,7 @@ type ConeGraffitiWall = {
   cutouts: { x: number; radius: number }[]
   sides: GraffitiSides
 }
-type GraffitiWall = PlaneGraffitiWall | CylinderGraffitiWall | ConeGraffitiWall
+type GraffitiWall = PlaneGraffitiWall | OrientedPlaneGraffitiWall | CylinderGraffitiWall | ConeGraffitiWall
 type ScreenRay = ReturnType<typeof screenRay>
 
 const wallYMin = characterFloor + 0.03
@@ -86,6 +107,10 @@ const toiletTop = characterFloor + 2.55
 const toiletDoorTop = characterFloor + outsideToiletDoor.height + 0.05
 const tentWallMax = Math.PI * tent.radius
 const tentDoorCutout = Math.asin((tentDoor.width / 2 + 0.18) / tent.radius) * tent.radius
+const foodTruckRight: Vec3 = [Math.cos(outsideFoodTruckTurn), 0, Math.sin(outsideFoodTruckTurn)]
+const foodTruckForward: Vec3 = [-Math.sin(outsideFoodTruckTurn), 0, Math.cos(outsideFoodTruckTurn)]
+const foodTruckYMin = characterFloor
+const foodTruckYMax = characterFloor + outsideFoodTruckSize.height
 
 const walls: GraffitiWall[] = [
   planeWall('z', roomBounds.front, roomBounds.left, roomBounds.right, wallYMin, wallYMax, [0, 0, 1], 'front'),
@@ -126,6 +151,7 @@ const walls: GraffitiWall[] = [
     cutouts: [],
     sides: 'both',
   },
+  ...foodTruckGraffitiWalls(),
 ]
 export const graffitiWallCount = walls.length
 
@@ -136,6 +162,7 @@ const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
 const graffitiCellHeight = graffitiTextureSize / graffitiAtlasRows
 const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
+let splatLayerContext: CanvasRenderingContext2D | undefined
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
   const ray = screenRay(clientX, clientY, projector)
@@ -242,6 +269,20 @@ export function paintGraffitiSplats(context: CanvasRenderingContext2D, splats: G
   }
 }
 
+export function foodTruckGraffitiTriangle(a: Vec3, b: Vec3, c: Vec3) {
+  const wall = nearestFoodTruckWall(a, b, c)
+
+  if (!wall) {
+    return
+  }
+
+  return [
+    foodTruckGraffitiUv(wall.index, wall.wall, a),
+    foodTruckGraffitiUv(wall.index, wall.wall, b),
+    foodTruckGraffitiUv(wall.index, wall.wall, c),
+  ]
+}
+
 function paintAbstractTile(
   context: CanvasRenderingContext2D,
   x: number,
@@ -330,6 +371,8 @@ function wallHit(wallIndex: number, ray: ScreenRay) {
 
   return wall.kind === 'plane'
     ? planeWallHit(wall, ray)
+    : wall.kind === 'oriented-plane'
+    ? orientedPlaneWallHit(wall, ray)
     : wall.kind === 'cylinder'
     ? cylinderWallHit(wall, ray)
     : coneWallHit(wall, ray)
@@ -353,6 +396,39 @@ function planeWallHit(wall: PlaneGraffitiWall, ray: ScreenRay) {
   const worldY = ray.eyeY + ray.y * distance
   const worldZ = ray.eyeZ + ray.z * distance
   const along = wall.axis === 'x' ? worldZ : worldX
+
+  if (worldY < wall.yMin || worldY > wall.yMax || along < wall.min + wallMargin || along > wall.max - wallMargin) {
+    return
+  }
+
+  return {
+    x: along,
+    y: worldY,
+    distance: distance * ray.length,
+  }
+}
+
+function orientedPlaneWallHit(wall: OrientedPlaneGraffitiWall, ray: ScreenRay) {
+  const component = ray.x * wall.normal[0] + ray.y * wall.normal[1] + ray.z * wall.normal[2]
+
+  if (component === 0) {
+    return
+  }
+
+  const distance = (
+    (wall.center[0] - ray.eyeX) * wall.normal[0]
+    + (wall.center[1] - ray.eyeY) * wall.normal[1]
+    + (wall.center[2] - ray.eyeZ) * wall.normal[2]
+  ) / component
+
+  if (distance <= 0) {
+    return
+  }
+
+  const worldX = ray.eyeX + ray.x * distance
+  const worldY = ray.eyeY + ray.y * distance
+  const worldZ = ray.eyeZ + ray.z * distance
+  const along = (worldX - wall.center[0]) * wall.tangent[0] + (worldZ - wall.center[2]) * wall.tangent[2]
 
   if (worldY < wall.yMin || worldY > wall.yMax || along < wall.min + wallMargin || along > wall.max - wallMargin) {
     return
@@ -476,6 +552,14 @@ function addGraffitiSplat(target: Vertex[], splat: GraffitiSplat) {
 }
 
 function wallPoint(wall: GraffitiWall, x: number, y: number): Vec3 {
+  if (wall.kind === 'oriented-plane') {
+    return [
+      wall.center[0] + wall.tangent[0] * x + wall.normal[0] * wallEpsilon,
+      y,
+      wall.center[2] + wall.tangent[2] * x + wall.normal[2] * wallEpsilon,
+    ]
+  }
+
   if (wall.kind === 'cylinder') {
     return cylinderWallPoint(wall, x, y, 1)
   }
@@ -492,6 +576,10 @@ function wallPoint(wall: GraffitiWall, x: number, y: number): Vec3 {
 }
 
 function wallTangent(wall: GraffitiWall, x: number): Vec3 {
+  if (wall.kind === 'oriented-plane') {
+    return wall.tangent
+  }
+
   if (wall.kind === 'cylinder' || wall.kind === 'cone') {
     const angle = x / wall.radius
 
@@ -518,6 +606,10 @@ function wallUp(wall: GraffitiWall, x: number): Vec3 {
 }
 
 function addGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: GraffitiWall, side: 1 | -1) {
+  if (wall.kind === 'oriented-plane') {
+    return
+  }
+
   if (wall.kind === 'plane') {
     addPlaneGraffitiWallSurface(target, wallIndex, wall, side)
     return
@@ -702,11 +794,19 @@ function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSp
   const pixelsPerMeterY = graffitiCellHeight / (wall.yMax - wall.yMin)
   const scale = graffitiSplatScale(splat.radius)
   const count = 3 + splat.seed % 3
+  const layer = splatLayer(context)
+  const padding = Math.ceil(Math.max(pixelsPerMeterX, pixelsPerMeterY) * scale * 0.34)
+  const left = Math.max(Math.floor(x - padding), 0)
+  const top = Math.max(Math.floor(y - padding), 0)
+  const right = Math.min(Math.ceil(x + padding), context.canvas.width)
+  const bottom = Math.min(Math.ceil(y + padding), context.canvas.height)
 
-  context.save()
-  context.translate(x, y)
-  context.scale(pixelsPerMeterX, pixelsPerMeterY)
-  context.fillStyle = `rgb(${Math.round(color[0] * 255)} ${Math.round(color[1] * 255)} ${Math.round(color[2] * 255)})`
+  layer.clearRect(left, top, right - left, bottom - top)
+
+  layer.save()
+  layer.translate(x, y)
+  layer.scale(pixelsPerMeterX, pixelsPerMeterY)
+  layer.fillStyle = `rgb(${Math.round(color[0] * 255)} ${Math.round(color[1] * 255)} ${Math.round(color[2] * 255)})`
 
   for (let i = 0; i < count; i++) {
     const angle = random(splat.seed, i * 4) * Math.PI * 2
@@ -716,12 +816,12 @@ function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSp
     const xRadius = Math.cos(angle) * radius
     const yRadius = Math.sin(angle) * radius * 0.72
 
-    context.beginPath()
-    context.ellipse(xRadius, yRadius, sizeX, sizeY, angle * 0.37, 0, Math.PI * 2)
-    context.fill()
+    layer.beginPath()
+    layer.ellipse(xRadius, yRadius, sizeX, sizeY, angle * 0.37, 0, Math.PI * 2)
+    layer.fill()
   }
 
-  context.globalCompositeOperation = 'destination-out'
+  layer.globalCompositeOperation = 'destination-out'
   for (let i = 0; i < count + 2; i++) {
     const angle = random(splat.seed, 40 + i * 3) * Math.PI * 2
     const radius = scale * (0.035 + random(splat.seed, 41 + i * 3) * 0.12)
@@ -729,12 +829,28 @@ function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSp
     const xRadius = Math.cos(angle) * radius
     const yRadius = Math.sin(angle) * radius
 
-    context.beginPath()
-    context.arc(xRadius, yRadius, size, 0, Math.PI * 2)
-    context.fill()
+    layer.beginPath()
+    layer.arc(xRadius, yRadius, size, 0, Math.PI * 2)
+    layer.fill()
   }
 
-  context.restore()
+  layer.restore()
+  layer.globalCompositeOperation = 'source-over'
+  context.drawImage(layer.canvas, left, top, right - left, bottom - top, left, top, right - left, bottom - top)
+}
+
+function splatLayer(context: CanvasRenderingContext2D) {
+  if (!splatLayerContext || splatLayerContext.canvas.width !== context.canvas.width
+    || splatLayerContext.canvas.height !== context.canvas.height)
+  {
+    const canvas = document.createElement('canvas')
+
+    canvas.width = context.canvas.width
+    canvas.height = context.canvas.height
+    splatLayerContext = canvas.getContext('2d')!
+  }
+
+  return splatLayerContext
 }
 
 function splatCanvasPoint(splat: GraffitiSplat) {
@@ -801,6 +917,102 @@ function planeWall(
     yMax,
     normal,
     sides,
+  }
+}
+
+function foodTruckGraffitiWalls(): OrientedPlaneGraffitiWall[] {
+  const width = outsideFoodTruckSize.width
+  const depth = outsideFoodTruckSize.depth
+  const center: Vec3 = [outsideFoodTruck.x, 0, outsideFoodTruck.z]
+
+  return [
+    orientedPlaneWall(
+      [center[0] + foodTruckRight[0] * width / 2, 0, center[2] + foodTruckRight[2] * width / 2],
+      foodTruckForward,
+      foodTruckRight,
+      depth,
+    ),
+    orientedPlaneWall(
+      [center[0] - foodTruckRight[0] * width / 2, 0, center[2] - foodTruckRight[2] * width / 2],
+      [-foodTruckForward[0], 0, -foodTruckForward[2]],
+      [-foodTruckRight[0], 0, -foodTruckRight[2]],
+      depth,
+    ),
+    orientedPlaneWall(
+      [center[0] + foodTruckForward[0] * depth / 2, 0, center[2] + foodTruckForward[2] * depth / 2],
+      [-foodTruckRight[0], 0, -foodTruckRight[2]],
+      foodTruckForward,
+      width,
+    ),
+    orientedPlaneWall(
+      [center[0] - foodTruckForward[0] * depth / 2, 0, center[2] - foodTruckForward[2] * depth / 2],
+      foodTruckRight,
+      [-foodTruckForward[0], 0, -foodTruckForward[2]],
+      width,
+    ),
+  ]
+}
+
+function nearestFoodTruckWall(a: Vec3, b: Vec3, c: Vec3) {
+  const center: Vec3 = [
+    (a[0] + b[0] + c[0]) / 3,
+    (a[1] + b[1] + c[1]) / 3,
+    (a[2] + b[2] + c[2]) / 3,
+  ]
+  let best: { index: number; wall: OrientedPlaneGraffitiWall; distance: number } | undefined
+
+  for (let index = 0; index < walls.length; index++) {
+    const wall = walls[index]!
+
+    if (wall.kind !== 'oriented-plane') {
+      continue
+    }
+
+    const along = (center[0] - wall.center[0]) * wall.tangent[0] + (center[2] - wall.center[2]) * wall.tangent[2]
+    const distance = Math.abs(
+      (center[0] - wall.center[0]) * wall.normal[0] + (center[2] - wall.center[2]) * wall.normal[2],
+    )
+
+    if (center[1] < wall.yMin || center[1] > wall.yMax || along < wall.min || along > wall.max) {
+      continue
+    }
+
+    if (!best || distance < best.distance) {
+      best = { index, wall, distance }
+    }
+  }
+
+  return best
+}
+
+function foodTruckGraffitiUv(index: number, wall: OrientedPlaneGraffitiWall, point: Vec3): [number, number] {
+  const [u0, v0, u1, v1] = wallTextureBounds(index)
+  const x = (point[0] - wall.center[0]) * wall.tangent[0] + (point[2] - wall.center[2]) * wall.tangent[2]
+  const u = (x - wall.min) / (wall.max - wall.min)
+  const v = 1 - (point[1] - wall.yMin) / (wall.yMax - wall.yMin)
+
+  return [
+    u0 + (u1 - u0) * u,
+    v0 + (v1 - v0) * v,
+  ]
+}
+
+function orientedPlaneWall(
+  center: Vec3,
+  tangent: Vec3,
+  normal: Vec3,
+  width: number,
+): OrientedPlaneGraffitiWall {
+  return {
+    kind: 'oriented-plane',
+    center,
+    tangent,
+    normal,
+    min: -width / 2,
+    max: width / 2,
+    yMin: foodTruckYMin,
+    yMax: foodTruckYMax,
+    sides: 'front',
   }
 }
 
