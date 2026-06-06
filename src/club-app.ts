@@ -2751,7 +2751,10 @@ async function uploadPhoto(photo: Blob) {
     throw new Error(`Photo upload failed ${response.status}`)
   }
 
-  return await jsonApiResponse<{ createdAt: number; timestamp: number; url: string }>(response, 'Photo upload')
+  return await jsonApiResponse<{ createdAt: number; thumbnailUrl: string; timestamp: number; url: string }>(
+    response,
+    'Photo upload',
+  )
 }
 
 class PhotoLimitError extends Error {

@@ -1,4 +1,5 @@
 import { createDomWallProjection } from './dom-wall.ts'
+import { photoWallColumns, photoWallPaintedSlots, photoWallRows } from './photo-wall-data.ts'
 import type { WallProjector } from './projection.ts'
 import { outsidePhotoWall } from './scene-data.ts'
 import type { Vec3 } from './types.ts'
@@ -10,6 +11,7 @@ type Camera = {
 
 type Photo = {
   createdAt: number
+  thumbnailUrl: string
   timestamp: number
   url: string
 }
@@ -26,17 +28,13 @@ type PhotoElement = {
   image: HTMLImageElement
   item: HTMLDivElement
   photo?: Photo
-  url: string
+  thumbnailUrl: string
 }
 
 const refreshInterval = 30_000
 const hiddenPhotoWallOpacity = '0.01'
 const parkedPhotoWallSize = 12
-const photoWallColumns = 3
-const photoWallRows = 3
-const paintedPhotoRows = photoWallRows + 1
-const paintedPhotoSlots = photoWallColumns * paintedPhotoRows
-const photoLoadAheadSlots = paintedPhotoSlots
+const photoLoadAheadSlots = photoWallPaintedSlots
 const viewerMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const viewerMotionDuration = 560
 const viewerSlideDuration = 420
@@ -66,6 +64,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const viewerNext = document.createElement('button')
   const viewerClose = document.createElement('button')
   const photoElements: PhotoElement[] = []
+  const fullPhotoPreloads = new Map<string, Promise<void>>()
   let activePhotoIndexes = new Set<number>()
   let viewerAnimation: Animation | undefined
   let viewerClosing = false
@@ -170,7 +169,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
         await refresh()
       }
 
-      return page.photos.slice(0, 9).map(photo => photo.url)
+      return page.photos.slice(0, 9).map(photo => photo.thumbnailUrl)
     },
     syncAdmin() {
       render()
@@ -343,7 +342,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     const start = Math.max(0, row * photoWallColumns)
 
     return {
-      end: Math.min(start + paintedPhotoSlots, photoElements.length),
+      end: Math.min(start + photoWallPaintedSlots, photoElements.length),
       start,
     }
   }
@@ -376,7 +375,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     image.loading = 'eager'
     item.append(image)
 
-    return { decodeId: 0, image, item, url: '' }
+    return { decodeId: 0, image, item, thumbnailUrl: '' }
   }
 
   function syncPhotoElement(element: PhotoElement, photo: Photo | undefined) {
@@ -412,30 +411,30 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function loadPhotoElement(element: PhotoElement, photo: Photo) {
-    if (element.url === photo.url) {
+    if (element.thumbnailUrl === photo.thumbnailUrl) {
       return
     }
 
-    element.url = photo.url
+    element.thumbnailUrl = photo.thumbnailUrl
     element.decodeId++
     element.item.dataset.ready = 'false'
     const decodeId = element.decodeId
 
     element.image.onload = () => {
-      if (element.decodeId === decodeId && element.url === photo.url) {
+      if (element.decodeId === decodeId && element.thumbnailUrl === photo.thumbnailUrl) {
         element.item.dataset.ready = 'true'
       }
     }
     element.image.onerror = () => {
-      console.error(new Error(`Photo wall image failed ${photo.url}`))
+      console.error(new Error(`Photo wall image failed ${photo.thumbnailUrl}`))
     }
-    element.image.src = photo.url
+    element.image.src = photo.thumbnailUrl
   }
 
   function unloadPhotoElement(element: PhotoElement) {
-    if (element.url) {
+    if (element.thumbnailUrl) {
       element.decodeId++
-      element.url = ''
+      element.thumbnailUrl = ''
       element.image.removeAttribute('src')
     }
     element.item.dataset.ready = 'false'
@@ -519,7 +518,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       const nextIndex = index + direction
 
       if (page.photos[nextIndex]) {
-        await preloadPhoto(page.photos[nextIndex]!)
+        await preloadFullPhoto(page.photos[nextIndex]!)
         animateViewerSwap(page.photos[nextIndex]!, nextIndex, direction)
         return
       }
@@ -541,6 +540,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
     viewerPolaroid.style.setProperty('--photo-viewer-tilt', `${tilt}deg`)
     syncViewerNav(index)
+    preloadNeighborPhotos(index)
 
     const source = photoElement(photo)?.image
 
@@ -551,6 +551,35 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
   function photoElement(photo: Photo) {
     return photoElements.find(element => element.photo?.timestamp === photo.timestamp)
+  }
+
+  function preloadNeighborPhotos(index: number) {
+    const previous = page.photos[index - 1]
+    const next = page.photos[index + 1]
+
+    if (previous) {
+      void preloadFullPhoto(previous).catch(e => console.error(e))
+    }
+    if (next) {
+      void preloadFullPhoto(next).catch(e => console.error(e))
+    }
+  }
+
+  function preloadFullPhoto(photo: Photo) {
+    const existing = fullPhotoPreloads.get(photo.url)
+
+    if (existing) {
+      return existing
+    }
+
+    const next = preloadPhoto(photo).catch(e => {
+      fullPhotoPreloads.delete(photo.url)
+      throw e
+    })
+
+    fullPhotoPreloads.set(photo.url, next)
+
+    return next
   }
 
   function syncViewerNav(index: number) {

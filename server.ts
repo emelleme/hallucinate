@@ -7,6 +7,7 @@ import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
 import { graffitiColors, graffitiWallBounds, graffitiWallCount, maxGraffitiSplats } from './src/graffiti.ts'
+import { photoWallThumbnailHeight, photoWallThumbnailWidth } from './src/photo-wall-data.ts'
 import {
   ADMIN,
   BEACH_BALLS,
@@ -160,9 +161,13 @@ const photoRateWindowMs = 60 * 60 * 1000
 const photoWebpMigrationKey = 'photos:webp-migration:1'
 const photoWebpMigrationLog = '[photos:webp-migration]'
 const photoWebpQuality = 94
+const photoThumbnailMigrationKey = `photos:thumbnail-migration:${photoWallThumbnailWidth}x${photoWallThumbnailHeight}:1`
+const photoThumbnailMigrationLog = '[photos:thumbnail-migration]'
+const photoThumbnailQuality = 82
 const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
 await migratePhotosToWebp()
+await migratePhotoThumbnails()
 const videoPlaylistRequestInterval = 3000
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
@@ -194,11 +199,18 @@ type MemoryAsset = {
 type PhotoExtension = typeof photoExtensions[number]
 type PhotoFile = {
   extension: PhotoExtension
+  thumbnail: boolean
   timestamp: number
 }
 type PhotoWebpMigration = {
   completedAt: number
   count: number
+}
+type PhotoThumbnailMigration = {
+  completedAt: number
+  count: number
+  height: number
+  width: number
 }
 
 const server = Bun.serve<SocketData>({
@@ -709,10 +721,11 @@ async function handlePhotoApi(request: Request, url: URL, ip: string) {
 
     await mkdir(photoDir, { recursive: true })
     await Bun.write(photoPath(timestamp), data)
+    await writePhotoThumbnail(timestamp)
     db.query('INSERT INTO photos (timestamp, created_at, ip) VALUES ($timestamp, $createdAt, $ip)')
       .run({ timestamp, createdAt, ip })
 
-    return jsonResponse({ timestamp, createdAt, url: photoUrl(timestamp) })
+    return jsonResponse({ timestamp, createdAt, thumbnailUrl: photoThumbnailUrl(timestamp), url: photoUrl(timestamp) })
   }
 
   const timestamp = photoApiTimestamp(url.pathname)
@@ -729,6 +742,7 @@ async function handlePhotoApi(request: Request, url: URL, ip: string) {
     }
 
     await unlink(photoPath(timestamp, existingPhotoExtension(timestamp)))
+    await unlink(photoThumbnailPath(timestamp))
     db.query('DELETE FROM photos WHERE timestamp = $timestamp').run({ timestamp })
 
     return jsonResponse({ ok: true })
@@ -758,7 +772,7 @@ async function servePhoto(request: Request, url: URL) {
 }
 
 async function servePhotoFile(request: Request, photoFile: PhotoFile) {
-  return await fileResponse(photoPath(photoFile.timestamp, photoFile.extension), request) ?? new Response('Not Found', {
+  return await fileResponse(photoFilePath(photoFile), request) ?? new Response('Not Found', {
     status: 404,
   })
 }
@@ -776,7 +790,11 @@ function listPhotos(offset: number) {
   const total = db.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM photos').get()!.count
 
   return {
-    photos: photos.map(photo => ({ ...photo, url: photoUrl(photo.timestamp) })),
+    photos: photos.map(photo => ({
+      ...photo,
+      thumbnailUrl: photoThumbnailUrl(photo.timestamp),
+      url: photoUrl(photo.timestamp),
+    })),
     total,
     offset,
     limit: photoPageLimit,
@@ -826,9 +844,15 @@ function photoApiTimestamp(path: string) {
 }
 
 function photoFileRequest(path: string): PhotoFile | undefined {
-  const match = /^\/(?:api\/)?photos\/(\d+)\.(webp|jpg)$/.exec(path)
+  const match = /^\/(?:api\/)?photos\/(\d+)(\.thumb)?\.(webp|jpg)$/.exec(path)
 
-  return match ? { timestamp: Number(match[1]), extension: `.${match[2]}` as PhotoExtension } : undefined
+  if (match?.[2] && match[3] !== 'webp') {
+    return undefined
+  }
+
+  return match
+    ? { timestamp: Number(match[1]), thumbnail: !!match[2], extension: `.${match[3]}` as PhotoExtension }
+    : undefined
 }
 
 async function migratePhotosToWebp() {
@@ -855,6 +879,39 @@ async function migratePhotosToWebp() {
 
   saveJson(photoWebpMigrationKey, { completedAt: Date.now(), count: photos.length } satisfies PhotoWebpMigration)
   console.log(`${photoWebpMigrationLog} completed ${photos.length} photos`)
+}
+
+async function migratePhotoThumbnails() {
+  if (loadJson<PhotoThumbnailMigration>(photoThumbnailMigrationKey)) {
+    return
+  }
+
+  await mkdir(photoDir, { recursive: true })
+  const photos = db.query<{ timestamp: number }, []>(`
+    SELECT timestamp
+    FROM photos
+    ORDER BY created_at DESC, timestamp DESC
+  `).all()
+  let created = 0
+
+  console.log(`${photoThumbnailMigrationLog} found ${photos.length} photos for ${photoWallThumbnailWidth}x${photoWallThumbnailHeight} thumbnails`)
+
+  for (let i = 0; i < photos.length; i++) {
+    const timestamp = photos[i]!.timestamp
+
+    console.log(`${photoThumbnailMigrationLog} ${i + 1}/${photos.length} creating ${timestamp}.thumb.webp`)
+    await writePhotoThumbnail(timestamp)
+    created++
+    console.log(`${photoThumbnailMigrationLog} ${i + 1}/${photos.length} wrote ${timestamp}.thumb.webp`)
+  }
+
+  saveJson(photoThumbnailMigrationKey, {
+    completedAt: Date.now(),
+    count: photos.length,
+    height: photoWallThumbnailHeight,
+    width: photoWallThumbnailWidth,
+  } satisfies PhotoThumbnailMigration)
+  console.log(`${photoThumbnailMigrationLog} completed ${created} thumbnails`)
 }
 
 async function migratePhotoToWebp(timestamp: number) {
@@ -885,6 +942,34 @@ async function migratePhotoToWebp(timestamp: number) {
   await unlink(source)
 }
 
+async function writePhotoThumbnail(timestamp: number) {
+  const source = photoPath(timestamp, existingPhotoExtension(timestamp))
+  const temporary = join(photoDir, `${timestamp}.thumb.tmp.webp`)
+
+  await runFfmpeg([
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    source,
+    '-vf',
+    `scale=${photoWallThumbnailWidth}:${photoWallThumbnailHeight}:force_original_aspect_ratio=increase,crop=${photoWallThumbnailWidth}:${photoWallThumbnailHeight},setsar=1`,
+    '-frames:v',
+    '1',
+    '-c:v',
+    'libwebp',
+    '-quality',
+    String(photoThumbnailQuality),
+    '-compression_level',
+    '6',
+    '-preset',
+    'picture',
+    temporary,
+  ])
+  await rename(temporary, photoThumbnailPath(timestamp))
+}
+
 async function runFfmpeg(args: string[]) {
   const ffmpeg = Bun.spawn(['ffmpeg', ...args], {
     stderr: 'pipe',
@@ -911,12 +996,26 @@ function existingPhotoExtension(timestamp: number) {
   return extension
 }
 
+function photoFilePath(photoFile: PhotoFile) {
+  return photoFile.thumbnail
+    ? photoThumbnailPath(photoFile.timestamp)
+    : photoPath(photoFile.timestamp, photoFile.extension)
+}
+
 function photoPath(timestamp: number, extension: PhotoExtension = photoExtension) {
   return join(photoDir, `${timestamp}${extension}`)
 }
 
+function photoThumbnailPath(timestamp: number) {
+  return join(photoDir, `${timestamp}.thumb.webp`)
+}
+
 function photoUrl(timestamp: number) {
   return `/api/photos/${timestamp}${existingPhotoExtension(timestamp)}`
+}
+
+function photoThumbnailUrl(timestamp: number) {
+  return `/api/photos/${timestamp}.thumb.webp`
 }
 
 function jsonResponse(value: unknown, status = 200) {

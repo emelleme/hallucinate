@@ -191,8 +191,9 @@ canvas {
   position: relative;
   display: grid;
   gap: 14px;
-  width: min(640px, calc(100dvw - 44px));
-  max-height: calc(100dvh - 48px);
+  width: max-content;
+  max-width: calc(100dvw - 72px);
+  max-height: calc(100dvh - 56px);
   box-sizing: border-box;
   border-radius: 3px;
   background: rgb(246 241 229);
@@ -225,16 +226,20 @@ canvas {
 #photo-viewer-image,
 .photo-viewer-image {
   display: block;
-  width: 100%;
-  max-height: min(66dvh, 520px);
+  width: auto;
+  height: auto;
+  max-width: min(640px, calc(100dvw - 104px));
+  max-height: min(520px, calc(100dvh - 134px));
   object-fit: contain;
   background: rgb(12 12 14);
 }
 
 #photo-preview-message {
+  max-width: min(640px, calc(100dvw - 104px));
   min-height: 18px;
   color: rgb(138 20 30);
   font: 800 14px/1.25 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  overflow-wrap: anywhere;
   text-align: center;
 }
 
