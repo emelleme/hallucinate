@@ -22,23 +22,31 @@ type PhotoPage = {
 }
 
 const refreshInterval = 30_000
+const viewerMotion = matchMedia('(prefers-reduced-motion: reduce)')
+const viewerMotionDuration = 560
+const viewerSlideDuration = 420
 
 export function createPhotoWallUi(element: HTMLElement, options: {
   admin: () => { enabled: boolean; pass: string }
+  alternativeInput: () => boolean
   recoverFocus?: () => void
 }) {
   const projection = createDomWallProjection(element, { opacity: '0.92' })
   const panel = document.createElement('div')
-  const header = document.createElement('div')
-  const nav = document.createElement('div')
-  const previous = document.createElement('button')
-  const next = document.createElement('button')
-  const status = document.createElement('div')
   const grid = document.createElement('div')
   const viewer = document.createElement('dialog')
+  const viewerStage = document.createElement('div')
   const viewerPolaroid = document.createElement('div')
   const viewerImage = document.createElement('img')
+  const viewerPrevious = document.createElement('button')
+  const viewerNext = document.createElement('button')
   const viewerClose = document.createElement('button')
+  const photoElements = new Map<number, HTMLImageElement>()
+  let viewerAnimation: Animation | undefined
+  let viewerClosing = false
+  let viewerSlideBusy = false
+  let viewerSourceRect: DOMRect | undefined
+  let viewedPhoto: Photo | undefined
   let page: PhotoPage = { limit: 30, offset: 0, photos: [], total: 0 }
   let visible = false
   let loading = false
@@ -46,44 +54,69 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   let refreshedAt = 0
 
   panel.id = 'photo-wall-panel'
-  header.id = 'photo-wall-header'
-  nav.id = 'photo-wall-nav'
-  status.id = 'photo-wall-status'
   grid.id = 'photo-wall-grid'
   viewer.id = 'photo-viewer-dialog'
+  viewerStage.id = 'photo-viewer-stage'
   viewerPolaroid.id = 'photo-viewer-polaroid'
   viewerImage.id = 'photo-viewer-image'
+  viewerPrevious.id = 'photo-viewer-previous'
+  viewerNext.id = 'photo-viewer-next'
   viewerClose.id = 'photo-viewer-close'
-  previous.type = 'button'
-  previous.textContent = '‹'
-  previous.setAttribute('aria-label', 'previous photos')
-  next.type = 'button'
-  next.textContent = '›'
-  next.setAttribute('aria-label', 'next photos')
+  viewerPrevious.className = 'photo-viewer-control photo-viewer-previous'
+  viewerNext.className = 'photo-viewer-control photo-viewer-next'
+  viewerClose.className = 'photo-viewer-control photo-viewer-close'
   viewerImage.alt = 'photo'
+  viewerImage.className = 'photo-viewer-image'
+  viewerPrevious.type = 'button'
+  viewerPrevious.textContent = '👈'
+  viewerPrevious.setAttribute('aria-label', 'previous photo')
+  viewerNext.type = 'button'
+  viewerNext.textContent = '👉'
+  viewerNext.setAttribute('aria-label', 'next photo')
   viewerClose.type = 'button'
   viewerClose.textContent = '✕'
   viewerClose.setAttribute('aria-label', 'close photo')
-  nav.append(previous, next)
-  header.append(status, nav)
-  panel.append(header, grid)
-  viewerPolaroid.append(viewerImage, viewerClose)
-  viewer.append(viewerPolaroid)
+  panel.append(grid)
+  viewerPolaroid.append(viewerImage, viewerPrevious, viewerNext, viewerClose)
+  viewerStage.append(viewerPolaroid)
+  viewer.append(viewerStage)
   element.append(panel)
   document.body.append(viewer)
 
-  previous.addEventListener('click', () => {
-    page = { ...page, offset: Math.max(0, page.offset - page.limit) }
-    void refresh()
-    options.recoverFocus?.()
-  })
-  next.addEventListener('click', () => {
-    page = { ...page, offset: page.offset + page.limit }
-    void refresh()
-    options.recoverFocus?.()
+  grid.addEventListener('scroll', () => {
+    checkPhotoWallScroll()
   })
   viewerClose.addEventListener('click', () => {
     closeViewer()
+  })
+  viewerPrevious.addEventListener('click', () => {
+    void moveViewer(-1)
+  })
+  viewerNext.addEventListener('click', () => {
+    void moveViewer(1)
+  })
+  viewer.addEventListener('keydown', event => {
+    const key = event.key.toLowerCase()
+    const previousKey = options.alternativeInput() ? 'a' : 'j'
+    const nextKey = options.alternativeInput() ? 'd' : 'l'
+
+    event.stopPropagation()
+    if (event.key === 'Escape' || key === 'x') {
+      event.preventDefault()
+      closeViewer()
+      return
+    }
+
+    if (event.key === 'ArrowLeft' || key === previousKey) {
+      event.preventDefault()
+      void moveViewer(-1)
+      return
+    }
+
+    if (event.key === 'ArrowRight' || key === nextKey) {
+      event.preventDefault()
+      void moveViewer(1)
+    }
   })
   viewer.addEventListener('cancel', event => {
     event.preventDefault()
@@ -103,7 +136,6 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     },
     refresh,
     refreshLatest() {
-      page = { ...page, offset: 0 }
       return refresh()
     },
     syncAdmin() {
@@ -125,39 +157,50 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }
 
     loading = true
-    renderStatus('loading')
     try {
-      const response = await fetch(`/api/photos?offset=${page.offset}`)
-
-      if (!response.ok) {
-        throw new Error(`Photo list failed ${response.status}`)
-      }
-
-      page = await jsonApiResponse<PhotoPage>(response, 'Photo list')
+      page = await fetchPhotoPage(0)
       loaded = true
       refreshedAt = performance.now()
       render()
     }
     catch (e) {
       console.error(e)
-      renderStatus(e instanceof Error ? e.message : String(e))
     }
     finally {
       loading = false
     }
   }
 
+  async function loadMorePhotos() {
+    if (loading || page.photos.length >= page.total) {
+      return
+    }
+
+    loading = true
+    try {
+      const next = await fetchPhotoPage(page.photos.length)
+
+      page = {
+        ...next,
+        offset: 0,
+        photos: [...page.photos, ...next.photos],
+      }
+      loaded = true
+      refreshedAt = performance.now()
+      render()
+    }
+    catch (e) {
+      console.error(e)
+    }
+    finally {
+      loading = false
+      syncViewedPhoto()
+    }
+  }
+
   function render() {
     grid.replaceChildren()
-    renderStatus(
-      page.total === 0
-        ? 'empty'
-        : `${page.offset + 1}-${Math.min(page.offset + page.photos.length, page.total)} / ${page.total}`,
-    )
-    previous.disabled = page.offset === 0 || loading
-    next.disabled = page.offset + page.limit >= page.total || loading
-
-    const admin = options.admin()
+    photoElements.clear()
 
     for (const photo of page.photos) {
       const item = document.createElement('div')
@@ -168,9 +211,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       image.src = photo.url
       image.alt = new Date(photo.createdAt).toLocaleString()
       image.loading = 'lazy'
+      photoElements.set(photo.timestamp, image)
       item.append(image)
       item.addEventListener('click', () => {
-        openViewer(photo)
+        openViewer(photo, page.photos.indexOf(photo), image.getBoundingClientRect())
       })
       item.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') {
@@ -178,68 +222,286 @@ export function createPhotoWallUi(element: HTMLElement, options: {
         }
 
         event.preventDefault()
-        openViewer(photo)
+        openViewer(photo, page.photos.indexOf(photo), image.getBoundingClientRect())
       })
-
-      if (admin.enabled) {
-        const remove = document.createElement('button')
-
-        remove.type = 'button'
-        remove.className = 'photo-wall-delete'
-        remove.textContent = '🗑️'
-        remove.setAttribute('aria-label', `delete photo ${photo.timestamp}`)
-        remove.addEventListener('click', async event => {
-          event.preventDefault()
-          event.stopPropagation()
-          try {
-            await deletePhoto(photo.timestamp, admin.pass)
-            if (page.photos.length === 1 && page.offset > 0) {
-              page = { ...page, offset: Math.max(0, page.offset - page.limit) }
-            }
-            await refresh()
-            options.recoverFocus?.()
-          }
-          catch (e) {
-            console.error(e)
-          }
-        })
-        item.append(remove)
-      }
 
       grid.append(item)
     }
+
+    requestAnimationFrame(checkPhotoWallScroll)
   }
 
-  function renderStatus(text: string) {
-    status.textContent = text
+  function checkPhotoWallScroll() {
+    if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192) {
+      void loadMorePhotos()
+    }
   }
 
-  function openViewer(photo: Photo) {
-    viewerImage.src = photo.url
-    viewerImage.alt = new Date(photo.createdAt).toLocaleString()
-    viewer.showModal()
+  function openViewer(
+    photo: Photo,
+    index = page.photos.findIndex(item => item.timestamp === photo.timestamp),
+    sourceRect?: DOMRect,
+    animate = true,
+  )
+  {
+    viewerAnimation?.cancel()
+    viewerClosing = false
+    delete viewer.dataset.closing
+    const tilt = setViewerPhoto(photo, index)
+    if (!viewer.open) {
+      viewer.showModal()
+    }
+    const targetSourceRect = sourceRect ?? photoElements.get(photo.timestamp)?.getBoundingClientRect()
+
+    viewerSourceRect = targetSourceRect
+    if (animate && targetSourceRect) {
+      animateViewerFrom(targetSourceRect, tilt)
+    }
     viewerClose.focus()
   }
 
   function closeViewer() {
+    if (viewerSlideBusy || viewerClosing) {
+      return
+    }
+
+    const sourceRect = viewerSourceRect
+
+    if (sourceRect && !viewerMotion.matches) {
+      viewerAnimation?.cancel()
+      viewerAnimation = undefined
+      viewerClosing = true
+      viewer.dataset.closing = 'true'
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          animateViewerClose(sourceRect)
+        })
+      })
+      return
+    }
+
+    closeViewerNow()
+  }
+
+  function closeViewerNow() {
+    viewedPhoto = undefined
+    viewerAnimation?.cancel()
+    viewerAnimation = undefined
+    viewerClosing = false
+    viewerSlideBusy = false
+    viewerSourceRect = undefined
+    delete viewer.dataset.closing
+    viewerPolaroid.style.visibility = ''
     viewerImage.removeAttribute('src')
     if (viewer.open) {
       viewer.close()
     }
     options.recoverFocus?.()
   }
+
+  async function moveViewer(direction: -1 | 1) {
+    if (!viewedPhoto || loading || viewerAnimation || viewerClosing || viewerSlideBusy) {
+      return
+    }
+
+    viewerSlideBusy = true
+    try {
+      let index = page.photos.findIndex(photo => photo.timestamp === viewedPhoto!.timestamp)
+
+      if (direction > 0 && index >= page.photos.length - 2 && page.photos.length < page.total) {
+        await loadMorePhotos()
+        index = page.photos.findIndex(photo => photo.timestamp === viewedPhoto!.timestamp)
+      }
+
+      const nextIndex = index + direction
+
+      if (page.photos[nextIndex]) {
+        await preloadPhoto(page.photos[nextIndex]!)
+        animateViewerSwap(page.photos[nextIndex]!, nextIndex, direction)
+        return
+      }
+
+      viewerSlideBusy = false
+    }
+    catch (e) {
+      viewerSlideBusy = false
+      console.error(e)
+    }
+  }
+
+  function setViewerPhoto(photo: Photo, index: number) {
+    viewedPhoto = photo
+    viewerImage.src = photo.url
+    viewerImage.alt = new Date(photo.createdAt).toLocaleString()
+
+    const tilt = photoTilt(photo)
+
+    viewerPolaroid.style.setProperty('--photo-viewer-tilt', `${tilt}deg`)
+    syncViewerNav(index)
+
+    const source = photoElements.get(photo.timestamp)
+
+    viewerSourceRect = source?.getBoundingClientRect()
+
+    return tilt
+  }
+
+  function syncViewerNav(index: number) {
+    viewerPrevious.disabled = loading || index <= 0
+    viewerNext.disabled = loading || index + 1 >= page.total
+  }
+
+  function syncViewedPhoto() {
+    if (!viewedPhoto) {
+      return
+    }
+
+    syncViewerNav(page.photos.findIndex(photo => photo.timestamp === viewedPhoto!.timestamp))
+  }
+
+  function animateViewerFrom(sourceRect: DOMRect, tilt: number) {
+    if (viewerMotion.matches) {
+      return
+    }
+
+    const targetRect = viewerPolaroid.getBoundingClientRect()
+    const sourceCenterX = sourceRect.left + sourceRect.width * 0.5
+    const sourceCenterY = sourceRect.top + sourceRect.height * 0.5
+    const targetCenterX = targetRect.left + targetRect.width * 0.5
+    const targetCenterY = targetRect.top + targetRect.height * 0.5
+    const dx = sourceCenterX - targetCenterX
+    const dy = sourceCenterY - targetCenterY
+    const sx = sourceRect.width / targetRect.width
+    const sy = sourceRect.height / targetRect.height
+
+    viewerAnimation = viewerPolaroid.animate([
+      {
+        opacity: 0.72,
+        transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy}) rotate(${tilt}deg)`,
+      },
+      {
+        opacity: 1,
+        transform: `translate(0, 0) scale(1, 1) rotate(${tilt}deg)`,
+      },
+    ], {
+      duration: viewerMotionDuration,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    })
+    viewerAnimation.addEventListener('finish', () => {
+      viewerAnimation = undefined
+    }, { once: true })
+  }
+
+  function animateViewerSwap(photo: Photo, index: number, direction: -1 | 1) {
+    if (viewerMotion.matches) {
+      setViewerPhoto(photo, index)
+      viewerSlideBusy = false
+      return
+    }
+
+    const currentRect = viewerPolaroid.getBoundingClientRect()
+    const currentPhoto = viewedPhoto!
+    const outgoing = viewerPolaroid.cloneNode(true) as HTMLElement
+    const currentTilt = photoTilt(currentPhoto)
+    const nextTilt = photoTilt(photo)
+    const distance = Math.max(innerWidth, currentRect.width) + currentRect.width
+    const incomingX = direction > 0 ? distance : -distance
+    const outgoingX = -incomingX
+
+    viewerAnimation?.cancel()
+    prepareSlideClone(outgoing, currentRect)
+    viewerStage.append(outgoing)
+    viewerPolaroid.style.visibility = 'hidden'
+    setViewerPhoto(photo, index)
+    viewerPolaroid.getBoundingClientRect()
+    viewerPolaroid.style.visibility = ''
+
+    const outgoingSlide = outgoing.animate([
+      { transform: `translateX(0) rotate(${currentTilt}deg)` },
+      { transform: `translateX(${outgoingX}px) rotate(${currentTilt}deg)` },
+    ], {
+      duration: viewerSlideDuration,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    })
+    const incomingAnimation = viewerPolaroid.animate([
+      { transform: `translateX(${incomingX}px) rotate(${nextTilt}deg)` },
+      { transform: `translateX(0) rotate(${nextTilt}deg)` },
+    ], {
+      duration: viewerSlideDuration,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    })
+
+    viewerAnimation = outgoingSlide
+    incomingAnimation.addEventListener('finish', () => {
+      outgoing.remove()
+      viewerAnimation = undefined
+      viewerSlideBusy = false
+      viewerClose.focus()
+    }, { once: true })
+  }
+
+  function prepareSlideClone(slide: HTMLElement, rect: DOMRect) {
+    slide.removeAttribute('id')
+    slide.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'))
+    slide.className = 'photo-viewer-polaroid-slide'
+    slide.style.width = `${rect.width}px`
+    slide.style.height = `${rect.height}px`
+    slide.style.maxHeight = 'none'
+    slide.style.pointerEvents = 'none'
+  }
+
+  function animateViewerClose(sourceRect: DOMRect) {
+    const targetRect = viewerPolaroid.getBoundingClientRect()
+    const sourceCenterX = sourceRect.left + sourceRect.width * 0.5
+    const sourceCenterY = sourceRect.top + sourceRect.height * 0.5
+    const targetCenterX = targetRect.left + targetRect.width * 0.5
+    const targetCenterY = targetRect.top + targetRect.height * 0.5
+    const dx = sourceCenterX - targetCenterX
+    const dy = sourceCenterY - targetCenterY
+    const sx = sourceRect.width / targetRect.width
+    const sy = sourceRect.height / targetRect.height
+    const tilt = viewedPhoto ? photoTilt(viewedPhoto) : 0
+
+    viewerAnimation?.cancel()
+    viewerAnimation = viewerPolaroid.animate([
+      {
+        opacity: 1,
+        transform: `translate(0, 0) scale(1, 1) rotate(${tilt}deg)`,
+      },
+      {
+        opacity: 0,
+        transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy}) rotate(${tilt}deg)`,
+      },
+    ], {
+      duration: viewerMotionDuration,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    })
+    viewerAnimation.addEventListener('finish', closeViewerNow, { once: true })
+  }
 }
 
-async function deletePhoto(timestamp: number, pass: string) {
-  const response = await fetch(`/api/photos/${timestamp}`, {
-    method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ pass }),
-  })
+function photoTilt(photo: Photo) {
+  const seed = Math.sin(photo.timestamp * 0.00037 + photo.createdAt * 0.000011) * 43758.5453123
+  const unit = seed - Math.floor(seed)
+
+  return unit * 5.6 - 2.8
+}
+
+async function preloadPhoto(photo: Photo) {
+  const image = new Image()
+
+  image.src = photo.url
+  await image.decode()
+}
+
+async function fetchPhotoPage(offset: number) {
+  const response = await fetch(`/api/photos?offset=${offset}`)
 
   if (!response.ok) {
-    throw new Error(`Photo delete failed ${response.status}`)
+    throw new Error(`Photo list failed ${response.status}`)
   }
+
+  return await jsonApiResponse<PhotoPage>(response, 'Photo list')
 }
 
 async function jsonApiResponse<T>(response: Response, label: string): Promise<T> {

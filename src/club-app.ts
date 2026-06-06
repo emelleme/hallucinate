@@ -269,6 +269,7 @@ const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
 })
 const photoWallUi = createPhotoWallUi(photoWall, {
   admin: () => ({ enabled: adminView, pass: adminPass }),
+  alternativeInput: () => alternativeInput,
   recoverFocus: () => canvas.focus(),
 })
 const helpUi = createHelpUi()
