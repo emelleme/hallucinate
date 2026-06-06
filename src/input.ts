@@ -37,7 +37,7 @@ export function bindKeyboardInput(options: {
   cyclePants: (direction: number) => void
   cycleAccessory: (direction: number) => void
 }) {
-  addEventListener('keydown', event => {
+  window.addEventListener('keydown', event => {
     if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
       return
     }
@@ -151,7 +151,7 @@ export function bindKeyboardInput(options: {
     options.keys.add(key)
   })
 
-  addEventListener('keyup', event => {
+  window.addEventListener('keyup', event => {
     const key = event.key.toLowerCase()
 
     if (key === 'v') {

@@ -93,9 +93,9 @@ export function createMultiplayer(options: {
   const heartbeatInterval = 5_000
   const videoProgressInterval = 2_000
   const reconnectDelay = 1_500
-  let heartbeat = 0
-  let videoProgress = 0
-  let reconnect = 0
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  let videoProgress: ReturnType<typeof setInterval> | undefined
+  let reconnect: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let connectedOnce = false
   const pending: ArrayBuffer[] = []
