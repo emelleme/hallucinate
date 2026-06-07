@@ -11,15 +11,16 @@ export type SmokePuff = {
   maxLife: number
 }
 
-const rise = 0.45
-const drift = 0.12
+const rise = 0.32
+const riseDamp = 0.6
+const drift = 0.1
 const damp = 1.4
 const growth = 1.6
 const fadeFraction = 0.4
 const wispRadius = 0.035
 const puffRadius = 0.07
-const minLife = 2.4
-const maxLife = 4
+const minLife = 1.6
+const maxLife = 2.8
 const puffGlow = 0.18
 const smokeColor: Vec3 = [0.72, 0.72, 0.76]
 const unitSphere = createUnitSphere(6, 8)
@@ -48,7 +49,7 @@ export function createSmokeSystem() {
       puff.position[1] = origin[1] + (Math.random() - 0.5) * 0.06
       puff.position[2] = origin[2] + (Math.random() - 0.5) * 0.06
       puff.velocity[0] = forward[0] * push + (Math.random() - 0.5) * drift
-      puff.velocity[1] = rise + Math.random() * rise
+      puff.velocity[1] = rise * (0.7 + Math.random() * 0.6)
       puff.velocity[2] = forward[2] * push + (Math.random() - 0.5) * drift
       puff.baseRadius = exhale ? puffRadius : wispRadius
       puff.radius = puff.baseRadius
@@ -60,6 +61,7 @@ export function createSmokeSystem() {
 
   function update(delta: number) {
     const horizontalDamp = Math.exp(-damp * delta)
+    const verticalDamp = Math.exp(-riseDamp * delta)
 
     for (let i = puffs.length - 1; i >= 0; i--) {
       const puff = puffs[i]!
@@ -76,6 +78,7 @@ export function createSmokeSystem() {
       }
 
       puff.velocity[0] *= horizontalDamp
+      puff.velocity[1] *= verticalDamp
       puff.velocity[2] *= horizontalDamp
       puff.position[0] += puff.velocity[0] * delta
       puff.position[1] += puff.velocity[1] * delta
