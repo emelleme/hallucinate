@@ -166,7 +166,7 @@ export function updatePlayers(
       player.travelLateralUntil = undefined
       player.travelLateralDirection = undefined
     }
-    else if (updateRandomPause(player, time)) {
+    else if (!crossingDoor(player) && updateRandomPause(player, time)) {
       player.motionBlend += (0 - player.motionBlend) * (1 - Math.exp(-7 * delta))
       player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
       player.position[1] = walkHeight(player.position[0], player.position[1], player.position[2])
@@ -211,6 +211,13 @@ export function updatePlayers(
       }
 
       if (blockedForward(player, lastX, lastZ, directionX, directionZ, delta)) {
+        if (crossingDoor(player)) {
+          player.travelLateralUntil = undefined
+          player.travelLateralDirection = undefined
+          player.doorTarget = undefined
+          continue
+        }
+
         pauseBlockedPlayer(player, time, outsideTree, occupiedSeats)
         continue
       }
@@ -456,6 +463,10 @@ function activePlayerTarget(player: Player, time: number) {
   }
 
   return doorTarget(player, outside)
+}
+
+function crossingDoor(player: Player) {
+  return player.destination.kind !== 'random' && isOutside(player.position) !== player.destination.outside
 }
 
 function doorTarget(player: Player, outside: boolean) {
