@@ -19,13 +19,14 @@ const holdEnd = 2.9
 const lowerEnd = 3.6
 const exhaleEnd = 4.8
 const gripReach = 0.08
-const gripSideOffset = 0.035
+const gripSideOffset = 0
 const gripForwardOffset = 0.025
 const gripHeightOffset = 0.015
 const mouthForwardOffset = 0.05
-const mouthHeightOffset = -0.08
+const mouthHeightOffset = -0.035
 const cigaretteSide = 0.32
-const cigaretteRise = -0.18
+const cigaretteRestRise = -0.18
+const cigaretteInhaleRise = 0.24
 const cigaretteLength = 0.1
 const emberLength = 0.016
 const mouthPoint: Vec3 = [0, 0, 0]
@@ -123,6 +124,7 @@ export function setCigaretteGeometry(
   foreArm: Vec3,
   hand: Vec3,
   turn: TurnBasis,
+  time = 0,
 ) {
   const dx = hand[0] - foreArm[0]
   const dy = hand[1] - foreArm[1]
@@ -136,7 +138,7 @@ export function setCigaretteGeometry(
   const baseY = hand[1] + dy * gripReach + gripHeightOffset
   const baseZ = hand[2] + dz * gripReach + sideZ * handSide * gripSideOffset + forwardZ * gripForwardOffset
   let dirX = forwardX + sideX * handSide * cigaretteSide
-  let dirY = cigaretteRise
+  let dirY = cigaretteRestRise + (cigaretteInhaleRise - cigaretteRestRise) * cigaretteLift(time)
   let dirZ = forwardZ + sideZ * handSide * cigaretteSide
   const dirLength = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
 

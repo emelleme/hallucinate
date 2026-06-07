@@ -309,7 +309,7 @@ function addRenderedCharacter(
       addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection)
     }
     else if (style.accessoryKind === 'cigarette') {
-      addCigarette(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+      addCigarette(target, boxInstances, pose, player, turn, style, options.light, localReflection, options.time)
     }
     else {
       addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
@@ -470,7 +470,7 @@ export function setPoseCigaretteGeometry(
   time: number,
 ) {
   raisePoseCigaretteArm(pose, turn, time)
-  setCigaretteGeometry(target, pose[spine2Index]!, pose[rightForeArmIndex]!, pose[rightHandIndex]!, turn)
+  setCigaretteGeometry(target, pose[spine2Index]!, pose[rightForeArmIndex]!, pose[rightHandIndex]!, turn, time)
 }
 
 function addCigarette(
@@ -482,11 +482,12 @@ function addCigarette(
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
+  time: number,
 ) {
   const torso = pose[spine2Index]!
 
   addCigaretteAtHand(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style,
-    light, localReflection)
+    light, localReflection, time)
 }
 
 function addCigaretteAtHand(
@@ -500,8 +501,9 @@ function addCigaretteAtHand(
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
+  time: number,
 ) {
-  setCigaretteGeometry(cigaretteGeometry, torso, foreArm, hand, turn)
+  setCigaretteGeometry(cigaretteGeometry, torso, foreArm, hand, turn, time)
   addCharacterBox(target, boxInstances, cigaretteA, cigaretteB, 0.02, 0.02, style.accessory!, 0.05, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
 
