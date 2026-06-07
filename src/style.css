@@ -757,6 +757,15 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   display: grid;
 }
 
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #reaction-buttons,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #breakdance-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #wave-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #photo-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #rooms-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #support-link {
+  display: none;
+}
+
 html[data-touch-controls="true"] body[data-intro-visible="true"] #reaction-buttons,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #mobile-controls,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #mobile-speak,
