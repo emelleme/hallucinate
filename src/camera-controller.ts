@@ -320,12 +320,12 @@ function inOutsideToilets(position: Vec3) {
 }
 
 function inOutsideDjCameraZone(position: Vec3) {
-  const side = outsideStage.width / 2 + 0.8
-  const back = outsideDjBooth.z - 2.2
-  const front = outsideStage.z
+  const side = outsideDjBooth.width / 2 + 0.45
+  const back = outsideDjBooth.z - outsideDjBooth.depth / 2 - 1.2
+  const front = outsideDjBooth.z + outsideDjBooth.depth / 2 + 0.9
 
-  return position[0] > outsideStage.x - side
-    && position[0] < outsideStage.x + side
+  return position[0] > outsideDjBooth.x - side
+    && position[0] < outsideDjBooth.x + side
     && position[2] > back
     && position[2] < front
 }

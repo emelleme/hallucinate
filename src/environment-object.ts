@@ -5,9 +5,9 @@ import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStand, outsideVideoScreenWall,
+  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStands, outsideVideoScreenWall,
   roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
-  tentVideoWall } from './scene-data.ts'
+  tentVideoWall, type TShirtStand } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -153,7 +153,7 @@ function addOutside(target: Vertex[]) {
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
   addOpenAirHut(target, floor)
   addOutsideLounges(target, floor)
-  addOutsideTShirtStand(target, floor)
+  addOutsideTShirtStands(target, floor)
   addOutsideToilets(target, floor)
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
@@ -375,8 +375,13 @@ function addOutsideLounges(target: Vertex[], floor: number) {
   addBonfireBase(target, floor)
 }
 
-function addOutsideTShirtStand(target: Vertex[], floor: number) {
-  const stand = outsideTShirtStand
+function addOutsideTShirtStands(target: Vertex[], floor: number) {
+  for (const stand of outsideTShirtStands) {
+    addOutsideTShirtStand(target, stand, floor)
+  }
+}
+
+function addOutsideTShirtStand(target: Vertex[], stand: TShirtStand, floor: number) {
   const metal: Vec3 = [0.052, 0.055, 0.06]
   const shirtColors: Vec3[] = [
     [0.018, 0.018, 0.02],
@@ -387,26 +392,28 @@ function addOutsideTShirtStand(target: Vertex[], floor: number) {
     [0.95, 0.72, 0.05],
     [0.04, 0.64, 0.32],
   ]
-  const left = stand.x - stand.width / 2
-  const right = stand.x + stand.width / 2
+  const basis = tShirtStandBasis(stand)
   const top = floor + stand.height
   const postY = floor + (top - floor) / 2
   const postSize = 0.1
+  const left = tShirtStandPoint(stand, basis, -stand.width / 2, postY, 0)
+  const right = tShirtStandPoint(stand, basis, stand.width / 2, postY, 0)
   const shirtY = top - 0.34
 
-  addBox(target, left, postY, stand.z, postSize, top - floor, postSize, metal, 0)
-  addBox(target, right, postY, stand.z, postSize, top - floor, postSize, metal, 0)
-  addBox(target, stand.x, top, stand.z, stand.width + postSize, postSize, postSize, metal, 0)
+  addTShirtStandBox(target, left, basis, postSize, top - floor, postSize, metal, 0)
+  addTShirtStandBox(target, right, basis, postSize, top - floor, postSize, metal, 0)
+  addTShirtStandBox(target, [stand.x, top, stand.z], basis, stand.width + postSize, postSize, postSize, metal, 0)
 
   for (let i = 0; i < shirtColors.length; i++) {
-    const x = stand.x - stand.width * 0.36 + stand.width * 0.72 * i / (shirtColors.length - 1)
+    const offset = -stand.width * 0.36 + stand.width * 0.72 * i / (shirtColors.length - 1)
+    const center = tShirtStandPoint(stand, basis, offset, 0, 0)
     const color = shirtColors[i]!
 
-    addFlatTShirt(target, x, shirtY, stand.z, color)
+    addFlatTShirt(target, center, basis, shirtY, color)
   }
 }
 
-function addFlatTShirt(target: Vertex[], x: number, y: number, z: number, color: Vec3) {
+function addFlatTShirt(target: Vertex[], center: Vec3, basis: TShirtStandBasis, y: number, color: Vec3) {
   const top = y + 0.3
   const bottom = y - 0.3
   const half = 0.18
@@ -417,28 +424,108 @@ function addFlatTShirt(target: Vertex[], x: number, y: number, z: number, color:
   const cuffTop = top - 0.1
   const cuffBottom = top - 0.34
 
-  addQuad(target, [x, bottom, z - half], [x, bottom, z + half], [x, top, z + half], [x, top, z - half], color, 0)
-  addQuad(target, [x, shoulderTop, z - sleeveIn], [x, shoulderBottom, z - sleeveIn],
-    [x, cuffBottom, z - sleeveOut], [x, cuffTop, z - sleeveOut], color, 0)
-  addQuad(target, [x, shoulderBottom, z + sleeveIn], [x, shoulderTop, z + sleeveIn],
-    [x, cuffTop, z + sleeveOut], [x, cuffBottom, z + sleeveOut], color, 0)
-  addTShirtLogo(target, x + 0.012, y + 0.08, z, color)
+  addQuad(target, tShirtPoint(center, basis, bottom, -half), tShirtPoint(center, basis, bottom, half),
+    tShirtPoint(center, basis, top, half), tShirtPoint(center, basis, top, -half), color, 0)
+  addQuad(target, tShirtPoint(center, basis, shoulderTop, -sleeveIn),
+    tShirtPoint(center, basis, shoulderBottom, -sleeveIn), tShirtPoint(center, basis, cuffBottom, -sleeveOut),
+    tShirtPoint(center, basis, cuffTop, -sleeveOut), color, 0)
+  addQuad(target, tShirtPoint(center, basis, shoulderBottom, sleeveIn),
+    tShirtPoint(center, basis, shoulderTop, sleeveIn), tShirtPoint(center, basis, cuffTop, sleeveOut),
+    tShirtPoint(center, basis, cuffBottom, sleeveOut), color, 0)
+  addTShirtLogo(target, center, basis, y + 0.08, color)
 }
 
-function addTShirtLogo(target: Vertex[], x: number, y: number, z: number, color: Vec3) {
+function addTShirtLogo(target: Vertex[], center: Vec3, basis: TShirtStandBasis, y: number, color: Vec3) {
   const [u0, v0, u1, v1] = tShirtLogoTextureBounds()
   const halfWidth = 0.14
   const halfHeight = 0.029
   const haze = 7
+  const lift = 0.012
 
   target.push(
-    pack([x, y - halfHeight, z + halfWidth], color, 0, 0, u0, v1, haze),
-    pack([x, y - halfHeight, z - halfWidth], color, 0, 0, u1, v1, haze),
-    pack([x, y + halfHeight, z - halfWidth], color, 0, 0, u1, v0, haze),
-    pack([x, y - halfHeight, z + halfWidth], color, 0, 0, u0, v1, haze),
-    pack([x, y + halfHeight, z - halfWidth], color, 0, 0, u1, v0, haze),
-    pack([x, y + halfHeight, z + halfWidth], color, 0, 0, u0, v0, haze),
+    pack(tShirtPoint(center, basis, y - halfHeight, halfWidth, lift), color, 0, 0, u0, v1, haze),
+    pack(tShirtPoint(center, basis, y - halfHeight, -halfWidth, lift), color, 0, 0, u1, v1, haze),
+    pack(tShirtPoint(center, basis, y + halfHeight, -halfWidth, lift), color, 0, 0, u1, v0, haze),
+    pack(tShirtPoint(center, basis, y - halfHeight, halfWidth, lift), color, 0, 0, u0, v1, haze),
+    pack(tShirtPoint(center, basis, y + halfHeight, -halfWidth, lift), color, 0, 0, u1, v0, haze),
+    pack(tShirtPoint(center, basis, y + halfHeight, halfWidth, lift), color, 0, 0, u0, v0, haze),
   )
+}
+
+type TShirtStandBasis = {
+  axis: Vec3
+  face: Vec3
+}
+
+function tShirtStandBasis(stand: TShirtStand): TShirtStandBasis {
+  return {
+    axis: [Math.cos(stand.turn), 0, Math.sin(stand.turn)],
+    face: [-Math.sin(stand.turn), 0, Math.cos(stand.turn)],
+  }
+}
+
+function tShirtStandPoint(
+  stand: TShirtStand,
+  basis: TShirtStandBasis,
+  axisOffset: number,
+  y: number,
+  faceOffset: number,
+): Vec3 {
+  return [
+    stand.x + basis.axis[0] * axisOffset + basis.face[0] * faceOffset,
+    y,
+    stand.z + basis.axis[2] * axisOffset + basis.face[2] * faceOffset,
+  ]
+}
+
+function tShirtPoint(
+  center: Vec3,
+  basis: TShirtStandBasis,
+  y: number,
+  faceOffset: number,
+  axisOffset = 0,
+): Vec3 {
+  return [
+    center[0] + basis.axis[0] * axisOffset + basis.face[0] * faceOffset,
+    y,
+    center[2] + basis.axis[2] * axisOffset + basis.face[2] * faceOffset,
+  ]
+}
+
+function addTShirtStandBox(
+  target: Vertex[],
+  center: Vec3,
+  basis: TShirtStandBasis,
+  width: number,
+  height: number,
+  depth: number,
+  color: Vec3,
+  glow: number,
+) {
+  const left = -width / 2
+  const right = width / 2
+  const back = -depth / 2
+  const front = depth / 2
+  const bottom = center[1] - height / 2
+  const top = center[1] + height / 2
+  const point = (axisOffset: number, y: number, faceOffset: number): Vec3 => [
+    center[0] + basis.axis[0] * axisOffset + basis.face[0] * faceOffset,
+    y,
+    center[2] + basis.axis[2] * axisOffset + basis.face[2] * faceOffset,
+  ]
+
+  addQuad(target, point(left, bottom, front), point(right, bottom, front), point(right, top, front),
+    point(left, top, front), color, glow)
+  addQuad(target, point(right, bottom, back), point(left, bottom, back), point(left, top, back),
+    point(right, top, back), color, glow)
+  addQuad(target, point(left, bottom, back), point(left, bottom, front), point(left, top, front),
+    point(left, top, back), color, glow)
+  addQuad(target, point(right, bottom, front), point(right, bottom, back), point(right, top, back),
+    point(right, top, front), color, glow)
+  addQuad(target, point(left, top, front), point(right, top, front), point(right, top, back), point(left, top, back),
+    color, glow)
+  addQuad(target, point(left, bottom, back), point(right, bottom, back), point(right, bottom, front),
+    point(left, bottom, front), color, glow)
 }
 
 export function addLowPolyCouch(

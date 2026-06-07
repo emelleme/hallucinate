@@ -1,6 +1,8 @@
 import { characterFloor } from './character-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
+export type TShirtStand = Bounds & { height: number; turn: number }
+
 export const djBooth: Bounds = { x: 0, z: -21.55, width: 3.6, depth: 1.24 }
 export const djSpeakers: Bounds[] = [
   { x: -4.16, z: -21.63, width: 0.71, depth: 0.79 },
@@ -74,13 +76,6 @@ export const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625
 export const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
 export const outsideVideoScreenWall = { ...outsideVideoWall, z: outsideVideoWall.z - 0.5 }
 export const outsidePhotoWall = { x: -21.48, y: 0.45, z: 5.85, width: 7.2, height: 4.2, normal: [1, 0, 0] as Vec3 }
-export const outsideTShirtStand: Bounds & { height: number } = {
-  x: outsidePhotoWall.x + 1.76,
-  z: outsidePhotoWall.z - outsidePhotoWall.width / 2 - 0.36,
-  width: 3.2,
-  depth: 0.9,
-  height: 1.68,
-}
 export const tent = {
   x: 25,
   z: 25,
@@ -192,5 +187,33 @@ export const outsideFoodTruckFoodWall = {
   ] as Vec3,
   tangent: foodTruckForward,
 }
+const tShirtStandSize = { width: 3.2, depth: 0.9, height: 1.68 } as const
+const foodTruckBack: Vec3 = [-foodTruckForward[0], 0, -foodTruckForward[2]]
+const foodTruckTShirtStandTurn = Math.atan2(foodTruckBack[2], foodTruckBack[0]) + foodTruckStageSide * Math.PI / 4
+const foodTruckTShirtStandAxis: Vec3 = [
+  Math.cos(foodTruckTShirtStandTurn),
+  0,
+  Math.sin(foodTruckTShirtStandTurn),
+]
+const foodTruckTShirtStandPoleDistance = outsideFoodTruckSize.depth / 2 + 0.36
+const foodTruckTShirtStandPole: Vec3 = [
+  outsideFoodTruck.x + foodTruckBack[0] * foodTruckTShirtStandPoleDistance,
+  0,
+  outsideFoodTruck.z + foodTruckBack[2] * foodTruckTShirtStandPoleDistance,
+]
+export const outsideTShirtStands: TShirtStand[] = [
+  {
+    x: outsidePhotoWall.x + 1.76,
+    z: outsidePhotoWall.z - outsidePhotoWall.width / 2 - 0.36,
+    ...tShirtStandSize,
+    turn: 0,
+  },
+  {
+    x: foodTruckTShirtStandPole[0] + foodTruckTShirtStandAxis[0] * tShirtStandSize.width / 2,
+    z: foodTruckTShirtStandPole[2] + foodTruckTShirtStandAxis[2] * tShirtStandSize.width / 2,
+    ...tShirtStandSize,
+    turn: foodTruckTShirtStandTurn,
+  },
+]
 export const outsideBounds = { left: -24, right: 40, back: -32, front: 38 }
 export const landscapeBounds = { left: -72, right: 72, back: -84, front: 88 }

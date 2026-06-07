@@ -51,7 +51,7 @@ import {
   outsideFoodTruckTurn,
   outsideHutDrinkWall,
   outsidePalmTree,
-  outsideTShirtStand,
+  outsideTShirtStands,
   outsideToilets,
   roomBounds,
   tent,
@@ -386,10 +386,14 @@ const outsideHutDrinkWallProjection = createDomWallProjection(outsideHutDrinkWal
 const merchStandDistance = 2.4
 
 function syncMerchCards(outside: boolean) {
-  const x = characterPosition[0] - outsideTShirtStand.x
-  const z = characterPosition[2] - outsideTShirtStand.z
+  const nearStand = outsideTShirtStands.some(stand => {
+    const x = characterPosition[0] - stand.x
+    const z = characterPosition[2] - stand.z
+
+    return x * x + z * z < merchStandDistance * merchStandDistance
+  })
   const open = introHidden && outside && helpUi.root.dataset.open !== 'true'
-    && x * x + z * z < merchStandDistance * merchStandDistance
+    && nearStand
 
   merchCards.dataset.open = String(open)
 }
