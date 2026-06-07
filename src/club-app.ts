@@ -550,9 +550,10 @@ function addChatLogMessage(id: number, text: string) {
 
   if (emoji && last instanceof HTMLElement) {
     const entries = chatLogRows.get(last)
+    const entry = { color, emoji, id, text }
 
-    if (entries?.every(entry => entry.emoji)) {
-      entries.push({ color, emoji, id, text })
+    if (entries?.every(entry => entry.emoji) && chatLogEntryLabel(entries[0]!) === chatLogEntryLabel(entry)) {
+      entries.push(entry)
       renderChatLogRow(last)
       chatLog.scrollTop = chatLog.scrollHeight
 
