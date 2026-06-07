@@ -755,14 +755,70 @@ vec3 tripColor(vec2 point) {
   return pow(clamp(col, 0.0, 1.0), vec3(0.4545));
 }
 
+float cloudHash(vec2 point) {
+  return fract(sin(dot(point, vec2(269.5, 183.3))) * 27182.845);
+}
+
+float cloudNoise(vec2 point) {
+  vec2 cell = floor(point);
+  vec2 local = fract(point);
+  vec2 curve = local * local * (3.0 - 2.0 * local);
+  float a = cloudHash(cell);
+  float b = cloudHash(cell + vec2(1.0, 0.0));
+  float c = cloudHash(cell + vec2(0.0, 1.0));
+  float d = cloudHash(cell + vec2(1.0, 1.0));
+
+  return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y);
+}
+
+float cloudFbm(vec2 point) {
+  float total = 0.0;
+  float amplitude = 0.5;
+
+  for (int i = 0; i < 4; i++) {
+    total += cloudNoise(point) * amplitude;
+    point = point * 2.0 + 11.0;
+    amplitude *= 0.55;
+  }
+
+  return total;
+}
+
 vec3 afternoonSky(vec2 point) {
   vec3 horizon = vec3(1.0, 0.22, 0.08);
   vec3 peach = vec3(1.0, 0.58, 0.24);
   vec3 blue = vec3(0.24, 0.48, 0.9);
   float lift = smoothstep(0.34, 0.95, point.y);
   float warmth = 1.0 - smoothstep(0.12, 0.62, point.y);
+  vec3 sky = mix(mix(peach, blue, lift), horizon, warmth * 0.84);
 
-  return mix(mix(peach, blue, lift), horizon, warmth * 0.84);
+  // reconstruct the world view direction from the equirectangular sky uv and
+  // project it onto a flat cloud plane high above, so clouds read as a fixed
+  // distant layer that rotates rigidly with the camera instead of distorting
+  float azimuth = (point.x - 0.5) * 6.2831853;
+  float elevation = (point.y - 0.5) * 3.14159265;
+  vec3 dir = vec3(cos(elevation) * sin(azimuth), sin(elevation), cos(elevation) * cos(azimuth));
+  float toPlane = 1.0 / max(dir.y, 0.04);
+  vec2 plane = dir.xz * toPlane;
+  vec2 drift = vec2(time * 0.004, 0.0);
+  float shape = cloudFbm(plane * 1.6 + drift);
+  float detail = cloudFbm(plane * 3.4 + drift * 1.7 + 19.0);
+  float coverage = shape + detail * 0.2 - 0.5;
+  float body = smoothstep(0.0, 0.14, coverage);
+  float lit = smoothstep(0.02, 0.28, coverage);
+  // fade where the plane projection stretches too far near the horizon and as
+  // the view tips below the plane
+  float band = smoothstep(0.5, 0.62, point.y) * (1.0 - smoothstep(0.86, 0.97, point.y));
+  float density = clamp(body * body * band, 0.0, 1.0);
+  // sunset pink-greyish: sunlit pinkish-white tops over a soft mauve underside
+  vec3 cloudLit = vec3(1.0, 0.91, 0.89);
+  vec3 cloudDark = vec3(0.64, 0.54, 0.62);
+  vec3 sunsetPink = vec3(1.0, 0.62, 0.55);
+  vec3 cloud = mix(cloudDark, cloudLit, lit);
+
+  cloud = mix(cloud, sunsetPink, warmth * 0.45);
+
+  return mix(sky, cloud, density);
 }
 
 vec3 hashStar(vec2 cell) {
