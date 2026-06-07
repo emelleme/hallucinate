@@ -1,11 +1,12 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
 import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } from './geometry.ts'
+import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideVideoScreenWall, roomBounds, tent,
-  tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
+  outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStand, outsideVideoScreenWall,
+  roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
   tentVideoWall } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
@@ -152,6 +153,7 @@ function addOutside(target: Vertex[]) {
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
   addOpenAirHut(target, floor)
   addOutsideLounges(target, floor)
+  addOutsideTShirtStand(target, floor)
   addOutsideToilets(target, floor)
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
@@ -371,6 +373,72 @@ function addOutsideLounges(target: Vertex[], floor: number) {
   }
 
   addBonfireBase(target, floor)
+}
+
+function addOutsideTShirtStand(target: Vertex[], floor: number) {
+  const stand = outsideTShirtStand
+  const metal: Vec3 = [0.052, 0.055, 0.06]
+  const shirtColors: Vec3[] = [
+    [0.018, 0.018, 0.02],
+    [0.85, 0.04, 0.12],
+    [1, 0.14, 0.62],
+    [0.05, 0.42, 0.92],
+    [0.55, 0.55, 0.58],
+    [0.95, 0.72, 0.05],
+    [0.04, 0.64, 0.32],
+  ]
+  const left = stand.x - stand.width / 2
+  const right = stand.x + stand.width / 2
+  const top = floor + stand.height
+  const postY = floor + (top - floor) / 2
+  const postSize = 0.1
+  const shirtY = top - 0.34
+
+  addBox(target, left, postY, stand.z, postSize, top - floor, postSize, metal, 0)
+  addBox(target, right, postY, stand.z, postSize, top - floor, postSize, metal, 0)
+  addBox(target, stand.x, top, stand.z, stand.width + postSize, postSize, postSize, metal, 0)
+
+  for (let i = 0; i < shirtColors.length; i++) {
+    const x = stand.x - stand.width * 0.36 + stand.width * 0.72 * i / (shirtColors.length - 1)
+    const color = shirtColors[i]!
+
+    addFlatTShirt(target, x, shirtY, stand.z, color)
+  }
+}
+
+function addFlatTShirt(target: Vertex[], x: number, y: number, z: number, color: Vec3) {
+  const top = y + 0.3
+  const bottom = y - 0.3
+  const half = 0.18
+  const sleeveIn = half
+  const sleeveOut = 0.32
+  const shoulderTop = top
+  const shoulderBottom = top - 0.18
+  const cuffTop = top - 0.1
+  const cuffBottom = top - 0.34
+
+  addQuad(target, [x, bottom, z - half], [x, bottom, z + half], [x, top, z + half], [x, top, z - half], color, 0)
+  addQuad(target, [x, shoulderTop, z - sleeveIn], [x, shoulderBottom, z - sleeveIn],
+    [x, cuffBottom, z - sleeveOut], [x, cuffTop, z - sleeveOut], color, 0)
+  addQuad(target, [x, shoulderBottom, z + sleeveIn], [x, shoulderTop, z + sleeveIn],
+    [x, cuffTop, z + sleeveOut], [x, cuffBottom, z + sleeveOut], color, 0)
+  addTShirtLogo(target, x + 0.012, y + 0.08, z, color)
+}
+
+function addTShirtLogo(target: Vertex[], x: number, y: number, z: number, color: Vec3) {
+  const [u0, v0, u1, v1] = tShirtLogoTextureBounds()
+  const halfWidth = 0.14
+  const halfHeight = 0.029
+  const haze = 7
+
+  target.push(
+    pack([x, y - halfHeight, z + halfWidth], color, 0, 0, u0, v1, haze),
+    pack([x, y - halfHeight, z - halfWidth], color, 0, 0, u1, v1, haze),
+    pack([x, y + halfHeight, z - halfWidth], color, 0, 0, u1, v0, haze),
+    pack([x, y - halfHeight, z + halfWidth], color, 0, 0, u0, v1, haze),
+    pack([x, y + halfHeight, z - halfWidth], color, 0, 0, u1, v0, haze),
+    pack([x, y + halfHeight, z + halfWidth], color, 0, 0, u0, v0, haze),
+  )
 }
 
 export function addLowPolyCouch(

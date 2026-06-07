@@ -164,6 +164,8 @@ const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
 const graffitiCellHeight = graffitiTextureSize / graffitiAtlasRows
 const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
+const tShirtLogoAtlasIndex = paintingAtlasIndex + 1
+const tShirtLogoAtlasPadding = 24
 let splatLayerContext: GraffitiPaintContext | undefined
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
@@ -237,6 +239,17 @@ export function paintingTextureBounds(index: number) {
   ] as const
 }
 
+export function tShirtLogoTextureBounds() {
+  const rect = tShirtLogoTextureRect()
+
+  return [
+    rect.x / graffitiTextureSize,
+    rect.y / graffitiTextureSize,
+    (rect.x + rect.width) / graffitiTextureSize,
+    (rect.y + rect.height) / graffitiTextureSize,
+  ] as const
+}
+
 export function paintLoftPaintingTextures(context: GraffitiPaintContext) {
   const column = paintingAtlasIndex % graffitiAtlasColumns
   const row = Math.floor(paintingAtlasIndex / graffitiAtlasColumns)
@@ -260,6 +273,39 @@ export function paintLoftPaintingTextures(context: GraffitiPaintContext) {
     paintAbstractTile(context, x + gap + i * (tileWidth + gap), tileY, tileWidth, tileHeight, palettes[i]!, i)
   }
   context.restore()
+}
+
+export function paintTShirtLogoTexture(context: GraffitiPaintContext, image: CanvasImageSource) {
+  const column = tShirtLogoAtlasIndex % graffitiAtlasColumns
+  const row = Math.floor(tShirtLogoAtlasIndex / graffitiAtlasColumns)
+  const x = column * graffitiCellWidth
+  const y = row * graffitiCellHeight
+  const width = graffitiCellWidth
+  const height = graffitiCellHeight
+  const rect = tShirtLogoTextureRect()
+
+  context.save()
+  context.clearRect(x, y, width, height)
+  context.drawImage(image, rect.x, rect.y, rect.width, rect.height)
+  context.restore()
+}
+
+function tShirtLogoTextureRect() {
+  const column = tShirtLogoAtlasIndex % graffitiAtlasColumns
+  const row = Math.floor(tShirtLogoAtlasIndex / graffitiAtlasColumns)
+  const x = column * graffitiCellWidth
+  const y = row * graffitiCellHeight
+  const width = graffitiCellWidth
+  const height = graffitiCellHeight
+  const drawWidth = width - tShirtLogoAtlasPadding * 2
+  const drawHeight = drawWidth * 20 / 97
+
+  return {
+    x: x + tShirtLogoAtlasPadding,
+    y: y + (height - drawHeight) / 2,
+    width: drawWidth,
+    height: drawHeight,
+  }
 }
 
 export function graffitiRadiusForScreenDistance(distance: number) {

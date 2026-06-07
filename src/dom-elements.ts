@@ -20,6 +20,11 @@ export function getDomElements() {
   const foamButton = document.createElement('button')
   const roomsButton = document.createElement('button')
   const supportLink = document.createElement('a')
+  const merchCards = document.createElement('div')
+  const maleTShirtLink = document.createElement('a')
+  const femaleTShirtLink = document.createElement('a')
+  const maleTShirtImage = document.createElement('img')
+  const femaleTShirtImage = document.createElement('img')
   const intro = document.createElement('div')
   const introEffect = document.createElement('canvas')
   const introPanel = document.createElement('div')
@@ -103,6 +108,23 @@ export function getDomElements() {
   supportLink.rel = 'noopener noreferrer'
   supportLink.textContent = '💊'
 
+  merchCards.id = 'merch-cards'
+  merchCards.dataset.open = 'false'
+  maleTShirtLink.className = 'merch-card'
+  maleTShirtLink.href = 'https://stagas.creator-spring.com/listing/hallucinate-male-t-shirt'
+  maleTShirtLink.target = '_blank'
+  maleTShirtLink.rel = 'noopener noreferrer'
+  maleTShirtLink.setAttribute('aria-label', 'male t-shirt')
+  femaleTShirtLink.className = 'merch-card'
+  femaleTShirtLink.href = 'https://stagas.creator-spring.com/listing/hallucinate-female-t-shirt'
+  femaleTShirtLink.target = '_blank'
+  femaleTShirtLink.rel = 'noopener noreferrer'
+  femaleTShirtLink.setAttribute('aria-label', 'female t-shirt')
+  maleTShirtImage.src = '/male-t-shirt.jpg'
+  maleTShirtImage.alt = 'male t-shirt'
+  femaleTShirtImage.src = '/female-t-shirt.jpg'
+  femaleTShirtImage.alt = 'female t-shirt'
+
   intro.id = 'intro'
   introEffect.id = 'intro-effect'
   introPanel.id = 'intro-panel'
@@ -136,11 +158,14 @@ export function getDomElements() {
   onlineCount.append(onlineSelf, onlineText)
   onlineIndicator.append(chatLog, onlineCount)
   introTrack.append(introBar)
+  maleTShirtLink.append(maleTShirtImage)
+  femaleTShirtLink.append(femaleTShirtImage)
+  merchCards.append(maleTShirtLink, femaleTShirtLink)
   introPanel.append(introTrack, introProgress, introNicknameInput, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
   document.body.prepend(canvas, djVideo, photoWall, chatForm, chatBubble, onlineIndicator, reactionButtons,
-    waveButton, bubbleButton, foamButton, breakdanceButton, photoButton, roomsButton, supportLink, intro)
+    waveButton, bubbleButton, foamButton, breakdanceButton, photoButton, roomsButton, supportLink, merchCards, intro)
 
   return {
     canvas,
@@ -163,6 +188,7 @@ export function getDomElements() {
     photoButton,
     roomsButton,
     supportLink,
+    merchCards,
     intro,
     introEffect,
     introBar,

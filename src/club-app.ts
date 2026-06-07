@@ -20,6 +20,7 @@ import {
   maxGraffitiSplats,
   paintGraffitiSplats,
   paintLoftPaintingTextures,
+  paintTShirtLogoTexture,
   sprayWallPoint,
 } from './graffiti.ts'
 import {
@@ -50,6 +51,7 @@ import {
   outsideFoodTruckTurn,
   outsideHutDrinkWall,
   outsidePalmTree,
+  outsideTShirtStand,
   outsideToilets,
   roomBounds,
   tent,
@@ -157,6 +159,7 @@ const {
   photoButton,
   roomsButton,
   supportLink,
+  merchCards,
   intro,
   introEffect,
   introBar,
@@ -380,6 +383,17 @@ const outsideHutDrinkWallProjection = createDomWallProjection(outsideHutDrinkWal
   pointerEvents: 'auto',
   scale: 112,
 })
+const merchStandDistance = 2.4
+
+function syncMerchCards(outside: boolean) {
+  const x = characterPosition[0] - outsideTShirtStand.x
+  const z = characterPosition[2] - outsideTShirtStand.z
+  const open = introHidden && outside && helpUi.root.dataset.open !== 'true'
+    && x * x + z * z < merchStandDistance * merchStandDistance
+
+  merchCards.dataset.open = String(open)
+}
+
 function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1453,6 +1467,8 @@ const treeShadowMap = createTreeShadowMap(gl)
 const graffitiCanvas = createGraffitiCanvas()
 const graffitiContext = graffitiCanvas.getContext('2d')!
 const graffitiTexture = gl.createTexture()
+const tShirtLogoImage = new Image()
+let tShirtLogoLoaded = false
 const viewProjection = gl.getUniformLocation(program, 'viewProjection')
 const cameraEye = gl.getUniformLocation(program, 'cameraEye')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
@@ -1566,6 +1582,14 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, graffitiTextureSize, graffitiTextureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+
+tShirtLogoImage.onload = () => {
+  tShirtLogoLoaded = true
+  paintTShirtLogo()
+  uploadGraffitiTexture()
+}
+tShirtLogoImage.onerror = () => console.error(new Error('Failed to load t-shirt logo texture'))
+tShirtLogoImage.src = '/hallucinate-logo-t-shirt.png'
 
 setupVertexArray({ array, buffer, data: points, gl, stride, usage: gl.STATIC_DRAW })
 
@@ -3376,6 +3400,8 @@ const draw = (stamp: number) => {
   const projector = createWallProjector(camera, projectorViewport, wallProjector)
   const outside = !inLoft && isOutside(characterPosition)
 
+  syncMerchCards(outside)
+
   if (introHidden) {
     djVideoUi.update(camera, projector)
 
@@ -3634,6 +3660,7 @@ function finishGraffitiTextureRender(id: number) {
 function paintGraffitiTextureReset(splats: GraffitiSplat[]) {
   graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
   paintLoftPaintingTextures(graffitiContext)
+  paintTShirtLogo()
   uploadGraffitiTexture()
   scheduleGraffitiTexturePaint(splats)
 }
@@ -3688,11 +3715,17 @@ function uploadGraffitiTexture() {
 }
 
 function uploadGraffitiBitmap(bitmap: ImageBitmap) {
-  gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
-  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
   graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
   graffitiContext.drawImage(bitmap, 0, 0)
   bitmap.close()
+  paintTShirtLogo()
+  uploadGraffitiTexture()
+}
+
+function paintTShirtLogo() {
+  if (tShirtLogoLoaded) {
+    paintTShirtLogoTexture(graffitiContext, tShirtLogoImage)
+  }
 }
 
 function startCoreLoads() {
