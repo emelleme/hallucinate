@@ -596,7 +596,7 @@ html[data-touch-controls="true"] #online-indicator[data-hidden="true"] {
 #reaction-buttons {
   position: fixed;
   right: var(--action-right);
-  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 5);
+  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 7);
   z-index: 110;
   display: grid;
   gap: var(--action-gap);
@@ -776,6 +776,8 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #reaction-buttons,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #breakdance-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #wave-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #bubble-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #foam-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #photo-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #rooms-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #support-link {
