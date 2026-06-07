@@ -196,15 +196,8 @@ function domWallFacesCamera(camera: Camera, wall: DomWall) {
   const toCameraX = camera.eye[0] - wall.x
   const toCameraY = camera.eye[1] - wall.y
   const toCameraZ = camera.eye[2] - wall.z
-  const toVideoX = wall.x - camera.eye[0]
-  const toVideoY = wall.y - camera.eye[1]
-  const toVideoZ = wall.z - camera.eye[2]
-  const forwardX = camera.center[0] - camera.eye[0]
-  const forwardY = camera.center[1] - camera.eye[1]
-  const forwardZ = camera.center[2] - camera.eye[2]
 
   return wall.normal[0] * toCameraX + wall.normal[1] * toCameraY + wall.normal[2] * toCameraZ > 0
-    && forwardX * toVideoX + forwardY * toVideoY + forwardZ * toVideoZ > 0
 }
 
 function domWallIntersectsView(projector: WallProjector, minDepth: number, ...corners: Vec3[]) {
