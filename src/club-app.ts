@@ -3450,7 +3450,7 @@ function emitPlayerParticles(
     if (stamp >= timers.smokeWisp) {
       timers.smokeWisp = stamp + smokeInterval
       smokeTip[0] = position[0] + forwardX * 0.22
-      smokeTip[1] = position[1] + 1 + lift * 0.5
+      smokeTip[1] = position[1] + 0.9 + lift * 0.45
       smokeTip[2] = position[2] + forwardZ * 0.22
       smokeSystem.emit(smokeTip, smokeForward, 1, false)
     }
@@ -3458,7 +3458,7 @@ function emitPlayerParticles(
     if (exhale > 0 && stamp >= timers.smokeExhale) {
       timers.smokeExhale = stamp + smokeExhaleInterval
       smokeMouth[0] = position[0] + forwardX * 0.18
-      smokeMouth[1] = position[1] + 1.5
+      smokeMouth[1] = position[1] + 1.35
       smokeMouth[2] = position[2] + forwardZ * 0.18
       smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
     }
