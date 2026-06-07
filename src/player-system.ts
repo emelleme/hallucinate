@@ -64,9 +64,12 @@ const npcConfig = {
     destinationJitterChance: 0.45,
   },
 }
-const doorInside: Vec3 = [backDoor.x, characterFloor, roomBounds.front - 0.75]
-const doorOutside: Vec3 = [backDoor.x, characterFloor, roomBounds.front + 0.75]
 const doorLaneRange = backDoor.width * 0.5 - 0.18
+const doorFlowWidth = backDoor.width * 0.5 + 0.75
+const doorFlowInside = roomBounds.front - 1.65
+const doorFlowOutside = roomBounds.front + 1.95
+const doorClearInside = roomBounds.front - 2.05
+const doorClearOutside = roomBounds.front + 2.35
 const destinationSeats = seats()
 const loungeDestinationSeats = destinationSeats.filter(seat => !seat.id.startsWith('stool:'))
 const stoolDestinationSeats = destinationSeats.filter(seat => seat.id.startsWith('stool:'))
@@ -136,6 +139,12 @@ export function updatePlayers(
   occupiedSeats: Set<string>,
 ) {
   for (const player of players) {
+    const flowingDoor = doorFlow(player)
+
+    if (flowingDoor) {
+      player.pauseUntil = undefined
+    }
+
     if (player.seat) {
       if (time < player.sittingUntil!) {
         const seat = seatById(player.seat)
@@ -166,7 +175,7 @@ export function updatePlayers(
       player.travelLateralUntil = undefined
       player.travelLateralDirection = undefined
     }
-    else if (!crossingDoor(player) && updateRandomPause(player, time)) {
+    else if (!flowingDoor && updateRandomPause(player, time)) {
       player.motionBlend += (0 - player.motionBlend) * (1 - Math.exp(-7 * delta))
       player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
       player.position[1] = walkHeight(player.position[0], player.position[1], player.position[2])
@@ -211,7 +220,7 @@ export function updatePlayers(
       }
 
       if (blockedForward(player, lastX, lastZ, directionX, directionZ, delta)) {
-        if (crossingDoor(player)) {
+        if (doorFlow(player)) {
           player.travelLateralUntil = undefined
           player.travelLateralDirection = undefined
           player.doorTarget = undefined
@@ -456,28 +465,33 @@ function turnTowardDestination(player: Player, delta: number) {
 }
 
 function activePlayerTarget(player: Player, time: number) {
-  const outside = isOutside(player.position)
-
-  if (outside === player.destination.outside) {
+  if (!doorFlow(player)) {
     return travelTarget(player, time)
   }
 
-  return doorTarget(player, outside)
+  return doorTarget(player)
 }
 
-function crossingDoor(player: Player) {
-  return player.destination.kind !== 'random' && isOutside(player.position) !== player.destination.outside
+function doorFlow(player: Player) {
+  return player.destination.kind !== 'random'
+    && (isOutside(player.position) !== player.destination.outside || inDoorFlow(player.position))
 }
 
-function doorTarget(player: Player, outside: boolean) {
+function inDoorFlow(position: Vec3) {
+  return Math.abs(position[0] - backDoor.x) < doorFlowWidth
+    && position[2] > doorFlowInside
+    && position[2] < doorFlowOutside
+}
+
+function doorTarget(player: Player) {
   if (player.doorTarget) {
     return player.doorTarget
   }
 
   const lane = seededRange(player.seed, Math.floor(player.destinationUntil! * 5.3), -doorLaneRange, doorLaneRange)
-  const door = outside ? doorInside : doorOutside
+  const z = player.destination.outside ? doorClearOutside : doorClearInside
 
-  player.doorTarget = [backDoor.x + lane, characterFloor, door[2]]
+  player.doorTarget = [backDoor.x + lane, characterFloor, z]
 
   return player.doorTarget
 }
