@@ -66,6 +66,7 @@ const npcConfig = {
 }
 const doorInside: Vec3 = [backDoor.x, characterFloor, roomBounds.front - 0.75]
 const doorOutside: Vec3 = [backDoor.x, characterFloor, roomBounds.front + 0.75]
+const doorLaneRange = backDoor.width * 0.5 - 0.18
 const destinationSeats = seats()
 const loungeDestinationSeats = destinationSeats.filter(seat => !seat.id.startsWith('stool:'))
 const stoolDestinationSeats = destinationSeats.filter(seat => seat.id.startsWith('stool:'))
@@ -330,13 +331,6 @@ function updateDestinationPlayer(
   const destinationDz = player.destination.position[2] - player.position[2]
   const destinationDistanceSq = destinationDx * destinationDx + destinationDz * destinationDz
 
-  if (!atDestinationSide && distanceSq < npcConfig.arrive.waypoint * npcConfig.arrive.waypoint) {
-    player.input[0] = 0
-    player.input[1] = 0
-    player.input[2] = 0
-    return
-  }
-
   const arriveRadius = player.destination.kind === 'lounge' || player.destination.kind === 'stool'
     ? npcConfig.arrive.seat
     : npcConfig.arrive.destination
@@ -461,7 +455,20 @@ function activePlayerTarget(player: Player, time: number) {
     return travelTarget(player, time)
   }
 
-  return outside ? doorInside : doorOutside
+  return doorTarget(player, outside)
+}
+
+function doorTarget(player: Player, outside: boolean) {
+  if (player.doorTarget) {
+    return player.doorTarget
+  }
+
+  const lane = seededRange(player.seed, Math.floor(player.destinationUntil! * 5.3), -doorLaneRange, doorLaneRange)
+  const door = outside ? doorInside : doorOutside
+
+  player.doorTarget = [backDoor.x + lane, characterFloor, door[2]]
+
+  return player.doorTarget
 }
 
 function travelTarget(player: Player, time: number) {
@@ -528,6 +535,7 @@ function sitPlayer(
   player.travelLateralDirection = undefined
   player.travelTarget = undefined
   player.nextTravelTargetAt = undefined
+  player.doorTarget = undefined
   player.leavingSeatUntil = undefined
 }
 
@@ -630,6 +638,7 @@ function choosePlayerDestination(
   player.travelLateralDirection = undefined
   player.travelTarget = undefined
   player.nextTravelTargetAt = time
+  player.doorTarget = undefined
   player.destinationUntil = time + 30
 }
 
