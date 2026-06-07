@@ -3223,11 +3223,11 @@ const draw = (stamp: number) => {
     else {
       bartenderDrinkWallProjection.hide()
     }
-    if (inLoft) {
-      photoWallUi.hide()
+    if (outside) {
+      photoWallUi.update(camera, projector)
     }
     else {
-      photoWallUi.update(camera, projector)
+      photoWallUi.hide()
     }
   }
   else {
