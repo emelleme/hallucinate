@@ -12,11 +12,16 @@ import {
   foodTruckGraffitiTriangle,
   graffitiColors,
   graffitiRadiusForScreenDistance,
+  graffitiTextureSize,
   maxGraffitiSplats,
   paintGraffitiSplats,
   paintLoftPaintingTextures,
   sprayWallPoint,
 } from './graffiti.ts'
+import {
+  canRenderGraffitiTextureInWorker,
+  renderGraffitiTextureInWorker,
+} from './graffiti-loader.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
@@ -940,7 +945,15 @@ function chatMessageNickname(text: string) {
 function mentionsNickname(text: string) {
   const name = nickname.trim()
 
-  return Boolean(name) && text.toLocaleLowerCase().includes(name.toLocaleLowerCase())
+  if (!name) {
+    return false
+  }
+
+  return new RegExp(`(^|\\s)${escapeRegExp(name)}(?=$|\\s|[^\\p{L}\\p{N}_])`, 'iu').test(text)
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function playMentionDing() {
@@ -1533,8 +1546,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-paintLoftPaintingTextures(graffitiContext)
-gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, graffitiTextureSize, graffitiTextureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
 
 setupVertexArray({ array, buffer, data: points, gl, stride, usage: gl.STATIC_DRAW })
 
@@ -1715,6 +1727,12 @@ const graffitiPaintChunk = 1400
 const graffitiAppendQueue: GraffitiSplat[] = []
 let graffitiAppendIndex = 0
 let graffitiPaintFrame = 0
+let graffitiSyncing = false
+let graffitiWorkerAvailable = canRenderGraffitiTextureInWorker()
+let graffitiTextureRenderId = 0
+let graffitiTextureRenderPending = false
+
+renderGraffitiTexture([])
 
 function connectMultiplayer(spaceSlug?: string) {
   if (hasMultiplayer) {
@@ -1826,13 +1844,17 @@ function connectMultiplayer(spaceSlug?: string) {
         target.velocity[2] = ball.velocity[2]
       }
     },
-    onGraffiti: splats => {
+    onGraffiti: packet => {
+      if (packet.reset) {
+        beginGraffitiSync()
+      }
+
       const appended: GraffitiSplat[] = []
       const optimisticSplats = new Map(graffitiSplats
         .map((splat, index) => [splat.id === 0 ? graffitiKey(splat) : '', index] as const)
         .filter(([key]) => key !== ''))
 
-      for (const splat of splats) {
+      for (const splat of packet.splats) {
         if (graffitiIds.has(splat.id)) {
           continue
         }
@@ -1851,6 +1873,15 @@ function connectMultiplayer(spaceSlug?: string) {
       }
 
       trimGraffitiSplats()
+
+      if (graffitiSyncing) {
+        if (packet.complete) {
+          graffitiSyncing = false
+          renderGraffitiTexture(graffitiSplats)
+        }
+
+        return
+      }
 
       if (appended.length > 0) {
         scheduleGraffitiTexturePaint(appended)
@@ -2565,6 +2596,16 @@ function sprayAt(clientX: number, clientY: number) {
   multiplayer.sendGraffiti([splat])
 
   return true
+}
+
+function beginGraffitiSync() {
+  const optimistic = graffitiSplats.filter(splat => splat.id === 0)
+
+  graffitiSplats.length = 0
+  graffitiSplats.push(...optimistic)
+  graffitiIds.clear()
+  graffitiSyncing = true
+  clearGraffitiPaintQueue()
 }
 
 function addGraffitiId(splat: GraffitiSplat) {
@@ -3292,7 +3333,74 @@ function updateBeachBallBuffer() {
 
 function scheduleGraffitiTexturePaint(splats: GraffitiSplat[]) {
   graffitiAppendQueue.push(...splats)
+  if (graffitiTextureRenderPending) {
+    return
+  }
+
   scheduleGraffitiTextureFrame()
+}
+
+function renderGraffitiTexture(splats: GraffitiSplat[]) {
+  const id = ++graffitiTextureRenderId
+
+  graffitiTextureRenderPending = true
+
+  if (!graffitiWorkerAvailable) {
+    paintGraffitiTextureReset(splats)
+    finishGraffitiTextureRender(id)
+    return
+  }
+
+  renderGraffitiTextureInWorker(splats)
+    .then(bitmap => {
+      if (id !== graffitiTextureRenderId) {
+        bitmap.close()
+        return
+      }
+
+      uploadGraffitiBitmap(bitmap)
+    })
+    .catch((error: unknown) => {
+      if (id !== graffitiTextureRenderId) {
+        return
+      }
+
+      console.error(error)
+      graffitiWorkerAvailable = false
+      paintGraffitiTextureReset(splats)
+    })
+    .finally(() => {
+      finishGraffitiTextureRender(id)
+    })
+}
+
+function finishGraffitiTextureRender(id: number) {
+  if (id !== graffitiTextureRenderId) {
+    return
+  }
+
+  graffitiTextureRenderPending = false
+
+  if (graffitiAppendQueue.length > 0) {
+    scheduleGraffitiTextureFrame()
+  }
+}
+
+function paintGraffitiTextureReset(splats: GraffitiSplat[]) {
+  graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
+  paintLoftPaintingTextures(graffitiContext)
+  uploadGraffitiTexture()
+  scheduleGraffitiTexturePaint(splats)
+}
+
+function clearGraffitiPaintQueue() {
+  if (graffitiPaintFrame !== 0) {
+    cancelAnimationFrame(graffitiPaintFrame)
+  }
+
+  graffitiPaintFrame = 0
+  graffitiAppendQueue.length = 0
+  graffitiAppendIndex = 0
 }
 
 function scheduleGraffitiTextureFrame() {
@@ -3332,6 +3440,14 @@ function paintGraffitiTextureAppendFrame() {
 function uploadGraffitiTexture() {
   gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
+}
+
+function uploadGraffitiBitmap(bitmap: ImageBitmap) {
+  gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
+  graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
+  graffitiContext.drawImage(bitmap, 0, 0)
+  bitmap.close()
 }
 
 function startCoreLoads() {

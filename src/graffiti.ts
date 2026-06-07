@@ -83,6 +83,8 @@ type ConeGraffitiWall = {
 }
 type GraffitiWall = PlaneGraffitiWall | OrientedPlaneGraffitiWall | CylinderGraffitiWall | ConeGraffitiWall
 type ScreenRay = ReturnType<typeof screenRay>
+type GraffitiPaintCanvas = HTMLCanvasElement | OffscreenCanvas
+export type GraffitiPaintContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 const wallYMin = characterFloor + 0.03
 const wallYMax = 5
@@ -162,7 +164,7 @@ const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
 const graffitiCellHeight = graffitiTextureSize / graffitiAtlasRows
 const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
-let splatLayerContext: CanvasRenderingContext2D | undefined
+let splatLayerContext: GraffitiPaintContext | undefined
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
   const ray = screenRay(clientX, clientY, projector)
@@ -217,6 +219,10 @@ export function createGraffitiCanvas() {
   return canvas
 }
 
+export function createGraffitiOffscreenCanvas() {
+  return new OffscreenCanvas(graffitiTextureSize, graffitiTextureSize)
+}
+
 export function paintingTextureBounds(index: number) {
   const [u0, v0, u1, v1] = wallTextureBounds(paintingAtlasIndex)
   const gap = paintingAtlasPadding / graffitiTextureSize
@@ -231,7 +237,7 @@ export function paintingTextureBounds(index: number) {
   ] as const
 }
 
-export function paintLoftPaintingTextures(context: CanvasRenderingContext2D) {
+export function paintLoftPaintingTextures(context: GraffitiPaintContext) {
   const column = paintingAtlasIndex % graffitiAtlasColumns
   const row = Math.floor(paintingAtlasIndex / graffitiAtlasColumns)
   const x = column * graffitiCellWidth
@@ -263,7 +269,7 @@ export function graffitiRadiusForScreenDistance(distance: number) {
   return Math.max(0, Math.min(255, Math.round((scale - splatBaseScale) / splatRadiusScale * 255)))
 }
 
-export function paintGraffitiSplats(context: CanvasRenderingContext2D, splats: GraffitiSplat[]) {
+export function paintGraffitiSplats(context: GraffitiPaintContext, splats: GraffitiSplat[]) {
   for (const splat of splats) {
     paintGraffitiSplat(context, splat)
   }
@@ -284,7 +290,7 @@ export function foodTruckGraffitiTriangle(a: Vec3, b: Vec3, c: Vec3) {
 }
 
 function paintAbstractTile(
-  context: CanvasRenderingContext2D,
+  context: GraffitiPaintContext,
   x: number,
   y: number,
   width: number,
@@ -786,7 +792,7 @@ function addGraffitiQuad(
   )
 }
 
-function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSplat) {
+function paintGraffitiSplat(context: GraffitiPaintContext, splat: GraffitiSplat) {
   const color = graffitiColors[splat.colorIndex % graffitiColors.length]!
   const wall = wallAt(splat.wall)
   const [x, y] = splatCanvasPoint(splat)
@@ -839,18 +845,50 @@ function paintGraffitiSplat(context: CanvasRenderingContext2D, splat: GraffitiSp
   context.drawImage(layer.canvas, left, top, right - left, bottom - top, left, top, right - left, bottom - top)
 }
 
-function splatLayer(context: CanvasRenderingContext2D) {
+function splatLayer(context: GraffitiPaintContext): GraffitiPaintContext {
   if (!splatLayerContext || splatLayerContext.canvas.width !== context.canvas.width
     || splatLayerContext.canvas.height !== context.canvas.height)
   {
-    const canvas = document.createElement('canvas')
+    const canvas = createLayerCanvas(context.canvas)
 
     canvas.width = context.canvas.width
     canvas.height = context.canvas.height
-    splatLayerContext = canvas.getContext('2d')!
+    splatLayerContext = createLayerContext(canvas)
   }
 
   return splatLayerContext
+}
+
+function createLayerCanvas(canvas: GraffitiPaintCanvas): GraffitiPaintCanvas {
+  if (isOffscreenCanvas(canvas)) {
+    return new OffscreenCanvas(canvas.width, canvas.height)
+  }
+
+  return document.createElement('canvas')
+}
+
+function createLayerContext(canvas: GraffitiPaintCanvas): GraffitiPaintContext {
+  if (isOffscreenCanvas(canvas)) {
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error('Failed to initialize graffiti splat layer')
+    }
+
+    return context
+  }
+
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    throw new Error('Failed to initialize graffiti splat layer')
+  }
+
+  return context
+}
+
+function isOffscreenCanvas(canvas: GraffitiPaintCanvas): canvas is OffscreenCanvas {
+  return typeof OffscreenCanvas === 'function' && canvas instanceof OffscreenCanvas
 }
 
 function splatCanvasPoint(splat: GraffitiSplat) {

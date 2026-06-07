@@ -25,13 +25,15 @@ export const roomCount = 3
 export const messageMaxLength = 120
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 38
+export const protocolVersion = 39
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const angleScale = 256 / (Math.PI * 2)
 const motionSize = 16
 const spawnSize = motionSize + 2
+const graffitiReset = 1
+const graffitiComplete = 2
 
 export type MotionPacket = {
   id?: number
@@ -117,6 +119,8 @@ export type BeachBallPacket = {
 
 export type GraffitiPacket = {
   splats: GraffitiSplat[]
+  reset?: boolean
+  complete?: boolean
 }
 
 export type AdminPacket = {
@@ -478,12 +482,13 @@ export function decodeBeachBalls(view: DataView): BeachBallPacket {
 }
 
 export function encodeGraffiti(packet: GraffitiPacket) {
-  const data = new ArrayBuffer(3 + packet.splats.length * 13)
+  const data = new ArrayBuffer(4 + packet.splats.length * 13)
   const view = new DataView(data)
-  let offset = 3
+  let offset = 4
 
   view.setUint8(0, GRAFFITI)
   view.setUint16(1, packet.splats.length)
+  view.setUint8(3, (packet.reset ? graffitiReset : 0) | (packet.complete ? graffitiComplete : 0))
 
   for (const splat of packet.splats) {
     view.setUint32(offset, splat.id)
@@ -500,11 +505,12 @@ export function encodeGraffiti(packet: GraffitiPacket) {
 }
 
 export function decodeGraffiti(view: DataView): GraffitiPacket {
-  expectAtLeastSize(view, 3)
+  expectAtLeastSize(view, 4)
   const count = view.getUint16(1)
-  expectSize(view, 3 + count * 13)
+  const flags = view.getUint8(3)
+  expectSize(view, 4 + count * 13)
   const splats: GraffitiSplat[] = []
-  let offset = 3
+  let offset = 4
 
   for (let i = 0; i < count; i++) {
     splats.push({
@@ -519,7 +525,11 @@ export function decodeGraffiti(view: DataView): GraffitiPacket {
     offset += 13
   }
 
-  return { splats }
+  return {
+    splats,
+    reset: (flags & graffitiReset) !== 0,
+    complete: (flags & graffitiComplete) !== 0,
+  }
 }
 
 export function encodeSpawn(packet: SpawnPacket) {

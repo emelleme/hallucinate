@@ -45,6 +45,7 @@ import {
   S_SPAWN,
   sceneToProtocol,
   type OnlinePacket,
+  type GraffitiPacket,
   type SpawnPacket,
   truncateMessage,
   VIDEO_PLAYLIST_REQUEST,
@@ -88,7 +89,7 @@ export function createMultiplayer(options: {
   onVideoPlaylistRequest: (zones: VideoPlaylistRequestPacket['zones']) => void
   onVideoSync: (entries: VideoSyncEntry[]) => void
   onBeachBalls: (balls: BeachBall[]) => void
-  onGraffiti: (splats: GraffitiSplat[]) => void
+  onGraffiti: (packet: GraffitiPacket) => void
   videoProgress: () => VideoProgressEntry | undefined
 }) {
   const players = new Map<number, Player>()
@@ -244,7 +245,7 @@ export function createMultiplayer(options: {
     }
 
     if (type === GRAFFITI) {
-      options.onGraffiti(decodeGraffiti(view).splats)
+      options.onGraffiti(decodeGraffiti(view))
       return
     }
 

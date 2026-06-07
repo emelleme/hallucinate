@@ -1597,7 +1597,7 @@ function sendGraffiti(client: Client) {
     return
   }
 
-  sendGraffitiSplats(client.socket, graffitiSplats)
+  sendGraffitiSplats(client.socket, graffitiSplats, true)
 }
 
 function sendVideoSync(client: Client) {
@@ -2517,9 +2517,23 @@ function broadcastGraffiti(splats: GraffitiSplat[]) {
   }
 }
 
-function sendGraffitiSplats(socket: Bun.ServerWebSocket<SocketData>, splats: GraffitiSplat[]) {
+function sendGraffitiSplats(socket: Bun.ServerWebSocket<SocketData>, splats: GraffitiSplat[], sync = false) {
+  if (splats.length === 0) {
+    if (sync) {
+      socket.send(encodeGraffiti({ splats, reset: true, complete: true }))
+    }
+
+    return
+  }
+
   for (let i = 0; i < splats.length; i += graffitiPacketSplats) {
-    socket.send(encodeGraffiti({ splats: splats.slice(i, i + graffitiPacketSplats) }))
+    const end = Math.min(i + graffitiPacketSplats, splats.length)
+
+    socket.send(encodeGraffiti({
+      splats: splats.slice(i, end),
+      reset: sync && i === 0,
+      complete: sync && end >= splats.length,
+    }))
   }
 }
 
