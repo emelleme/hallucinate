@@ -13,13 +13,14 @@ export type Bubble = {
 }
 
 const emitSpeed = 2.4
-const spread = 0.9
-const buoyancy = 1.1
-const wobbleStrength = 0.6
+const spread = 1.5
+const verticalSpeed = 0.22
+const buoyancy = 0.16
+const wobbleStrength = 0.95
 const minRadius = 0.05
 const maxRadius = 0.12
-const minLife = 2
-const maxLife = 3.2
+const minLife = 4
+const maxLife = 6
 const bubbleGlow = 1
 const unitSphere = createUnitSphere(6, 10)
 const color: Vec3 = [0, 0, 0]
@@ -50,7 +51,7 @@ export function createBubbleSystem() {
       bubble.position[1] = origin[1] + (Math.random() - 0.5) * 0.18
       bubble.position[2] = origin[2] + (Math.random() - 0.5) * 0.18
       bubble.velocity[0] = forward[0] * emitSpeed + (Math.random() - 0.5) * spread
-      bubble.velocity[1] = forward[1] * emitSpeed + Math.random() * 0.4
+      bubble.velocity[1] = forward[1] * verticalSpeed + (Math.random() - 0.7) * 0.26
       bubble.velocity[2] = forward[2] * emitSpeed + (Math.random() - 0.5) * spread
       bubble.radius = minRadius + Math.random() * (maxRadius - minRadius)
       bubble.life = minLife + Math.random() * (maxLife - minLife)
