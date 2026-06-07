@@ -7,6 +7,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': 'http://localhost:3001',
+      '/analytics': 'http://localhost:3001',
       '/photos': 'http://localhost:3001',
     },
     watch: {

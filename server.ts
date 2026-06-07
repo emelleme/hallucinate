@@ -3,6 +3,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { analyticsHtml } from './src/analytics-page.ts'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
@@ -138,14 +139,31 @@ type SocketData = {
 
 const port = Number(process.env.PORT ?? 3001)
 const dist = join(import.meta.dir, 'dist')
+const uplotDir = join(import.meta.dir, 'node_modules', 'uplot', 'dist')
 const clients = new Map<Bun.ServerWebSocket<SocketData>, Client>()
+const minuteMs = 60_000
+const hourMs = 60 * minuteMs
+const dayMs = 24 * hourMs
 const heartbeatInterval = 10_000
 const clientTimeout = 30_000
-const onlineActivityTimeout = 5 * 60_000
+const onlineActivityTimeout = 5 * minuteMs
+const onlineAnalyticsSampleInterval = minuteMs
+const onlineAnalyticsPeriod = 10 * minuteMs
+const onlineAnalyticsRanges = [
+  { key: 'day', label: 'Day', ms: dayMs },
+  { key: '3days', label: '3 days', ms: 3 * dayMs },
+  { key: 'week', label: 'Week', ms: 7 * dayMs },
+  { key: 'month', label: 'Month', ms: 30 * dayMs },
+  { key: 'year', label: 'Year', ms: 365 * dayMs },
+]
+const analyticsAssets = new Map([
+  ['/analytics/uPlot.iife.min.js', join(uplotDir, 'uPlot.iife.min.js')],
+  ['/analytics/uPlot.min.css', join(uplotDir, 'uPlot.min.css')],
+])
 const chatHistoryMax = 100
 const graffitiPacketSplats = 4000
 const defaultLoftVideoId = '0oB97YhEukw'
-const loftRentMs = 30 * 24 * 60 * 60 * 1000
+const loftRentMs = 30 * dayMs
 const loftSlugPattern = /^[A-Za-z0-9_-]+$/
 const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
@@ -160,7 +178,7 @@ const photoExtensions = [photoExtension, '.jpg'] as const
 const photoContentType = 'image/webp'
 const photoPageLimit = 30
 const photoRateLimit = 5
-const photoRateWindowMs = 60 * 60 * 1000
+const photoRateWindowMs = hourMs
 const photoWebpMigrationKey = 'photos:webp-migration:1'
 const photoWebpMigrationLog = '[photos:webp-migration]'
 const photoWebpQuality = 94
@@ -228,6 +246,18 @@ const server = Bun.serve<SocketData>({
 
     if (bannedIp(ip)) {
       return new Response('Forbidden', { status: 403 })
+    }
+
+    if (url.pathname === '/analytics' || url.pathname === '/analytics/') {
+      return handleAnalyticsPage(request)
+    }
+
+    if (url.pathname.startsWith('/analytics/')) {
+      return serveAnalyticsAsset(request, url)
+    }
+
+    if (url.pathname === '/api/analytics/online') {
+      return handleAnalyticsApi(request, url)
     }
 
     if (url.pathname === '/api/photos' || url.pathname.startsWith('/api/photos/')) {
@@ -471,7 +501,8 @@ console.log(`[server]: ws://localhost:${server.port}`)
 console.log(`[server]: http://localhost:${server.port}`)
 
 setInterval(syncRooms, heartbeatInterval)
-setInterval(logStats, 60_000)
+setInterval(logStats, minuteMs)
+setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval)
 
 function clientIp(request: Request) {
   return request.headers.get('cf-connecting-ip')
@@ -538,6 +569,55 @@ async function serveStatic(request: Request) {
   }
 
   return await fileResponse(join(dist, 'index.html'), request) ?? new Response('Not Found', { status: 404 })
+}
+
+function handleAnalyticsPage(request: Request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    })
+  }
+
+  return htmlResponse(analyticsHtml(onlineAnalyticsRanges), request.method)
+}
+
+async function serveAnalyticsAsset(request: Request, url: URL) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    })
+  }
+
+  const path = analyticsAssets.get(url.pathname)
+
+  if (!path) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  return await fileResponse(path, request) ?? new Response('Not Found', { status: 404 })
+}
+
+function handleAnalyticsApi(request: Request, url: URL) {
+  if (request.method !== 'GET') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET' },
+    })
+  }
+
+  return jsonResponse(onlineAnalyticsPayload(onlineAnalyticsRange(url)))
+}
+
+function htmlResponse(html: string, method: string) {
+  const headers = new Headers({
+    'cache-control': 'no-store',
+    'content-type': 'text/html; charset=utf-8',
+    'x-content-type-options': 'nosniff',
+  })
+
+  return new Response(method === 'HEAD' ? null : html, { headers })
 }
 
 async function fileResponse(path: string, request: Request) {
@@ -1705,6 +1785,12 @@ function setupDb() {
       created_at INTEGER NOT NULL,
       ip TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS online_analytics (
+      time INTEGER PRIMARY KEY,
+      online_sum INTEGER NOT NULL,
+      online_samples INTEGER NOT NULL,
+      online_average REAL NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS photos_created_at_index ON photos (created_at DESC, timestamp DESC);
     CREATE INDEX IF NOT EXISTS photos_ip_created_at_index ON photos (ip, created_at);
   `)
@@ -2599,8 +2685,8 @@ function broadcastOnline(space?: SpaceState) {
   }
 }
 
-function onlineCount(space = mainSpace) {
-  return onlineStats(space).count
+function totalOnlineCount() {
+  return clients.size
 }
 
 function onlineStats(space = mainSpace) {
@@ -2616,8 +2702,60 @@ function onlineStats(space = mainSpace) {
   }
 }
 
+function recordOnlineAnalytics() {
+  const online = totalOnlineCount()
+  const time = onlineAnalyticsTime(Date.now())
+
+  db.query(`
+    INSERT INTO online_analytics (time, online_sum, online_samples, online_average)
+    VALUES ($time, $online, 1, $online)
+    ON CONFLICT(time) DO UPDATE SET
+      online_sum = online_sum + excluded.online_sum,
+      online_samples = online_samples + excluded.online_samples,
+      online_average = CAST(online_sum + excluded.online_sum AS REAL)
+        / (online_samples + excluded.online_samples)
+  `).run({ time, online })
+}
+
+function onlineAnalyticsTime(time: number) {
+  return Math.floor(time / onlineAnalyticsPeriod) * onlineAnalyticsPeriod
+}
+
+function onlineAnalyticsRange(url: URL) {
+  const key = url.searchParams.get('range') ?? onlineAnalyticsRanges[0]!.key
+  const range = onlineAnalyticsRanges.find(next => next.key === key)
+
+  if (!range) {
+    throw new Error(`Invalid analytics range ${key}`)
+  }
+
+  return range
+}
+
+function onlineAnalyticsPayload(range: typeof onlineAnalyticsRanges[number]) {
+  const now = Date.now()
+  const rows = db.query<{
+    online: number
+    time: number
+  }, { since: number }>(`
+    SELECT time, online_average AS online
+    FROM online_analytics
+    WHERE time >= $since
+    ORDER BY time
+  `).all({ since: onlineAnalyticsTime(now - range.ms) })
+
+  return {
+    bucketMs: onlineAnalyticsPeriod,
+    currentOnline: totalOnlineCount(),
+    generatedAt: now,
+    online: rows.map(row => row.online),
+    range: range.key,
+    times: rows.map(row => Math.floor(row.time / 1000)),
+  }
+}
+
 function logStats() {
-  console.log(`[stats] online: ${onlineCount(mainSpace)}`)
+  console.log(`[stats] online: ${totalOnlineCount()}`)
 }
 
 function broadcastSpace(space: SpaceState, data: ArrayBuffer) {

@@ -42,6 +42,10 @@ self.addEventListener('fetch', event => {
     return
   }
 
+  if (url.pathname === '/analytics' || url.pathname.startsWith('/analytics/')) {
+    return
+  }
+
   if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.pathname === '/photos') {
     return
   }
