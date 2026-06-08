@@ -254,6 +254,34 @@ export function createTreeShadowMap(context: WebGL2RenderingContext) {
   return texture
 }
 
+export function createImageTexture(context: WebGL2RenderingContext, path: string) {
+  const texture = context.createTexture()
+  const data = new Uint8Array([255, 255, 255, 255])
+  const image = new Image()
+
+  if (!texture) {
+    throw new Error(`Failed to create image texture ${path}`)
+  }
+
+  context.bindTexture(context.TEXTURE_2D, texture)
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR)
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR)
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE)
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE)
+  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, data)
+
+  image.onload = () => {
+    context.bindTexture(context.TEXTURE_2D, texture)
+    context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, true)
+    context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, context.RGBA, context.UNSIGNED_BYTE, image)
+    context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, false)
+  }
+  image.onerror = () => console.error(new Error(`Failed to load image texture ${path}`))
+  image.src = path
+
+  return texture
+}
+
 export function resizeTarget(context: WebGL2RenderingContext, target: Target, width: number, height: number) {
   if (target.width === width && target.height === height) {
     return

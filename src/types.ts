@@ -52,6 +52,8 @@ export type AssimpMesh = {
     weights: [number, number][]
   }[]
   name: string
+  numuvcomponents?: number[]
+  texturecoords?: number[][]
   vertices: number[]
   faces: number[][]
 }

@@ -4,6 +4,10 @@ import { clamp, smoothstep } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import type { CharacterLight, CircleBounds, Vec3, Vertex } from './types.ts'
 
+export type SceneLightBounds = CircleBounds & {
+  nightUplight?: number
+}
+
 export function createSceneLighting(options: {
   getTree: () => CircleBounds
   strobeReflection: (point: Vec3, normal: Vec3) => number
@@ -14,7 +18,7 @@ export function createSceneLighting(options: {
     b: Vec3,
     c: Vec3,
     color: Vec3,
-    tree = options.getTree(),
+    tree: SceneLightBounds = options.getTree(),
   ) {
     const centerX = (a[0] + b[0] + c[0]) / 3
     const centerY = (a[1] + b[1] + c[1]) / 3
@@ -68,7 +72,7 @@ export function createSceneLighting(options: {
     const light = 0.34 + diffuse * 0.86 + lift * 0.18
     const warmth: Vec3 = [1.1, 1.03, 0.86]
     const baseLight = night ? light * 0.22 + lift * 0.04 : light
-    const blueLight = night ? uplight * 3.4 : 0
+    const blueLight = night ? uplight * (tree.nightUplight ?? 3.4) : 0
     const shade: Vec3 = [
       clamp(color[0] * baseLight * warmth[0] + blueLight * electricNavy[0], 0, 1),
       clamp(color[1] * baseLight * warmth[1] + blueLight * electricNavy[1], 0, 1),

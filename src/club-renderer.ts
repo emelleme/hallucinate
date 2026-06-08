@@ -22,6 +22,7 @@ type RoomUniforms = {
   cameraEye: WebGLUniformLocation
   doorCoverVisible: WebGLUniformLocation
   graffitiMap: WebGLUniformLocation
+  objectTextureMap: WebGLUniformLocation
   renderZone: WebGLUniformLocation
   treeShadowSampler: WebGLUniformLocation
   viewProjection: WebGLUniformLocation
@@ -85,6 +86,7 @@ export function renderClubFrame(options: {
   characterPosition: Vec3
   gl: WebGL2RenderingContext
   height: number
+  objectTexture: WebGLTexture
   feedback: {
     amount: number
     current: Target
@@ -158,12 +160,7 @@ export function renderClubFrame(options: {
   gl.uniform1i(options.roomUniforms.renderZone, options.renderZone)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
-  gl.activeTexture(gl.TEXTURE4)
-  gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
-  gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
-  gl.activeTexture(gl.TEXTURE5)
-  gl.bindTexture(gl.TEXTURE_2D, options.graffitiTexture)
-  gl.uniform1i(options.roomUniforms.graffitiMap, 5)
+  bindRoomTextures(options)
   gl.bindVertexArray(options.arrays.room)
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
@@ -194,8 +191,10 @@ export function renderClubFrame(options: {
     cameraMatrix: mainCameraMatrix,
     count: options.points.length / options.vertexSize,
     doorCoverVisible: options.doorCoverVisible,
+    graffitiTexture: options.graffitiTexture,
     gl,
     height: options.height,
+    objectTexture: options.objectTexture,
     renderZone: options.renderZone,
     program: options.program,
     treeShadowMap: options.treeShadowMap,
@@ -235,12 +234,7 @@ export function renderClubFrame(options: {
   gl.uniform1i(options.roomUniforms.renderZone, options.renderZone)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
-  gl.activeTexture(gl.TEXTURE4)
-  gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
-  gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
-  gl.activeTexture(gl.TEXTURE5)
-  gl.bindTexture(gl.TEXTURE_2D, options.graffitiTexture)
-  gl.uniform1i(options.roomUniforms.graffitiMap, 5)
+  bindRoomTextures(options)
   gl.colorMask(false, false, false, false)
   gl.bindVertexArray(options.arrays.room)
   gl.enable(gl.POLYGON_OFFSET_FILL)
@@ -325,6 +319,20 @@ export function renderClubFrame(options: {
 
   options.feedback.current = options.feedback.next
   options.feedback.next = current
+}
+
+function bindRoomTextures(options: Parameters<typeof renderClubFrame>[0]) {
+  const gl = options.gl
+
+  gl.activeTexture(gl.TEXTURE4)
+  gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
+  gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
+  gl.activeTexture(gl.TEXTURE5)
+  gl.bindTexture(gl.TEXTURE_2D, options.graffitiTexture)
+  gl.uniform1i(options.roomUniforms.graffitiMap, 5)
+  gl.activeTexture(gl.TEXTURE6)
+  gl.bindTexture(gl.TEXTURE_2D, options.objectTexture)
+  gl.uniform1i(options.roomUniforms.objectTextureMap, 6)
 }
 
 function drawCharacterVertexGeometry(options: Parameters<typeof renderClubFrame>[0]) {

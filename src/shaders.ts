@@ -1,5 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { outsideMotif } from './constants.ts'
+import { imageTextureHaze } from './geometry.ts'
 import { tent } from './scene-data.ts'
 
 const tentX = glslFloat(tent.x)
@@ -13,6 +14,7 @@ const tentWallTopGlsl = glslFloat(tentWallTop)
 const tentRoofHeightGlsl = glslFloat(tentTop - tentWallTop)
 const tentRoofShellBottom = glslFloat(tentWallTop - 0.15)
 const tentRoofShellTop = glslFloat(tentTop + 0.15)
+const imageTextureThreshold = glslFloat(imageTextureHaze - 0.5)
 
 function glslFloat(value: number) {
   return value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '.0')
@@ -190,6 +192,7 @@ uniform int bloomPass;
 uniform int doorCoverVisible;
 uniform sampler2D treeShadowMap;
 uniform sampler2D graffitiMap;
+uniform sampler2D objectTextureMap;
 
 in vec3 shade;
 in float light;
@@ -339,6 +342,13 @@ void main() {
     }
 
     pixel = vec4(shade * light * 2.2 * strobe * trailAlpha, trailAlpha);
+    return;
+  }
+
+  if (hazeAmount > ${imageTextureThreshold}) {
+    vec3 image = texture(objectTextureMap, patternUv).rgb;
+
+    pixel = vec4(image * shade + shade * light * 2.2 * strobe, trailAlpha);
     return;
   }
 

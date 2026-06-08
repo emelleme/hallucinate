@@ -1,5 +1,7 @@
 import type { Vec3, Vertex } from './types.ts'
 
+export const imageTextureHaze = 8
+
 export function addBox(
   target: Vertex[],
   x: number,

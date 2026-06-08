@@ -1,13 +1,18 @@
 import { loadAssimpScene, loadAssimpScenes } from './assimp-loader.ts'
 import { triangleAreaSquared } from './character-geometry.ts'
+import { imageTextureHaze } from './geometry.ts'
 import { add, compose, identity, mix, multiply, nodeTransform, slerp, transformOrigin } from './math.ts'
+import type { SceneLightBounds } from './scene-lighting.ts'
 import type { AssimpChannel, AssimpMesh, AssimpNode, AssimpScene, CircleBounds, Mat4, Quat, Vec3,
   Vertex } from './types.ts'
+
+type TextureUv = [number, number]
 
 type StaticMesh = {
   color: Vec3
   faces: number[][]
   points: Vec3[]
+  uvs?: TextureUv[]
 }
 
 type MeshInstance = {
@@ -20,12 +25,13 @@ type StaticObjectOptions = {
   animationTime?: number
   color: Vec3 | ((meshIndex: number) => Vec3)
   height: number
-  lightBounds: CircleBounds
+  lightBounds: SceneLightBounds
   meshIndex?: number
   nodeTransforms?: boolean
   path: string
   position: Vec3
   sourceUp: 'y' | 'z'
+  texture?: boolean
   trianglePattern?: (a: Vec3, b: Vec3, c: Vec3) => [number, number][] | undefined
   turn: number
 }
@@ -33,7 +39,7 @@ type StaticObjectOptions = {
 export async function loadStaticFbxObject(
   target: Vertex[],
   options: StaticObjectOptions,
-  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: SceneLightBounds) => void,
 ) {
   const [scene, pose] = options.animationPath
     ? await loadAssimpScenes([
@@ -48,7 +54,7 @@ export async function loadStaticFbxObject(
 export async function loadStaticFbxObjectWithPose(
   target: Vertex[],
   options: StaticObjectOptions & { animationPath: string },
-  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: SceneLightBounds) => void,
 ) {
   await loadStaticFbxObject(target, options, addSunLitTriangle)
 }
@@ -57,7 +63,7 @@ export async function loadStaticFbxObjects(
   target: Vertex[],
   path: string,
   options: StaticObjectOptions[],
-  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: SceneLightBounds) => void,
 ) {
   const scene = await loadAssimpScene(path, path.slice(1))
 
@@ -70,7 +76,7 @@ function addStaticFbxObject(
   target: Vertex[],
   scene: AssimpScene,
   options: StaticObjectOptions,
-  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+  addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: SceneLightBounds) => void,
   pose?: AssimpScene,
 ) {
   const meshes = createStaticMeshes(scene, options, pose)
@@ -83,15 +89,18 @@ function addStaticFbxObject(
 
       if (triangleAreaSquared(a, b, c) > 0.00000001) {
         const index = target.length
+        const pattern = mesh.uvs
+          ? [mesh.uvs[face[0]!]!, mesh.uvs[face[1]!]!, mesh.uvs[face[2]!]!]
+          : options.trianglePattern?.(a, b, c)
 
         addSunLitTriangle(target, a, b, c, mesh.color, options.lightBounds)
-        addTrianglePattern(target, index, options.trianglePattern?.(a, b, c))
+        addTrianglePattern(target, index, pattern, mesh.uvs ? imageTextureHaze : 7)
       }
     }
   }
 }
 
-function addTrianglePattern(target: Vertex[], index: number, pattern: [number, number][] | undefined) {
+function addTrianglePattern(target: Vertex[], index: number, pattern: [number, number][] | undefined, haze: number) {
   if (!pattern) {
     return
   }
@@ -102,7 +111,7 @@ function addTrianglePattern(target: Vertex[], index: number, pattern: [number, n
 
     vertex[8] = uv[0]
     vertex[9] = uv[1]
-    vertex[10] = 7
+    vertex[10] = haze
   }
 }
 
@@ -122,6 +131,7 @@ function createStaticMeshes(scene: AssimpScene, options: StaticObjectOptions, po
       points,
       faces: mesh.faces.filter(face => face.length === 3),
       color: typeof options.color === 'function' ? options.color(instance.index) : options.color,
+      uvs: options.texture ? meshUvs(mesh, options.path, instance.index) : undefined,
     }
   })
 
@@ -177,6 +187,23 @@ function vertexPoint(mesh: AssimpMesh, index: number): Vec3 {
   const i = index * 3
 
   return [mesh.vertices[i]!, mesh.vertices[i + 1]!, mesh.vertices[i + 2]!]
+}
+
+function meshUvs(mesh: AssimpMesh, path: string, meshIndex: number): TextureUv[] {
+  const coordinates = mesh.texturecoords?.[0]
+  const components = mesh.numuvcomponents?.[0] ?? 2
+
+  if (!coordinates || components < 2) {
+    throw new Error(`${path} mesh ${meshIndex} has no texture coordinates`)
+  }
+
+  const uvs: TextureUv[] = []
+
+  for (let i = 0; i < coordinates.length; i += components) {
+    uvs.push([coordinates[i]!, coordinates[i + 1]!])
+  }
+
+  return uvs
 }
 
 function createPoseMatrices(root: AssimpNode, pose: AssimpScene, time: number) {
@@ -431,5 +458,6 @@ function normalizeStaticMeshes(meshes: StaticMesh[], height: number, sourceUp: '
     }),
     faces: mesh.faces,
     color: mesh.color,
+    uvs: mesh.uvs,
   }))
 }

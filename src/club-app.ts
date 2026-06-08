@@ -9,7 +9,10 @@ import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { createFoamSystem, writeFoamGeometry } from './foam.ts'
-import { createSmokeSystem, writeSmokeGeometry } from './smoke-puff.ts'
+import {
+  canRenderGraffitiTextureInWorker,
+  renderGraffitiTextureInWorker,
+} from './graffiti-loader.ts'
 import {
   addGraffitiWallGeometry,
   createGraffitiCanvas,
@@ -23,10 +26,6 @@ import {
   paintTShirtLogoTexture,
   sprayWallPoint,
 } from './graffiti.ts'
-import {
-  canRenderGraffitiTextureInWorker,
-  renderGraffitiTextureInWorker,
-} from './graffiti-loader.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
@@ -35,6 +34,7 @@ import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport } from './projection.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
+import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
@@ -51,8 +51,8 @@ import {
   outsideFoodTruckTurn,
   outsideHutDrinkWall,
   outsidePalmTree,
-  outsideTShirtStands,
   outsideToilets,
+  outsideTShirtStands,
   roomBounds,
   tent,
   tentDoorAngle,
@@ -79,6 +79,7 @@ import {
   strobeVertex,
   vertex,
 } from './shaders.ts'
+import { createSmokeSystem, writeSmokeGeometry } from './smoke-puff.ts'
 import { loadStaticFbxObject, loadStaticFbxObjects, loadStaticFbxObjectWithPose } from './static-fbx-object.ts'
 import type {
   CharacterMode,
@@ -99,6 +100,7 @@ import {
 } from './vertex-array-setup.ts'
 import {
   createCharacterBoxGeometry,
+  createImageTexture,
   createProgram,
   createSmokeMap,
   createStrobeGeometry,
@@ -114,6 +116,7 @@ import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createChatUi } from './chat-ui.ts'
 import { renderClubFrame } from './club-renderer.ts'
+import { outsideMotif } from './constants.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { getDomElements } from './dom-elements.ts'
 import { createDomWallProjection } from './dom-wall.ts'
@@ -122,7 +125,6 @@ import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
-import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
@@ -1526,6 +1528,7 @@ const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
 const postProgram = createProgram(gl, postVertex, postFragment)
 const smokeMap = createSmokeMap(gl)
 const treeShadowMap = createTreeShadowMap(gl)
+const buddhaTexture = createImageTexture(gl, '/buddha.webp')
 const graffitiCanvas = createGraffitiCanvas()
 const graffitiContext = graffitiCanvas.getContext('2d')!
 const graffitiTexture = gl.createTexture()
@@ -1538,6 +1541,7 @@ const bloomPass = gl.getUniformLocation(program, 'bloomPass')
 const doorCoverVisible = gl.getUniformLocation(program, 'doorCoverVisible')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
 const graffitiMap = gl.getUniformLocation(program, 'graffitiMap')
+const objectTextureMap = gl.getUniformLocation(program, 'objectTextureMap')
 const characterBoxViewProjection = gl.getUniformLocation(characterBoxProgram, 'viewProjection')
 const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
 const characterBoxBloomPass = gl.getUniformLocation(characterBoxProgram, 'bloomPass')
@@ -1610,7 +1614,7 @@ const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 
 if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisible || !treeShadowSampler
-  || !graffitiMap || !graffitiTexture
+  || !graffitiMap || !objectTextureMap || !graffitiTexture
   || !characterBoxViewProjection
   || !characterBoxRenderZone || !characterBoxBloomPass || !lightTime || !lightSmokeMap || !lightRenderZone
   || !lightViewProjection
@@ -3256,6 +3260,7 @@ function renderCurrentSceneFrame(options: {
     feedback,
     gl,
     height: canvas.height,
+    objectTexture: buddhaTexture,
     light: {
       count: lightPoints.length / vertexSize,
       program: lightProgram,
@@ -3296,6 +3301,7 @@ function renderCurrentSceneFrame(options: {
       cameraEye: cameraEye!,
       doorCoverVisible: doorCoverVisible!,
       graffitiMap: graffitiMap!,
+      objectTextureMap: objectTextureMap!,
       renderZone: renderZone!,
       treeShadowSampler: treeShadowSampler!,
       viewProjection: viewProjection!,
@@ -3993,12 +3999,13 @@ function loadMainWorldOnce() {
             refreshRoomBuffer()
           }),
         loadStaticFbxObject(vertices, {
-          color: [0.46, 0.42, 0.36],
+          color: outsideMotif === 'afternoon' ? [1, 1, 1] : [2, 2, 2],
           height: 2.9,
-          lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95 },
+          lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95, nightUplight: 7.2 },
           path: '/buddha.fbx',
           position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
           sourceUp: 'z',
+          texture: true,
           turn: Math.PI,
         }, addSunLitTriangle)
           .then(() => {
