@@ -164,6 +164,14 @@ export const insideArcade: Bounds & { height: number; turn: number } = {
   ...arcadeCabinetSize,
   turn: -Math.PI / 2,
 }
+export const insideArcadeScreenWall = {
+  x: insideArcade.x - insideArcade.depth / 2 - 0.035,
+  y: characterFloor + insideArcade.height * 0.66,
+  z: insideArcade.z,
+  width: insideArcade.width * 0.62,
+  height: insideArcade.height * 0.25,
+  normal: [-1, 0, 0] as Vec3,
+}
 const foodTruckDistanceFromTent = tent.radius + 8.4
 const foodTruckToClubX = ((roomBounds.left + roomBounds.right) * 0.5) - tent.x
 const foodTruckToClubZ = ((roomBounds.back + roomBounds.front) * 0.5) - tent.z

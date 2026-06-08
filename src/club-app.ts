@@ -1,4 +1,5 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
+import { createArcadeUi } from './arcade-ui.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
@@ -32,13 +33,14 @@ import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
-import type { ProjectedPoint, Viewport } from './projection.ts'
-import { createWallProjector, projectWallPointInto } from './projection.ts'
+import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
+import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
 import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
   insideArcade,
+  insideArcadeScreenWall,
   loftBounds,
   loftCornerFigures,
   loftDjBooth,
@@ -60,6 +62,7 @@ import {
 } from './scene-data.ts'
 import {
   isOutside,
+  nearInsideArcade,
   roomAt,
   seatAt,
   usesSkyBackground,
@@ -120,7 +123,7 @@ import { renderClubFrame } from './club-renderer.ts'
 import { outsideMotif } from './constants.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { getDomElements } from './dom-elements.ts'
-import { createDomWallProjection } from './dom-wall.ts'
+import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
 import { createHelpUi } from './help-ui.ts'
 import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
@@ -321,6 +324,10 @@ const photoWallUi = createPhotoWallUi(photoWall, {
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)
+let arcadeReady = true
+const arcadeUi = createArcadeUi({
+  onClose: exitArcadeMode,
+})
 const reactionSlotEmojis = loadReactionSlotEmojis()
 const foodTruckEmojis = [
   '🍕',
@@ -1352,6 +1359,18 @@ const projectorViewport: Viewport = {
   width: canvas.width || 1,
 }
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, projectorViewport)
+const arcadeScreenCorners: [Vec3, Vec3, Vec3, Vec3] = [
+  [0, 0, 0],
+  [0, 0, 0],
+  [0, 0, 0],
+  [0, 0, 0],
+]
+const arcadeScreenPoints: [ProjectedPoint, ProjectedPoint, ProjectedPoint, ProjectedPoint] = [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+]
 const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
 const introEffectRenderer = createIntroEffect(introEffect)
@@ -3360,6 +3379,65 @@ function renderCurrentSceneFrame(options: {
   })
 }
 
+function updateArcadeTrigger(inLoft: boolean, projector: WallProjector) {
+  const touching = introHidden && !inLoft && nearInsideArcade(characterPosition)
+
+  if (!touching) {
+    arcadeReady = true
+  }
+  if (!touching || !arcadeReady || arcadeUi.active) {
+    return false
+  }
+
+  arcadeReady = false
+  enterArcadeMode(projector)
+
+  return true
+}
+
+function enterArcadeMode(projector: WallProjector) {
+  document.body.dataset.arcadeOpen = 'true'
+  hideProjectedWorldUi()
+  pauseGraphics()
+  arcadeUi.open(arcadeScreenRect(projector))
+}
+
+function exitArcadeMode() {
+  document.body.dataset.arcadeOpen = 'false'
+  arcadeReady = false
+  canvas.focus()
+  resumeGraphics()
+}
+
+function hideProjectedWorldUi() {
+  photoWallUi.hide()
+  foodTruckWallProjection.hide()
+  bartenderDrinkWallProjection.hide()
+  outsideHutDrinkWallProjection.hide()
+  merchCards.dataset.open = 'false'
+}
+
+function arcadeScreenRect(projector: WallProjector) {
+  domWallCorners(insideArcadeScreenWall, arcadeScreenCorners[0], arcadeScreenCorners[1], arcadeScreenCorners[2],
+    arcadeScreenCorners[3])
+
+  for (let i = 0; i < arcadeScreenCorners.length; i++) {
+    projectWallPointWithMinDepthInto(arcadeScreenCorners[i]!, projector, arcadeScreenPoints[i]!, 0.05)
+  }
+
+  const left = Math.min(...arcadeScreenPoints.map(point => point.x))
+  const right = Math.max(...arcadeScreenPoints.map(point => point.x))
+  const top = Math.min(...arcadeScreenPoints.map(point => point.y))
+  const bottom = Math.max(...arcadeScreenPoints.map(point => point.y))
+
+  return {
+    left,
+    top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  }
+}
+
 const draw = (stamp: number) => {
   if (graphicsPaused) {
     return
@@ -3556,6 +3634,10 @@ const draw = (stamp: number) => {
     stamp,
     zone,
   })
+
+  if (updateArcadeTrigger(inLoft, projector)) {
+    return
+  }
 
   scheduleFrame()
 }

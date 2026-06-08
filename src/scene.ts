@@ -363,6 +363,10 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
     && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
 }
 
+export function nearInsideArcade(position: Vec3, padding = 0.44) {
+  return !isOutside(position) && inOrientedBounds(position[0], position[2], insideArcadeCollision, padding)
+}
+
 function inTent(x: number, z: number) {
   const dx = x - tent.x
   const dz = z - tent.z

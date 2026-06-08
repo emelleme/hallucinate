@@ -349,6 +349,110 @@ canvas {
   display: grid;
 }
 
+body[data-arcade-open="true"] #online-indicator,
+body[data-arcade-open="true"] #reaction-buttons,
+body[data-arcade-open="true"] #breakdance-button,
+body[data-arcade-open="true"] #wave-button,
+body[data-arcade-open="true"] #bubble-button,
+body[data-arcade-open="true"] #foam-button,
+body[data-arcade-open="true"] #photo-button,
+body[data-arcade-open="true"] #rooms-button,
+body[data-arcade-open="true"] #support-link,
+body[data-arcade-open="true"] #chat-form,
+body[data-arcade-open="true"] #mobile-controls,
+body[data-arcade-open="true"] #mobile-speak,
+body[data-arcade-open="true"] #merch-cards {
+  display: none;
+}
+
+#arcade-root {
+  position: fixed;
+  left: var(--app-left);
+  top: var(--app-top);
+  z-index: 260;
+  display: none;
+  width: var(--app-width);
+  height: var(--app-height);
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(0 220 255 / 0.12), transparent 42%),
+    rgb(0 0 0 / 0.82);
+  pointer-events: none;
+  touch-action: none;
+}
+
+#arcade-root[data-open="true"] {
+  display: grid;
+  pointer-events: auto;
+}
+
+#arcade-shell {
+  width: min(900px, calc(100dvw - 28px));
+  max-height: calc(100dvh - 34px);
+  aspect-ratio: 4 / 3;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+#arcade-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 2px solid rgb(0 245 255 / 0.8);
+  border-radius: 6px;
+  background: rgb(0 0 0);
+  box-shadow:
+    0 0 0 8px rgb(8 8 12),
+    0 22px 70px rgb(0 0 0 / 0.72),
+    0 0 42px rgb(0 220 255 / 0.35),
+    inset 0 0 34px rgb(0 220 255 / 0.18);
+  transform: perspective(900px) rotateX(8deg);
+  transform-origin: center center;
+}
+
+#arcade-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgb(255 255 255 / 0.055) 50%, rgb(0 0 0 / 0.1) 50%),
+    radial-gradient(circle at 50% 20%, rgb(255 255 255 / 0.16), transparent 32%);
+  background-size: 100% 4px, 100% 100%;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+#arcade-game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgb(0 0 0);
+  image-rendering: pixelated;
+  touch-action: none;
+}
+
+#arcade-close {
+  position: fixed;
+  right: calc(16px + var(--app-left));
+  top: calc(16px + var(--app-top));
+  z-index: 1;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.48);
+  border-radius: 999px;
+  background: rgb(8 8 12 / 0.72);
+  color: white;
+  cursor: pointer;
+  font: 900 24px/1 ui-sans-serif, system-ui, sans-serif;
+  padding: 0;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgb(0 220 255 / 0.72);
+}
+
 .merch-card {
   display: block;
   width: min(212px, calc((100dvw - 48px) / 2));
