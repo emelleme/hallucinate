@@ -73,6 +73,7 @@ export function renderClubFrame(options: {
     graffiti: WebGLVertexArrayObject
     room: WebGLVertexArrayObject
     smoke: WebGLVertexArrayObject
+    treeSwing: WebGLVertexArrayObject
   }
   bloomTarget: Target
   camera: Camera
@@ -109,6 +110,7 @@ export function renderClubFrame(options: {
   bubblePoints: Float32Array
   foamPoints: Float32Array
   smokePuffPoints: Float32Array
+  treeSwingPoints: Float32Array
   graffitiPoints: Float32Array
   graffitiTexture: WebGLTexture
   post: {
@@ -179,6 +181,7 @@ export function renderClubFrame(options: {
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(1, 1)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  drawTreeSwing(options)
   drawBeachBalls(options)
   drawBubbles(options)
   drawFoam(options)
@@ -255,6 +258,7 @@ export function renderClubFrame(options: {
   gl.enable(gl.POLYGON_OFFSET_FILL)
   gl.polygonOffset(1, 1)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  drawTreeSwing(options)
   drawBeachBalls(options)
   drawBubbles(options)
   drawFoam(options)
@@ -271,6 +275,7 @@ export function renderClubFrame(options: {
   gl.uniform1i(options.roomUniforms.characterPass, 0)
   gl.bindVertexArray(options.arrays.room)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  drawTreeSwing(options)
   gl.depthFunc(gl.LEQUAL)
   drawCharacterVertexGeometry(options)
   drawCharacterBoxes({
@@ -377,6 +382,15 @@ function drawBeachBalls(options: Parameters<typeof renderClubFrame>[0]) {
 
   options.gl.bindVertexArray(options.arrays.beachBalls)
   options.gl.drawArrays(options.gl.TRIANGLES, 0, options.beachBallPoints.length / options.vertexSize)
+}
+
+function drawTreeSwing(options: Parameters<typeof renderClubFrame>[0]) {
+  if (options.treeSwingPoints.length === 0) {
+    return
+  }
+
+  options.gl.bindVertexArray(options.arrays.treeSwing)
+  options.gl.drawArrays(options.gl.TRIANGLES, 0, options.treeSwingPoints.length / options.vertexSize)
 }
 
 function drawBubbles(options: Parameters<typeof renderClubFrame>[0]) {

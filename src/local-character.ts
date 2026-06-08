@@ -6,7 +6,7 @@ import {
   smoothAngle,
 } from './math.ts'
 import { findPath } from './pathfinding.ts'
-import { collideLoftRoom, collideRoom, isOutside, seatAt, walkHeight, walkLoftHeight } from './scene.ts'
+import { collideLoftRoom, collideRoom, isOutside, seatAt, seatById, walkHeight, walkLoftHeight } from './scene.ts'
 import type { Seat } from './scene.ts'
 import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 
@@ -299,6 +299,14 @@ export function createLocalCharacter(keys: Set<string>) {
       }
 
       if (seated) {
+        const currentSeat = seatById(seat)
+
+        position[0] = currentSeat.position[0]
+        position[1] = currentSeat.position[1]
+        position[2] = currentSeat.position[2]
+        turn = currentSeat.turn
+        velocityY = 0
+
         if (hasDestination || hasJumpTarget || input[2] > 0) {
           seated = false
           couchRelease = 0.35

@@ -137,6 +137,7 @@ import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
 import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
+import { treeSwing, updateTreeSwing, writeTreeSwingGeometry } from './tree-swing.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -1483,6 +1484,8 @@ let forcedPixelRatio: number | undefined
 let forcedBloomScale: number | undefined
 let lastIntroProgress = -1
 let lastIntroStartReady = false
+
+updateTreeSwing(1, 0, outsideTree, false)
 let lastChatFormIdentity = ''
 let lastChatFormSelfId = -1
 let lastChatFormColor = ''
@@ -1728,6 +1731,8 @@ const postArray = gl.createVertexArray()
 const postBuffer = gl.createBuffer()
 const beachBallArray = gl.createVertexArray()
 const beachBallBuffer = gl.createBuffer()
+const treeSwingArray = gl.createVertexArray()
+const treeSwingBuffer = gl.createBuffer()
 const bubbleArray = gl.createVertexArray()
 const bubbleBuffer = gl.createBuffer()
 const foamArray = gl.createVertexArray()
@@ -1767,7 +1772,8 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !characterPass
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
-  || !beachBallArray || !beachBallBuffer || !bubbleArray || !bubbleBuffer || !foamArray || !foamBuffer
+  || !beachBallArray || !beachBallBuffer || !treeSwingArray || !treeSwingBuffer || !bubbleArray || !bubbleBuffer
+  || !foamArray || !foamBuffer
   || !smokePuffArray || !smokePuffBuffer || !graffitiArray || !graffitiBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
@@ -1844,6 +1850,7 @@ setupCharacterBoxArray({
 })
 setupPostArray({ array: postArray, buffer: postBuffer, gl })
 setupVertexArray({ array: beachBallArray, buffer: beachBallBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
+setupVertexArray({ array: treeSwingArray, buffer: treeSwingBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: bubbleArray, buffer: bubbleBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: foamArray, buffer: foamBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: smokePuffArray, buffer: smokePuffBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
@@ -1968,6 +1975,8 @@ const nicknameLabelCache = new Map<number, { color: string; instagram: string; l
 const beachBalls = createBeachBalls()
 let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+let treeSwingPoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const treeSwingWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
 const bubbleSystem = createBubbleSystem()
@@ -3227,6 +3236,7 @@ function renderPhotoFrame(stamp: number, videoPreview: VideoPreview | undefined,
   strobeController.setFrame(Math.floor(stamp / 16.6667))
   strobeController.updateInstances(stamp * 0.001, zone)
   updateBeachBallBuffer()
+  updateTreeSwingBuffer()
   renderCurrentSceneFrame({
     camera,
     characterCount: characterRenderSystem.update(stamp * 0.001),
@@ -3410,6 +3420,7 @@ function renderCurrentSceneFrame(options: {
       graffiti: graffitiArray,
       room: array,
       smoke: smokeArray,
+      treeSwing: treeSwingArray,
     },
     bloomTarget,
     camera: options.camera,
@@ -3447,6 +3458,7 @@ function renderCurrentSceneFrame(options: {
     bubblePoints,
     foamPoints,
     smokePuffPoints,
+    treeSwingPoints: options.inLoft ? emptyPoints : treeSwingPoints,
     graffitiPoints: options.inLoft ? emptyPoints : graffitiPoints,
     graffitiTexture,
     post: {
@@ -3597,6 +3609,10 @@ const draw = (stamp: number) => {
     lastBloomScale = nextBloomScale
   }
   const inLoft = appSpace.kind === 'loft'
+
+  if (!inLoft) {
+    updateTreeSwing(delta, stamp * 0.001, outsideTree, occupiedSeats.has(treeSwing.seat.id))
+  }
 
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
@@ -3755,6 +3771,7 @@ const draw = (stamp: number) => {
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateBeachBallBuffer()
+  updateTreeSwingBuffer()
   updateBubbleBuffer()
   updateFoamBuffer()
   updateSmokeBuffer()
@@ -3907,6 +3924,21 @@ function updateBeachBallBuffer() {
   beachBallPoints = vertexWriterData(beachBallWriter)
   gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
+}
+
+function updateTreeSwingBuffer() {
+  if (appSpace.kind === 'loft') {
+    treeSwingPoints = emptyPoints
+    gl.bindBuffer(gl.ARRAY_BUFFER, treeSwingBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, treeSwingPoints, gl.DYNAMIC_DRAW)
+    return
+  }
+
+  resetVertexWriter(treeSwingWriter)
+  writeTreeSwingGeometry(treeSwingWriter, addLocalReflection)
+  treeSwingPoints = vertexWriterData(treeSwingWriter)
+  gl.bindBuffer(gl.ARRAY_BUFFER, treeSwingBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, treeSwingPoints, gl.DYNAMIC_DRAW)
 }
 
 function scheduleGraffitiTexturePaint(splats: GraffitiSplat[]) {

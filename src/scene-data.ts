@@ -1,5 +1,6 @@
-import { characterFloor } from './character-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
+
+import { characterFloor } from './character-data.ts'
 
 export type TShirtStand = Bounds & { height: number; turn: number }
 
@@ -31,6 +32,23 @@ export const outsideDjSpeakers: Bounds[] = [
 ]
 export const outsideBuddha: CircleBounds = { x: 11.5, z: 27.9, radius: 1.05 }
 export const outsidePalmTree: CircleBounds = { x: -11, z: 29.15, radius: 0.45 }
+export const outsideTreeSwing = {
+  angle: -Math.PI * 105 / 180,
+  distance: 1.62,
+  facing: Math.PI / 2,
+  anchorHeight: 3.45,
+  seatHeight: 0.46,
+  sittingHeightOffset: -0.265,
+  ropeSpacing: 0.62,
+  ropeThickness: 0.032,
+  seatWidth: 0.86,
+  seatDepth: 0.34,
+  seatThickness: 0.08,
+  swingAngle: Math.PI * 11 / 180,
+  swingSeconds: 2.75,
+  swingRiseSpeed: 2.8,
+  phase: 0,
+}
 export const outsideHut: Bounds = { x: -18, z: 20.5, width: 6.2, depth: 5 }
 export const outsideHutDeckHeight = 0.32
 export const outsideHutBar: Bounds = {

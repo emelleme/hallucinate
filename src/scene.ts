@@ -6,6 +6,7 @@ import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArc
   outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideStage,
   outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench, tentDjBooth,
   tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
+import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export type Seat = {
@@ -410,6 +411,12 @@ export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.4
     return couchSeatAt(loftCouches, 'loft-couch', position, occupiedSeats, padding, includeOccupied, walkLoftHeight)
   }
 
+  const swingSeat = treeSwingSeatAt(position, occupiedSeats, padding, includeOccupied)
+
+  if (swingSeat) {
+    return swingSeat
+  }
+
   const buddha = cachedBuddhaSeat
   const tent = tentSeat(position, occupiedSeats, includeOccupied)
     ?? tentCenterSeat(position, occupiedSeats, includeOccupied)
@@ -626,7 +633,7 @@ const cachedSeats = [
   ...cachedOutsideCouchSeats,
   ...cachedStoolSeats,
 ]
-const cachedSeatById = new Map(cachedSeats.map(seat => [seat.id, seat]))
+const cachedSeatById = new Map([...treeSwingSeats, ...cachedSeats].map(seat => [seat.id, seat]))
 
 function couchSeatDirection(face: (typeof outsideCouches)[number]['face']): Vec3 {
   if (face === 'north') {
