@@ -1,7 +1,7 @@
 import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, loftBounds, loftCornerFigures, loftCouches,
-  insideArcade, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
+import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArcade, loftBounds, loftCornerFigures,
+  loftCouches, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideFoodTruck, outsideFoodTruckSize, outsideFoodTruckTurn, outsideHut,
   outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideStage,
   outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench, tentDjBooth,

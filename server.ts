@@ -304,10 +304,10 @@ const server = Bun.serve<SocketData>({
         return
       }
 
-        const client: Client = {
-          id,
-          instagram: '',
-          ip: socket.data.ip,
+      const client: Client = {
+        id,
+        instagram: '',
+        ip: socket.data.ip,
         lastInteractionAt: now,
         lastSeen: now,
         lastMotionAt: now,
@@ -995,7 +995,9 @@ async function migratePhotoThumbnails() {
   `).all()
   let created = 0
 
-  console.log(`${photoThumbnailMigrationLog} found ${photos.length} photos for ${photoWallThumbnailWidth}x${photoWallThumbnailHeight} thumbnails`)
+  console.log(
+    `${photoThumbnailMigrationLog} found ${photos.length} photos for ${photoWallThumbnailWidth}x${photoWallThumbnailHeight} thumbnails`,
+  )
 
   for (let i = 0; i < photos.length; i++) {
     const timestamp = photos[i]!.timestamp

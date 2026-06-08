@@ -137,8 +137,7 @@ export type RigNode = {
   origin: Vec3
 }
 
-export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting' | 'wave' | 'waveOut'
-  | 'breakdance'
+export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting' | 'wave' | 'waveOut' | 'breakdance'
 export type BottomMode = 'pants' | 'skirt'
 export type TopMode = 'shirt' | 'sleeveless' | 'skin' | 'chest'
 export type CharacterPart = {

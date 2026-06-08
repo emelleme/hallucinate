@@ -709,8 +709,7 @@ export function decodeServerMessage(view: DataView): MessagePacket {
     insta: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 17 + nickLength, instaLength)),
     nick: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 17, nickLength)),
     photoTimestamp: view.getFloat64(9),
-    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 17 + nickLength + instaLength,
-      textLength)),
+    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 17 + nickLength + instaLength, textLength)),
   }
 }
 

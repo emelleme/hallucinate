@@ -1,6 +1,6 @@
+import { createInstagramLink } from './instagram-link.ts'
 import { projectVisiblePointInto, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
-import { createInstagramLink } from './instagram-link.ts'
 import { emojiReactionFromMessage } from './reactions.ts'
 import type { Vec3 } from './types.ts'
 

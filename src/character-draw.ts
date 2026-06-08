@@ -1,3 +1,5 @@
+import { handSideSign } from './character-accessory.ts'
+import type { TurnBasis } from './character-accessory.ts'
 import { characterGroundJoints, characterScale, shoe, skin } from './character-data.ts'
 import {
   addCharacterBox,
@@ -7,8 +9,6 @@ import {
   resetVertexWriter,
 } from './character-geometry.ts'
 import type { VertexWriter } from './character-geometry.ts'
-import { handSideSign } from './character-accessory.ts'
-import type { TurnBasis } from './character-accessory.ts'
 import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
@@ -507,8 +507,8 @@ function addCigaretteAtHand(
   addCharacterBox(target, boxInstances, cigaretteA, cigaretteB, 0.02, 0.02, style.accessory!, 0.05, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
 
-  addCharacterBox(target, boxInstances, cigaretteB, cigaretteEmberB, 0.022, 0.022, cigaretteEmber, 1.6,
-    player.turn, localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
+  addCharacterBox(target, boxInstances, cigaretteB, cigaretteEmberB, 0.022, 0.022, cigaretteEmber, 1.6, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
 }
 
 function bodySampleTime(time: number, distanceSq: number) {

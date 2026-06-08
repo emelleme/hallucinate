@@ -4,6 +4,7 @@ import {
   drawCharacterBoxes,
   drawNpcHair,
 } from './character-gpu.ts'
+import type { DayCycle } from './constants.ts'
 import {
   drawRoomDepth,
   useLightProgram,
@@ -11,7 +12,6 @@ import {
 } from './room-draw.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import type { CharacterBoxGeometry, HairRenderMesh, Target, Vec3 } from './types.ts'
-import type { DayCycle } from './constants.ts'
 
 type Camera = {
   eye: Vec3

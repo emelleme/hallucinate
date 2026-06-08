@@ -313,7 +313,9 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   function checkPhotoWallScroll() {
     const range = visiblePhotoRange()
 
-    if (range.end + photoLoadAheadSlots >= page.photos.length || grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192) {
+    if (range.end + photoLoadAheadSlots >= page.photos.length
+      || grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192)
+    {
       void loadMorePhotos()
     }
   }
@@ -727,7 +729,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   function sourceImageQuad(sourceImage: HTMLImageElement) {
     const wallTransform = new DOMMatrix(getComputedStyle(element).transform)
     const x = sourceImage.offsetLeft + sourceImage.parentElement!.offsetLeft + grid.offsetLeft + panel.offsetLeft
-    const y = sourceImage.offsetTop + sourceImage.parentElement!.offsetTop + grid.offsetTop + panel.offsetTop - grid.scrollTop
+    const y = sourceImage.offsetTop + sourceImage.parentElement!.offsetTop + grid.offsetTop + panel.offsetTop
+      - grid.scrollTop
     const width = sourceImage.offsetWidth
     const height = sourceImage.offsetHeight
 

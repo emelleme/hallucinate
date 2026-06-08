@@ -79,10 +79,10 @@ export function createLocalCharacter(keys: Set<string>) {
       return mode === 'wave'
         ? waveElapsed
         : mode === 'waveOut'
-          ? waveOutElapsed
-          : mode === 'breakdance'
-            ? breakdanceElapsed
-            : jumpElapsed
+        ? waveOutElapsed
+        : mode === 'breakdance'
+        ? breakdanceElapsed
+        : jumpElapsed
     },
     get velocityY() {
       return velocityY

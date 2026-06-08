@@ -152,19 +152,19 @@ export function sampleCharacterPose(
 
   if (player.mode === 'breakdance') {
     const modeTime = player.modeTime ?? time
-    const pose = sampleDirectClipPose(rig, rig.clips.breakdance, modeTime, characterPoseJoints,
-      characterPoseJointSet, blendCache, cacheFrame)
+    const pose = sampleDirectClipPose(rig, rig.clips.breakdance, modeTime, characterPoseJoints, characterPoseJointSet,
+      blendCache, cacheFrame)
     const blend = breakdanceBlend(rig.clips.breakdance, modeTime)
 
     if (blend < 1) {
       const base = basePose
         ?? sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, player.idleClipIndex ?? 0)
 
-      const blended = blendGroundedPoseInto(base.stand, pose, blend, characterPoseJoints,
-        characterGroundJointIndices, placedPose)
+      const blended = blendGroundedPoseInto(base.stand, pose, blend, characterPoseJoints, characterGroundJointIndices,
+        placedPose)
 
-      return placeCharacterPose(blended, player.position, player.turn, characterPoseJoints,
-        characterGroundJointIndices, characterScale, placedPose, 0)
+      return placeCharacterPose(blended, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
+        characterScale, placedPose, 0)
     }
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
