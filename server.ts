@@ -338,8 +338,7 @@ const server = Bun.serve<SocketData>({
 
       clients.set(socket, client)
       addToRoom(client, 0)
-      sendRoomState(client)
-      sendProfiles(client)
+      sendRoomStateWithProfiles(client)
       sendChatHistory(client)
       sendVideoSync(client)
       sendBeachBalls(client)
@@ -1412,13 +1411,13 @@ function changeRoom(client: Client, room: number) {
   }
 
   if (client.poseSynced && room !== clientPoseRoom(client)) {
-    sendRoomState(client)
+    sendRoomStateWithProfiles(client)
     sendVideoSync(client)
     return
   }
 
   if (client.room === room) {
-    sendRoomState(client)
+    sendRoomStateWithProfiles(client)
     sendVideoSync(client)
     return
   }
@@ -1432,7 +1431,7 @@ function changeRoom(client: Client, room: number) {
   }
   requestMissingVideoPlaylist(space, previousZone)
   requestMissingVideoPlaylist(space, clientVideoZone(client))
-  sendRoomState(client)
+  sendRoomStateWithProfiles(client)
   sendVideoSync(client)
   broadcast(client, encodeSpawn(client.pose))
 }
@@ -1651,6 +1650,11 @@ function sendRoomState(client: Client) {
     room: client.room,
     players: [...space.rooms[client.room]!.values()].map(player => player.pose),
   }))
+}
+
+function sendRoomStateWithProfiles(client: Client) {
+  sendRoomState(client)
+  sendProfiles(client)
 }
 
 function sendProfiles(client: Client) {
@@ -2722,7 +2726,7 @@ function syncRooms() {
   }
 
   for (const client of clients.values()) {
-    sendRoomState(client)
+    sendRoomStateWithProfiles(client)
   }
 
   broadcastOnline()
