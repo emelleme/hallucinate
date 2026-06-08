@@ -1,5 +1,4 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
-import { createArcadeUi } from './arcade-ui.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
@@ -8,6 +7,7 @@ import { createCharacterStyleController, glowstickColors, resolveAccessoryKind }
 import { cigaretteExhale, cigaretteHeldSmoke, cigaretteTipSmoke } from './cigarette.ts'
 import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
+import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { createFoamSystem, writeFoamGeometry } from './foam.ts'
 import {
@@ -28,7 +28,6 @@ import {
   sprayWallPoint,
 } from './graffiti.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
-import { createInstagramLink } from './instagram-link.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
@@ -37,6 +36,7 @@ import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
 import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength } from './protocol.ts'
+import type { MessagePacket, VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
@@ -86,6 +86,7 @@ import {
 } from './shaders.ts'
 import { createSmokeSystem, writeSmokeGeometry } from './smoke-puff.ts'
 import { loadStaticFbxObject, loadStaticFbxObjects, loadStaticFbxObjectWithPose } from './static-fbx-object.ts'
+import { loadOutsideTree, updateOutsideTreeShadowMap } from './tree-world.ts'
 import type {
   CharacterMode,
   CircleBounds,
@@ -114,6 +115,7 @@ import {
   resizeTarget,
 } from './webgl.ts'
 
+import { createArcadeUi } from './arcade-ui.ts'
 import { createCameraController } from './camera-controller.ts'
 import { characterFloor } from './character-data.ts'
 import type { VertexWriter } from './character-geometry.ts'
@@ -124,18 +126,16 @@ import { renderClubFrame } from './club-renderer.ts'
 import { dayCycleAt } from './constants.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { getDomElements } from './dom-elements.ts'
-import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
 import { createHelpUi } from './help-ui.ts'
+import { createInstagramLink } from './instagram-link.ts'
 import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
-import { createPhotoWallUi } from './photo-wall-ui.ts'
 import type { Photo } from './photo-wall-ui.ts'
-import type { MessagePacket, VideoEndedEntry } from './protocol.ts'
+import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
-import { loadOutsideTree, updateOutsideTreeShadowMap } from './tree-world.ts'
 import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
@@ -275,10 +275,13 @@ const chatPalette = [
 const keys = new Set<string>()
 const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
+const maxNpcPlayers = 250
+const npcPopulationInterval = 60_000
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
 let onlineIdleValue = 0
+let nextNpcPopulationSyncAt = npcPopulationInterval
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
@@ -1749,7 +1752,8 @@ const characterBoxGeometry = createCharacterBoxGeometry()
 const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 
-if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !characterPass || !doorCoverVisible || !treeShadowSampler
+if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !characterPass || !doorCoverVisible
+  || !treeShadowSampler
   || !graffitiMap || !objectTextureMap || !outsideNight || !graffitiTexture
   || !characterBoxViewProjection
   || !characterBoxRenderZone || !characterBoxBloomPass || !lightTime || !lightSmokeMap || !lightRenderZone
@@ -2773,8 +2777,8 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoom
 }
 
 bindKeyboardInput({
-  activeInputs: [introNicknameInput, introInstagramInput, chatInput, rentRoomInput, claimPassword,
-    loftMusicPassword, loftMusicSource],
+  activeInputs: [introNicknameInput, introInstagramInput, chatInput, rentRoomInput, claimPassword, loftMusicPassword,
+    loftMusicSource],
   keys,
   startJumping: () => localCharacter.startJumping(),
   stopJumping: () => localCharacter.stopJumping(),
@@ -3672,6 +3676,7 @@ const draw = (stamp: number) => {
   multiplayer.sendActionsIfChanged()
 
   if (!inLoft) {
+    syncNpcPopulation(stamp)
     updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
   }
   updateRemotePlayers(multiplayer.players.values(), delta, outsideTree)
@@ -4138,6 +4143,31 @@ function takeRemoteSeats(stamp: number) {
   }
 }
 
+function syncNpcPopulation(stamp: number) {
+  if (stamp < nextNpcPopulationSyncAt) {
+    return
+  }
+
+  nextNpcPopulationSyncAt = stamp + npcPopulationInterval
+  setNpcPlayerCount(Math.max(0, maxNpcPlayers - onlineCountValue))
+}
+
+function setNpcPlayerCount(count: number) {
+  while (npcPlayers.length > count) {
+    const player = npcPlayers.pop()!
+
+    if (player.seat) {
+      occupiedSeats.delete(player.seat)
+      player.seat = undefined
+      player.sittingUntil = undefined
+    }
+  }
+
+  while (npcPlayers.length < count) {
+    npcPlayers.push(npcPlayerPool[npcPlayers.length]!)
+  }
+}
+
 import.meta.hot?.dispose(() => {
   cancelAnimationFrame(frameId)
   introEffectRenderer.stop()
@@ -4181,7 +4211,8 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const npcPlayers = createPlayers(350, outsideTree, occupiedSeats)
+const npcPlayerPool = createPlayers(maxNpcPlayers, outsideTree, occupiedSeats)
+const npcPlayers = [...npcPlayerPool]
 const renderPlayers: Player[] = [...npcPlayers]
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
