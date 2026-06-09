@@ -294,7 +294,6 @@ const npcPopulationInterval = 60_000
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
-let onlineIdleValue = 0
 let nextNpcPopulationSyncAt = npcPopulationInterval
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
@@ -1243,18 +1242,16 @@ function syncOnlineSelf() {
   if (
     name === lastOnlineSelfName
     && onlineCountValue === lastOnlineCountValue
-    && onlineIdleValue === lastOnlineIdleValue
   ) {
     return
   }
 
   lastOnlineSelfName = name
   lastOnlineCountValue = onlineCountValue
-  lastOnlineIdleValue = onlineIdleValue
 
   const label = nicknameLabel(name)
   const color = identityColor(name)
-  const text = ` ${onlineCountValue} online (${onlineIdleValue} idle)`
+  const text = ` ${onlineCountValue} online`
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
@@ -1611,7 +1608,6 @@ let lastOnlineSelfName = ''
 let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
 let lastOnlineCountValue = -1
-let lastOnlineIdleValue = -1
 let introWaveSent = false
 let profileSubmitted = false
 
@@ -2199,6 +2195,7 @@ function connectMultiplayer(spaceSlug?: string) {
     localActionTurn: () => cameraController.turn,
     localInstagram: () => instagram,
     localNickname: () => nickname,
+    localEntered: () => introHidden,
     localProfileReady: () => profileSubmitted,
     localStyle: () => ({
       topStyleIndex: styleController.topStyleIndex,
@@ -2264,7 +2261,6 @@ function connectMultiplayer(spaceSlug?: string) {
     },
     onOnlineCount: online => {
       onlineCountValue = online.count
-      onlineIdleValue = online.idle
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
@@ -4369,6 +4365,7 @@ function updateIntro() {
     removeEventListener('keydown', handleIntroStartKey)
     intro.dataset.hidden = 'true'
     introEffectRenderer.stop()
+    multiplayer.sendEnter()
 
     if (helpSeen) {
       helpUi.hide()

@@ -181,7 +181,7 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       <header>
         <div>
           <h1>Online Analytics</h1>
-          <p>Connected total, idle included</p>
+          <p>Entered total</p>
         </div>
         <nav aria-label="Time range">${buttons}
         </nav>

@@ -23,6 +23,7 @@ import {
   ACTIONS,
   ADMIN,
   BEACH_BALLS,
+  C_ENTER,
   C_HEARTBEAT,
   C_MOTION,
   C_ROOM_CHANGE,
@@ -82,6 +83,7 @@ type Client = {
   id: number
   instagram: string
   ip: string
+  enteredAt: number
   lastInteractionAt: number
   lastSeen: number
   lastMotionAt: number
@@ -158,7 +160,6 @@ const hourMs = 60 * minuteMs
 const dayMs = 24 * hourMs
 const heartbeatInterval = 10_000
 const clientTimeout = 30_000
-const onlineActivityTimeout = 5 * minuteMs
 const onlineAnalyticsSampleInterval = minuteMs
 const onlineAnalyticsPeriod = 10 * minuteMs
 const onlineAnalyticsRanges = [
@@ -354,6 +355,7 @@ const server = Bun.serve<SocketData>({
         id,
         instagram: '',
         ip: socket.data.ip,
+        enteredAt: 0,
         lastInteractionAt: now,
         lastSeen: now,
         lastMotionAt: now,
@@ -405,6 +407,12 @@ const server = Bun.serve<SocketData>({
         client.lastSeen = Date.now()
 
         if (type === C_HEARTBEAT) {
+          return
+        }
+
+        if (type === C_ENTER) {
+          client.enteredAt = Date.now()
+          broadcastOnline(clientSpace(client))
           return
         }
 
@@ -3089,19 +3097,12 @@ function broadcastOnline(space?: SpaceState) {
 }
 
 function totalOnlineCount() {
-  return clients.size
+  return [...clients.values()].filter(client => client.enteredAt).length
 }
 
 function onlineStats(space = mainSpace) {
-  const now = Date.now()
-  const clients = [...spaceClients(space)]
-  const active = clients
-    .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
-    .length
-
   return {
-    count: clients.length,
-    idle: clients.length - active,
+    count: [...spaceClients(space)].filter(client => client.enteredAt).length,
   }
 }
 

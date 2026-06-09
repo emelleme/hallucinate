@@ -29,6 +29,7 @@ import {
   encodeClientMessage,
   encodeClientMotion,
   encodeClientProfile,
+  encodeEnter,
   encodeGraffiti,
   encodeHeartbeat,
   encodeKeys,
@@ -85,6 +86,7 @@ export function createMultiplayer(options: {
   localActionTurn: () => number
   localInstagram: () => string
   localNickname: () => string
+  localEntered: () => boolean
   localProfileReady: () => boolean
   localStyle: () => {
     topStyleIndex: number
@@ -148,6 +150,9 @@ export function createMultiplayer(options: {
         sendProfile()
       }
       send(encodeRoomChange(room))
+      if (options.localEntered()) {
+        sendEnter()
+      }
       flush()
     })
     next.addEventListener('close', event => {
@@ -412,6 +417,10 @@ export function createMultiplayer(options: {
     }
   }
 
+  function sendEnter() {
+    send(encodeEnter())
+  }
+
   function sendVideoPlaylist(entries: VideoPlaylistEntry[]) {
     send(encodeVideoPlaylist({ entries }))
   }
@@ -456,6 +465,7 @@ export function createMultiplayer(options: {
       }
     },
     sendProfile,
+    sendEnter,
     sendAdmin(pass: string, command: 'ban' | 'banSubnet' | 'randomTrack', id: number) {
       queue(encodeAdminMessage({ pass, command, id }))
     },

@@ -22,6 +22,7 @@ export const VIDEO_PLAYLIST_REQUEST = 19
 export const NICKNAME = 20
 export const ACTIONS = 21
 export const VIDEO_PROGRESS_REQUEST = 22
+export const C_ENTER = 23
 
 export const ACTION_BUBBLING = 1
 export const ACTION_FOAMING = 2
@@ -31,7 +32,7 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 47
+export const protocolVersion = 48
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -84,7 +85,6 @@ export type MessagePacket = ProfilePacket & {
 
 export type OnlinePacket = {
   count: number
-  idle: number
 }
 
 export type VideoSyncEntry = {
@@ -255,23 +255,30 @@ export function encodeHeartbeat() {
   return data
 }
 
+export function encodeEnter() {
+  const data = new ArrayBuffer(1)
+  const view = new DataView(data)
+
+  view.setUint8(0, C_ENTER)
+
+  return data
+}
+
 export function encodeOnline(packet: OnlinePacket) {
-  const data = new ArrayBuffer(5)
+  const data = new ArrayBuffer(3)
   const view = new DataView(data)
 
   view.setUint8(0, S_ONLINE)
   view.setUint16(1, packet.count)
-  view.setUint16(3, packet.idle)
 
   return data
 }
 
 export function decodeOnline(view: DataView): OnlinePacket {
-  expectSize(view, 5)
+  expectSize(view, 3)
 
   return {
     count: view.getUint16(1),
-    idle: view.getUint16(3),
   }
 }
 
