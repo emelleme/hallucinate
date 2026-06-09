@@ -1,9 +1,10 @@
 import { characterFloor } from './character-data.ts'
+import { reserveFloats } from './character-geometry.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { clamp } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import { collideSphereRoom, walkHeight } from './scene.ts'
-import { createUnitSphere, reserveSphereFloats, writeSphere } from './sphere-geometry.ts'
+import { createUnitSphere, writeSphere } from './sphere-geometry.ts'
 import type { BeachBall, CircleBounds, Vec3 } from './types.ts'
 
 export const beachBallRadius = 0.52
@@ -21,6 +22,8 @@ const palette: Vec3[] = [
   [0.15, 1, 0.05],
   [0.04, 0.82, 1],
 ]
+const nearLodDistanceSq = 10 * 10
+const midLodDistanceSq = 18 * 18
 
 export function createBeachBalls(): BeachBall[] {
   return [
@@ -78,13 +81,40 @@ export function hitBeachBalls(balls: BeachBall[], player: Vec3) {
   return hits
 }
 
-export function writeBeachBallGeometry(target: VertexWriter, balls: BeachBall[]) {
-  reserveSphereFloats(target, beachBallUnitSphere, balls.length)
+export function writeBeachBallGeometry(target: VertexWriter, balls: BeachBall[], camera: Vec3) {
+  let floats = 0
 
   for (const ball of balls) {
-    writeSphere(target, beachBallUnitSphere, ball.position[0], ball.position[1], ball.position[2], beachBallRadius,
+    floats += sphereFloats(beachBallUnitSphereFor(ball, camera))
+  }
+
+  reserveFloats(target, floats)
+
+  for (const ball of balls) {
+    writeSphere(target, beachBallUnitSphereFor(ball, camera), ball.position[0], ball.position[1], ball.position[2],
+      beachBallRadius,
       palette[ball.id]!, glow)
   }
+}
+
+function sphereFloats(unit: Float32Array) {
+  return unit.length / 3 * 11
+}
+
+function beachBallUnitSphereFor(ball: BeachBall, camera: Vec3) {
+  const dx = ball.position[0] - camera[0]
+  const dy = ball.position[1] - camera[1]
+  const dz = ball.position[2] - camera[2]
+  const distanceSq = dx * dx + dy * dy + dz * dz
+
+  if (distanceSq < nearLodDistanceSq) {
+    return beachBallUnitSphereHigh
+  }
+  if (distanceSq < midLodDistanceSq) {
+    return beachBallUnitSphereMid
+  }
+
+  return beachBallUnitSphereLow
 }
 
 function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
@@ -111,4 +141,6 @@ function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
   }
 }
 
-const beachBallUnitSphere = createUnitSphere(8, 16)
+const beachBallUnitSphereHigh = createUnitSphere(12, 24)
+const beachBallUnitSphereMid = createUnitSphere(8, 16)
+const beachBallUnitSphereLow = createUnitSphere(5, 10)

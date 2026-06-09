@@ -4069,7 +4069,7 @@ function updateBeachBallBuffer() {
   }
 
   resetVertexWriter(beachBallWriter)
-  writeBeachBallGeometry(beachBallWriter, beachBalls)
+  writeBeachBallGeometry(beachBallWriter, beachBalls, cameraController.position)
   beachBallPoints = vertexWriterData(beachBallWriter)
   uploadFloatBuffer(gl, beachBallBuffer, beachBallWriter.data, beachBallBufferCache, beachBallWriter.length)
 }

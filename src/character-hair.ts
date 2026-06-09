@@ -16,7 +16,7 @@ type HairInstanceRange = {
 export function createHairMeshes(scene: AssimpScene, source: string): HairMesh[] {
   const meshes = scene.meshes!.filter(mesh => mesh.name.toLowerCase().includes('hair'))
     .filter((_, index) => !removedHairStyles.has(`${source}:${index}`))
-    .map(mesh => createHairMesh(mesh, source))
+    .map((mesh, index) => createHairMesh(mesh, source, index))
 
   if (meshes.length === 0) {
     throw new Error('Hair FBX has no hair meshes')
@@ -32,7 +32,7 @@ const removedHairStyles = new Set([
   'woman:2',
 ])
 
-function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
+function createHairMesh(mesh: AssimpMesh, source: string, index: number): HairMesh {
   const points: Vec3[] = []
   const turnRightSideForward = source === 'man' && mesh.name === 'Wolf3D_Hair.009'
 
@@ -74,7 +74,7 @@ function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
   }
 
   return {
-    index: -1,
+    index,
     name: `${source}:${mesh.name}`,
     localTriangleCenters: new Float32Array(localTriangleCenters),
     localTriangleNormals: new Float32Array(localTriangleNormals),
@@ -145,9 +145,10 @@ export function updateHairInstances(
     uploads: [],
   }
 
-  resizeHairInstanceBuffers(uploadCache, hairRenderMeshes.length)
-
   const data = hairInstances.data
+  const cacheLength = Math.max(hairRenderMeshes.length, highestHairInstanceIndex(data, hairInstances.length) + 1)
+
+  resizeHairInstanceBuffers(uploadCache, cacheLength)
 
   for (let i = 0; i < hairInstances.length; i += 16) {
     const meshIndex = data[i]!
@@ -187,6 +188,16 @@ export function updateHairInstances(
     upload.data = buffer
     uploadFloatBuffer(context, mesh.instanceBuffer, buffer, upload, count)
   }
+}
+
+function highestHairInstanceIndex(data: Float32Array, length: number) {
+  let index = -1
+
+  for (let i = 0; i < length; i += 16) {
+    index = Math.max(index, data[i]!)
+  }
+
+  return index
 }
 
 function resizeHairInstanceBuffers(cache: HairInstanceUploadCache, length: number) {
