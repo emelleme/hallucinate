@@ -1,4 +1,12 @@
+let domElements: DomElements | undefined
+
 export function getDomElements() {
+  domElements ??= createDomElements()
+
+  return domElements
+}
+
+function createDomElements() {
   const canvas = document.createElement('canvas')
   const djVideo = document.createElement('div')
   const photoWall = document.createElement('div')
@@ -215,3 +223,5 @@ export function getDomElements() {
     introStart,
   }
 }
+
+export type DomElements = ReturnType<typeof createDomElements>

@@ -3,6 +3,7 @@ import { characterFloor } from './character-data.ts'
 import { triangleAreaSquared } from './character-geometry.ts'
 import { add, clamp, normalize } from './math.ts'
 import { landscapeBounds, roomBounds } from './scene-data.ts'
+import { afterNextPaint } from './startup.ts'
 import { addTreeShadowReceiver, createTreeMeshes, treeCollision, treeMeshColor,
   uploadTreeShadowMap } from './tree-object.ts'
 import type { CircleBounds, TreeMesh, Vec3, Vertex } from './types.ts'
@@ -43,6 +44,7 @@ export async function loadOutsideTree(
   },
 ) {
   const trees = await loadAssimpScene(options.path, options.name)
+  await afterNextPaint()
   const meshes = createTreeMeshes(trees, options.name, options.height, options.color, options.sourceUp,
     options.nodeTransforms)
   const positionY = options.sourceUp === 'y' ? characterFloor : characterFloor + options.height * 0.287

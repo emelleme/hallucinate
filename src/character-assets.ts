@@ -7,6 +7,7 @@ import {
   validateCharacterRig,
 } from './character-rig.ts'
 import { normalizeIndex } from './math.ts'
+import { afterNextPaint } from './startup.ts'
 import type { CharacterRig } from './types.ts'
 
 type LoadProgress = () => void
@@ -103,6 +104,7 @@ export async function loadCharacterDetails(rig: Awaited<ReturnType<typeof loadCh
     { path: '/woman-sitting.fbx', name: 'woman-sitting.fbx' },
   ])
 
+  await afterNextPaint()
   rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting.fbx')
   rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting.fbx')
 }
@@ -134,5 +136,6 @@ export async function loadCharacterDance(rig: Awaited<ReturnType<typeof loadChar
 
   const dance = await loadAssimpScene(`/${name}`, name)
 
+  await afterNextPaint()
   rig.clips.dances[idleClipIndex - 1] = createCharacterClip(dance, name)
 }

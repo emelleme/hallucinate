@@ -2,6 +2,7 @@ import { loadAssimpScene, loadAssimpScenes } from './assimp-loader.ts'
 import { triangleAreaSquared } from './character-geometry.ts'
 import { imageTextureHaze } from './geometry.ts'
 import { add, compose, identity, mix, multiply, nodeTransform, slerp, transformOrigin } from './math.ts'
+import { afterNextPaint } from './startup.ts'
 import type { SceneLightBounds } from './scene-lighting.ts'
 import type { AssimpChannel, AssimpMesh, AssimpNode, AssimpScene, CircleBounds, Mat4, Quat, Vec3,
   Vertex } from './types.ts'
@@ -48,6 +49,7 @@ export async function loadStaticFbxObject(
     ])
     : [await loadAssimpScene(options.path, options.path.slice(1)), undefined]
 
+  await afterNextPaint()
   addStaticFbxObject(target, scene!, options, addSunLitTriangle, pose)
 }
 
@@ -68,6 +70,7 @@ export async function loadStaticFbxObjects(
   const scene = await loadAssimpScene(path, path.slice(1))
 
   for (const option of options) {
+    await afterNextPaint()
     addStaticFbxObject(target, scene, option, addSunLitTriangle)
   }
 }

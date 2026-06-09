@@ -1,11 +1,9 @@
 import {
-  characterCoreChunkCount,
   danceIdleClipLoadOrder,
-  loadCharacterAssets,
   loadCharacterDance,
   loadCharacterDetails,
-  loadCharacterHair,
 } from './character-assets.ts'
+import { loadCharacterCoreAssets } from './character-core-loader.ts'
 import { characterGroundJoints, characterScale } from './character-data.ts'
 import { buildCharacterDrawData, headPoseIndex, setPoseCigaretteGeometry } from './character-draw.ts'
 import type { CharacterDrawCache } from './character-draw.ts'
@@ -13,13 +11,14 @@ import type { VertexWriter } from './character-geometry.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
 import type { NumberBufferCache } from './character-gpu.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
-import { updateHairInstances } from './character-hair.ts'
+import { createHairRenderMeshes, updateHairInstances } from './character-hair.ts'
 import type { HairInstanceUploadCache } from './character-hair.ts'
 import { characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { createCigaretteGeometry, setCigaretteMouth as setCigaretteMouthPoint } from './cigarette.ts'
 import { createLocalCharacter } from './local-character.ts'
+import { afterNextPaint } from './startup.ts'
 import type { CharacterLight, CharacterMode, CharacterRig, HairRenderMesh, Player, SampledPose, Vec3 } from './types.ts'
 
 type CigarettePoseInput = {
@@ -53,8 +52,6 @@ export function createCharacterRenderSystem(options: {
 }) {
   let rig: CharacterRig | undefined
   let hairRenderMeshes: HairRenderMesh[] = []
-  let rigLoad: Promise<CharacterRig> | undefined
-  let hairLoad: Promise<void> | undefined
   let coreLoad: Promise<CharacterRig> | undefined
   let detailLoad: Promise<void> | undefined
   let remainingDanceLoad: Promise<void> | undefined
@@ -62,7 +59,7 @@ export function createCharacterRenderSystem(options: {
   let boxInstanceCount = 0
   let headHeight = 1.1
   let assetsLoaded = false
-  let coreLoadedChunks = 0
+  let coreProgress = 0
   let detailsLoaded = false
   let renderPlayers = false
   const boxInstanceCache: NumberBufferCache = { data: new Float32Array(0) }
@@ -85,45 +82,21 @@ export function createCharacterRenderSystem(options: {
   const cigaretteTurn = { cos: 1, sin: 0 }
   let cigaretteBasePose: SampledPose | undefined
 
-  function markCoreChunkLoaded() {
-    coreLoadedChunks++
-  }
-
-  async function loadAssets() {
-    const assets = await loadCharacterAssets(markCoreChunkLoaded)
-
-    return assets.rig
-  }
-
-  function loadRigOnce() {
-    rigLoad ??= loadAssets().then(next => {
-      rig = next
-
-      return next
-    })
-
-    return rigLoad
-  }
-
-  function loadHairOnce() {
-    hairLoad ??= loadCharacterHair(options.gl, options.hairController.index, markCoreChunkLoaded)
-      .then(details => {
-        hairRenderMeshes = details.hairRenderMeshes
-        options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
-        options.hairController.log()
-      })
-
-    return hairLoad
-  }
-
   function loadCoreOnce(onLoaded?: () => void) {
-    coreLoad ??= Promise.all([loadRigOnce(), loadHairOnce()])
-      .then(([activeRig]) => {
-        assetsLoaded = true
-        onLoaded?.()
+    coreLoad ??= loadCharacterCoreAssets(options.hairController.index, progress => {
+      coreProgress = Math.max(coreProgress, progress)
+    }).then(async details => {
+      rig = details.rig
+      options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
+      await afterNextPaint()
+      hairRenderMeshes = createHairRenderMeshes(options.gl, details.hairMeshes)
+      options.hairController.log()
+      coreProgress = 1
+      assetsLoaded = true
+      onLoaded?.()
 
-        return activeRig
-      })
+      return details.rig
+    })
 
     return coreLoad
   }
@@ -266,7 +239,7 @@ export function createCharacterRenderSystem(options: {
       return assetsLoaded
     },
     get coreProgress() {
-      return assetsLoaded ? 1 : coreLoadedChunks / characterCoreChunkCount
+      return assetsLoaded ? 1 : coreProgress
     },
     get detailsLoaded() {
       return detailsLoaded

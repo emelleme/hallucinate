@@ -1,7 +1,7 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
-import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
+import { idleClipNames } from './character-assets.ts'
 import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
 import { createCharacterStyleController, glowstickColors, resolveAccessoryKind } from './character-style.ts'
 import { cigaretteExhale, cigaretteHeldSmoke, cigaretteTipSmoke } from './cigarette.ts'
@@ -137,6 +137,7 @@ import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
 import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
+import { afterNextPaint, introLoadProgressValue, setIntroLoadProgress } from './startup.ts'
 import { treeSwing, updateTreeSwing, writeTreeSwingGeometry } from './tree-swing.ts'
 
 const clubGlobal = globalThis as ClubGlobal
@@ -176,6 +177,9 @@ const {
   introProgress,
   introStart,
 } = getDomElements()
+
+setIntroLoadProgress({ introBar, introProgress }, 4)
+await afterNextPaint()
 
 let resizeDirty = true
 
@@ -552,6 +556,8 @@ function loadReactionSlotEmojis() {
 
 setupReactionButtons()
 syncOnlineIndicator()
+setIntroLoadProgress({ introBar, introProgress }, 8)
+await afterNextPaint()
 adminIdRoot.id = 'admin-id-root'
 document.body.append(adminIdRoot)
 
@@ -1477,6 +1483,7 @@ let rocksLoaded = false
 let treeLoaded = false
 let introHidden = false
 document.body.dataset.introVisible = String(!introHidden)
+document.body.dataset.introReady = 'false'
 let videoPlaying = false
 let lastPixelRatio = 0
 let lastBloomScale = 0
@@ -1642,6 +1649,8 @@ addLoftLightGeometry(loftLights)
 addLoftSmoke(loftSmoke)
 const graffitiWallVertices: Vertex[] = []
 addGraffitiWallGeometry(graffitiWallVertices)
+setIntroLoadProgress({ introBar, introProgress }, 18)
+await afterNextPaint()
 
 let mainPoints = new Float32Array(vertices.flat())
 const mainLightPoints = new Float32Array(lights.flat())
@@ -1669,6 +1678,8 @@ const graffitiContext = graffitiCanvas.getContext('2d')!
 const graffitiTexture = gl.createTexture()
 const tShirtLogoImage = new Image()
 let tShirtLogoLoaded = false
+setIntroLoadProgress({ introBar, introProgress }, 30)
+await afterNextPaint()
 const viewProjection = gl.getUniformLocation(program, 'viewProjection')
 const cameraEye = gl.getUniformLocation(program, 'cameraEye')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
@@ -1856,6 +1867,8 @@ setupVertexArray({ array: foamArray, buffer: foamBuffer, data: 0, gl, stride, us
 setupVertexArray({ array: smokePuffArray, buffer: smokePuffBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiPoints, gl, stride,
   usage: gl.STATIC_DRAW })
+setIntroLoadProgress({ introBar, introProgress }, 40)
+await afterNextPaint()
 
 gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
@@ -4112,24 +4125,19 @@ function loadCurrentDance() {
 function updateIntro() {
   const coreProgress = characterRenderSystem.coreProgress
   const startReady = characterRenderSystem.assetsLoaded
-    || coreProgress >= (characterCoreChunkCount - 1) / characterCoreChunkCount
-  const progress = Math.round(characterRenderSystem.assetsLoaded ? 100 : coreLoadStarted
-    ? Math.max(5, coreProgress * 100)
-    : 0)
+    || coreProgress >= 0.98
+  const progress = characterRenderSystem.assetsLoaded ? 100 : coreLoadStarted
+    ? 45 + coreProgress * 55
+    : introLoadProgressValue()
+  const nextProgress = setIntroLoadProgress({ introBar, introProgress }, progress, introEffectRenderer)
 
-  if (progress !== lastIntroProgress) {
-    introProgress.textContent = `${progress}%`
-    introBar.style.transform = `scaleX(${progress / 100})`
-    introEffectRenderer.setProgress(progress / 100)
-    lastIntroProgress = progress
+  if (nextProgress !== lastIntroProgress) {
+    lastIntroProgress = nextProgress
   }
   if (startReady !== lastIntroStartReady) {
     introStart.dataset.ready = String(startReady)
+    document.body.dataset.introReady = String(startReady)
     lastIntroStartReady = startReady
-  }
-
-  if (characterRenderSystem.assetsLoaded) {
-    startPostEntryLoads()
   }
 
   const ready = characterRenderSystem.assetsLoaded && videoPlaying
@@ -4145,9 +4153,16 @@ function updateIntro() {
       helpUi.hide()
       syncOnlineIndicator()
     }
+    else {
+      helpUi.show()
+      syncOnlineIndicator()
+    }
+    afterNextPaint().then(() => requestIdle(startPostEntryLoads)).catch((error: unknown) => {
+      console.error(error)
+    })
   }
 
-  return progress
+  return nextProgress
 }
 
 function takeRemoteSeats(stamp: number) {
@@ -4263,6 +4278,8 @@ const characterRenderSystem = createCharacterRenderSystem({
   vertexSize,
 })
 
+setIntroLoadProgress({ introBar, introProgress }, 45, introEffectRenderer)
+await afterNextPaint()
 startCoreLoads()
 scheduleFrame()
 

@@ -672,6 +672,15 @@ body[data-arcade-open="true"] #merch-cards {
   display: block;
 }
 
+body[data-intro-visible="true"][data-intro-ready="true"] #intro-track,
+body[data-intro-visible="true"][data-intro-ready="true"] #intro-progress {
+  display: none;
+}
+
+body[data-intro-visible="true"][data-intro-ready="true"] #intro-start {
+  grid-row: 1 / 3;
+}
+
 #intro-start[data-playing="true"] {
   display: none;
 }
@@ -725,6 +734,31 @@ body[data-arcade-open="true"] #merch-cards {
   letter-spacing: 0;
   text-align: center;
   text-shadow: 0 0 10px rgb(255 20 20 / 0.45);
+}
+
+body[data-intro-visible="true"][data-intro-ready="false"] #intro-logo,
+body[data-intro-visible="true"][data-intro-ready="false"] #intro-start,
+body[data-intro-visible="true"][data-intro-ready="false"] #merch-cards,
+body[data-intro-visible="true"][data-intro-ready="false"] .emoji-dom-wall,
+body[data-intro-visible="true"][data-intro-ready="false"] #mobile-controls,
+body[data-intro-visible="true"] #chat-form,
+body[data-intro-visible="true"] #chat-bubble,
+body[data-intro-visible="true"] #online-indicator,
+body[data-intro-visible="true"] #reaction-buttons,
+body[data-intro-visible="true"] #wave-button,
+body[data-intro-visible="true"] #bubble-button,
+body[data-intro-visible="true"] #foam-button,
+body[data-intro-visible="true"] #breakdance-button,
+body[data-intro-visible="true"] #photo-button,
+body[data-intro-visible="true"] #rooms-button {
+  display: none;
+}
+
+body[data-intro-visible="true"][data-intro-ready="false"] #support-link {
+  right: auto;
+  left: calc(50% + 40px);
+  bottom: calc(18px + var(--app-bottom));
+  transform: translateX(-50%);
 }
 
 #help-ui {
