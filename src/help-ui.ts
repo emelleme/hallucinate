@@ -47,7 +47,7 @@ const actionRow: HelpKey[] = [
 ]
 const alternativeActionRow: HelpKey[] = [
   { keys: ['g'], label: 'sunglasses' },
-  { keys: ['h'], label: 'breakdance' },
+  { keys: ['y'], label: 'breakdance' },
 ]
 
 const moveRows: HelpKey[][] = [
@@ -76,7 +76,7 @@ export function createHelpUi() {
   const alternativeActions = helpRow(alternativeActionRow)
   const speak = helpBox({ keys: ['space'], label: 'speak' })
   const alternative = helpBox({ keys: ['tab'], label: 'alt inputs' })
-  const toggle = helpBox({ keys: ['?'], label: 'help' })
+  const toggle = helpBox({ keys: ['?', 'h'], label: 'help' })
   const video = helpNote('If the video doesn\'t start, press play on it')
 
   root.id = 'help-ui'

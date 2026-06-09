@@ -64,7 +64,7 @@ export function bindKeyboardInput(options: {
 
     const key = event.key.toLowerCase()
 
-    if (key === '?') {
+    if (key === '?' || key === 'h') {
       options.toggleHelp()
       return
     }
@@ -104,7 +104,7 @@ export function bindKeyboardInput(options: {
       return
     }
 
-    if (key === 'h') {
+    if (key === 'y') {
       if (options.keys.has(key)) {
         return
       }
