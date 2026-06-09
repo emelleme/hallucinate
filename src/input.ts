@@ -41,6 +41,7 @@ export function bindKeyboardInput(options: {
   cycleShirt: (direction: number) => void
   cyclePants: (direction: number) => void
   cycleAccessory: (direction: number) => void
+  toggleSunglasses: () => void
 }) {
   window.addEventListener('keydown', event => {
     if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
@@ -63,7 +64,7 @@ export function bindKeyboardInput(options: {
 
     const key = event.key.toLowerCase()
 
-    if (key === 'h') {
+    if (key === '?') {
       options.toggleHelp()
       return
     }
@@ -94,6 +95,16 @@ export function bindKeyboardInput(options: {
     }
 
     if (key === 'g') {
+      if (options.keys.has(key)) {
+        return
+      }
+
+      options.keys.add(key)
+      options.toggleSunglasses()
+      return
+    }
+
+    if (key === 'h') {
       if (options.keys.has(key)) {
         return
       }

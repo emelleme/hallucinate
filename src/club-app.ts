@@ -163,6 +163,8 @@ const {
   onlineSelf,
   onlineText,
   reactionButtons,
+  sunglassesOverlay,
+  sunglassesButton,
   breakdanceButton,
   waveButton,
   bubbleButton,
@@ -424,6 +426,7 @@ function syncMerchCards(outside: boolean) {
 function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  sunglassesButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1298,6 +1301,17 @@ function useAlternativeInput(value: boolean) {
   helpUi.setAlternativeInput(value)
 }
 
+function setSunglasses(value: boolean) {
+  sunglasses = value
+  sunglassesButton.dataset.active = String(value)
+  sunglassesButton.setAttribute('aria-pressed', String(value))
+  sunglassesOverlay.dataset.active = String(value)
+}
+
+function toggleSunglasses() {
+  setSunglasses(!sunglasses)
+}
+
 function palmTreeMeshColor(index: number): [number, number, number] {
   return index === 0 ? [0.42, 0.24, 0.1] : [0.02, 0.72 + (index % 3) * 0.08, 0.16]
 }
@@ -2024,6 +2038,7 @@ const foamForward: Vec3 = [0, 0, 0]
 const foamInterval = 250
 const foamBurstCount = 22
 let foaming = false
+let sunglasses = false
 const smokeSystem = createSmokeSystem()
 let smokePuffPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const smokeWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -2841,6 +2856,7 @@ bindKeyboardInput({
     foaming = false
   },
   startBreakdance: () => localCharacter.startBreakdance(),
+  toggleSunglasses,
   openChatInput: () => openChatInput(),
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
@@ -3059,6 +3075,11 @@ chatForm.addEventListener('submit', event => {
 
 photoButton.addEventListener('click', () => {
   void takePhoto()
+})
+
+sunglassesButton.addEventListener('click', () => {
+  toggleSunglasses()
+  canvas.focus()
 })
 
 breakdanceButton.addEventListener('click', () => {
@@ -4297,6 +4318,7 @@ const characterRenderSystem = createCharacterRenderSystem({
   localCharacter,
   players: renderPlayers,
   styleController,
+  sunglasses: () => sunglasses,
   vertexSize,
 })
 

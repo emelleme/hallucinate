@@ -20,7 +20,9 @@ function createDomElements() {
   const onlineCount = document.createElement('div')
   const chatLog = document.createElement('div')
   const reactionButtons = document.createElement('div')
+  const sunglassesOverlay = document.createElement('div')
   const photoButton = document.createElement('button')
+  const sunglassesButton = document.createElement('button')
   const breakdanceButton = document.createElement('button')
   const waveButton = document.createElement('button')
   const bubbleButton = document.createElement('button')
@@ -84,10 +86,17 @@ function createDomElements() {
   onlineText.textContent = ' 0 online'
   chatLog.id = 'chat-log'
   reactionButtons.id = 'reaction-buttons'
+  sunglassesOverlay.id = 'sunglasses-overlay'
+  sunglassesOverlay.dataset.active = 'false'
   photoButton.id = 'photo-button'
   photoButton.type = 'button'
   photoButton.textContent = '📸'
   photoButton.setAttribute('aria-label', 'take photo')
+  sunglassesButton.id = 'sunglasses-button'
+  sunglassesButton.type = 'button'
+  sunglassesButton.textContent = '😎'
+  sunglassesButton.setAttribute('aria-label', 'sunglasses')
+  sunglassesButton.setAttribute('aria-pressed', 'false')
   breakdanceButton.id = 'breakdance-button'
   breakdanceButton.type = 'button'
   breakdanceButton.textContent = '🤸'
@@ -190,8 +199,9 @@ function createDomElements() {
   introPanel.append(introTrack, introProgress, introNicknameField, introInstagramField, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
-  document.body.prepend(canvas, djVideo, photoWall, chatForm, chatBubble, onlineIndicator, reactionButtons, waveButton,
-    bubbleButton, foamButton, breakdanceButton, photoButton, roomsButton, supportLink, merchCards, intro)
+  document.body.prepend(canvas, djVideo, photoWall, sunglassesOverlay, chatForm, chatBubble, onlineIndicator,
+    reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton, photoButton, roomsButton,
+    supportLink, merchCards, intro)
 
   return {
     canvas,
@@ -206,6 +216,8 @@ function createDomElements() {
     onlineSelf,
     onlineText,
     reactionButtons,
+    sunglassesOverlay,
+    sunglassesButton,
     breakdanceButton,
     waveButton,
     bubbleButton,

@@ -48,6 +48,7 @@ export function createCharacterRenderSystem(options: {
   localCharacter: ReturnType<typeof createLocalCharacter>
   players: Player[]
   styleController: ReturnType<typeof createCharacterStyleController>
+  sunglasses: () => boolean
   vertexSize: number
 }) {
   let rig: CharacterRig | undefined
@@ -151,6 +152,7 @@ export function createCharacterRenderSystem(options: {
         motionBlend: options.localCharacter.motionBlend,
         mode: options.localCharacter.mode,
         modeTime: options.localCharacter.modeTime,
+        sunglasses: options.sunglasses(),
         idleClipIndex: options.idleClipIndex(),
         style: {
           topStyleIndex: options.styleController.topStyleIndex,

@@ -37,6 +37,7 @@ type CharacterInput = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
+  sunglasses?: boolean
   idleClipIndex: number
   style: PlayerStyle
   resolvedStyle?: ResolvedPlayerStyle
@@ -55,6 +56,12 @@ type BuildOptions = {
   vertexWriter?: VertexWriter
   width: number
   height: number
+}
+
+type HeadBasis = {
+  side: Vec3
+  up: Vec3
+  forward: Vec3
 }
 
 export type CharacterDrawCache = {
@@ -132,6 +139,10 @@ const sprayCanCapA: Vec3 = [0, 0, 0]
 const sprayCanCapB: Vec3 = [0, 0, 0]
 const sprayCanNozzleA: Vec3 = [0, 0, 0]
 const sprayCanNozzleB: Vec3 = [0, 0, 0]
+const sunglassesA: Vec3 = [0, 0, 0]
+const sunglassesB: Vec3 = [0, 0, 0]
+const sunglassesLens: Vec3 = [0.035, 0.018, 0.01]
+const sunglassesFrame: Vec3 = [0.07, 0.038, 0.018]
 const playerVisibility = { depth: 0, distanceSq: 0, visible: false }
 const farHairDistanceSq = 34 * 34
 
@@ -316,6 +327,10 @@ function addRenderedCharacter(
     }
   }
 
+  if (player.sunglasses) {
+    addSunglasses(target, boxInstances, pose, player, turn, options.light, localReflection)
+  }
+
   const hair = playerHair(options.hairMeshes, player.style.hairIndex)
 
   if (hair && detailedHair) {
@@ -324,6 +339,125 @@ function addRenderedCharacter(
   else if (hair && renderHair && options.hairMeshes.length > 0) {
     addNpcHairInstance(hairInstances, pose, hair, style.hairColor)
   }
+}
+
+function addSunglasses(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  pose: Vec3[],
+  player: { turn: number },
+  turn: TurnBasis,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  const basis = characterHairBasis(pose)
+  const head = pose[headIndex]!
+  const centerSide = 0.052
+  const lensHeight = 0.074
+  const lensWidth = 0.082
+  const centerUp = 0.072
+  const centerForward = 0.105
+
+  addSunglassesLens(target, boxInstances, head, basis, -centerSide, centerUp, centerForward, lensHeight, lensWidth,
+    player, turn, light, localReflection)
+  addSunglassesLens(target, boxInstances, head, basis, centerSide, centerUp, centerForward, lensHeight, lensWidth,
+    player, turn, light, localReflection)
+  addSunglassesBridge(target, boxInstances, head, basis, centerUp, centerForward, player, turn, light, localReflection)
+  addSunglassesTopBar(target, boxInstances, head, basis, centerUp + lensHeight * 0.5, centerForward, player, turn,
+    light, localReflection)
+  addSunglassesArm(target, boxInstances, head, basis, -1, centerUp + 0.01, centerForward, player, turn, light,
+    localReflection)
+  addSunglassesArm(target, boxInstances, head, basis, 1, centerUp + 0.01, centerForward, player, turn, light,
+    localReflection)
+}
+
+function addSunglassesLens(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  head: Vec3,
+  basis: HeadBasis,
+  side: number,
+  up: number,
+  forward: number,
+  height: number,
+  width: number,
+  player: { turn: number },
+  turn: TurnBasis,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  setSunglassesPoint(sunglassesA, head, basis, side, up - height * 0.5, forward)
+  setSunglassesPoint(sunglassesB, head, basis, side, up + height * 0.5, forward)
+  addCharacterBox(target, boxInstances, sunglassesA, sunglassesB, width, 0.026, sunglassesLens, 0.04, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: basis.side })
+}
+
+function addSunglassesBridge(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  head: Vec3,
+  basis: HeadBasis,
+  up: number,
+  forward: number,
+  player: { turn: number },
+  turn: TurnBasis,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  setSunglassesPoint(sunglassesA, head, basis, -0.03, up, forward + 0.006)
+  setSunglassesPoint(sunglassesB, head, basis, 0.03, up, forward + 0.006)
+  addCharacterBox(target, boxInstances, sunglassesA, sunglassesB, 0.018, 0.018, sunglassesFrame, 0.06, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: basis.up })
+}
+
+function addSunglassesTopBar(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  head: Vec3,
+  basis: HeadBasis,
+  up: number,
+  forward: number,
+  player: { turn: number },
+  turn: TurnBasis,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  setSunglassesPoint(sunglassesA, head, basis, -0.104, up, forward + 0.006)
+  setSunglassesPoint(sunglassesB, head, basis, 0.104, up, forward + 0.006)
+  addCharacterBox(target, boxInstances, sunglassesA, sunglassesB, 0.018, 0.018, sunglassesFrame, 0.06, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: basis.up })
+}
+
+function addSunglassesArm(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  head: Vec3,
+  basis: HeadBasis,
+  sign: -1 | 1,
+  up: number,
+  forward: number,
+  player: { turn: number },
+  turn: TurnBasis,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  setSunglassesPoint(sunglassesA, head, basis, sign * 0.102, up, forward)
+  setSunglassesPoint(sunglassesB, head, basis, sign * 0.132, up + 0.005, forward - 0.13)
+  addCharacterBox(target, boxInstances, sunglassesA, sunglassesB, 0.016, 0.016, sunglassesFrame, 0.04, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: basis.up })
+}
+
+function setSunglassesPoint(
+  target: Vec3,
+  head: Vec3,
+  basis: HeadBasis,
+  side: number,
+  up: number,
+  forward: number,
+) {
+  target[0] = head[0] + basis.side[0] * side + basis.up[0] * up + basis.forward[0] * forward
+  target[1] = head[1] + basis.side[1] * side + basis.up[1] * up + basis.forward[1] * forward
+  target[2] = head[2] + basis.side[2] * side + basis.up[2] * up + basis.forward[2] * forward
 }
 
 function addGlowsticks(
