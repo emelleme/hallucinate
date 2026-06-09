@@ -540,8 +540,11 @@ void main() {
     }
   }
 
-  pixel = vec4(shade + shade * light * 2.2 * strobe * density, clamp(light * strobe * density, 0.0, 1.0));
-  bloomPixel = pixel;
+  vec3 emission = shade * light * 2.2 * strobe * density;
+  float alpha = clamp(light * strobe * density, 0.0, 1.0);
+
+  pixel = vec4(shade + emission, alpha);
+  bloomPixel = vec4(emission * 0.72, alpha);
 }
 `
 

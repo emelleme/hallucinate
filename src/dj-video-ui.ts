@@ -21,6 +21,8 @@ const endedTimeTolerance = 5
 const playlistDiscoveryDelay = 1000
 const playlistDiscoveryAttempts = 5
 const syncSeekTolerance = 2
+const hiddenDjVideoOpacity = '0.01'
+const parkedDjVideoSize = 12
 
 export function videoZones(): VideoZone[] {
   return ['inside', 'outside', 'tent', 'loft']
@@ -56,7 +58,16 @@ export function createDjVideoUi(
   const reportedPlaylists: Partial<Record<VideoZone, string>> = {}
   let zone: VideoZone = currentZone()
   let playUnlocked = false
-  const projection = createDomWallProjection(element, { opacity: '0.74' })
+  const parkedDjVideoSizePx = `${parkedDjVideoSize}px`
+  const projection = createDomWallProjection(element, {
+    hidden: {
+      height: parkedDjVideoSizePx,
+      opacity: hiddenDjVideoOpacity,
+      transform: `translate3d(calc(100dvw - ${parkedDjVideoSizePx}), calc(100dvh - ${parkedDjVideoSizePx}), 0)`,
+      width: parkedDjVideoSizePx,
+    },
+    opacity: '0.74',
+  })
   const setInsideStyle = createStyleSetter(layers.inside.style)
   const setLoftStyle = createStyleSetter(layers.loft.style)
   const setOutsideStyle = createStyleSetter(layers.outside.style)
