@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
     "assimpjs": "^0.0.10",
     "uplot": "^1.6.32"
   },

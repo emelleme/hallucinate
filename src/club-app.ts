@@ -36,7 +36,7 @@ import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
 import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength } from './protocol.ts'
-import type { MessagePacket, VideoEndedEntry } from './protocol.ts'
+import type { GraffitiSnapshot, MessagePacket, VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
@@ -2160,14 +2160,16 @@ let graffitiSeed = Math.floor(Math.random() * 65536)
 let lastSprayAt = 0
 let sprayPointer = 0
 const sprayInterval = 55
-const graffitiPaintChunk = 1400
+const graffitiPaintChunk = 25
 const graffitiAppendQueue: GraffitiSplat[] = []
+let graffitiSyncSnapshot: GraffitiSnapshot | undefined
 let graffitiAppendIndex = 0
 let graffitiPaintFrame = 0
 let graffitiSyncing = false
 let graffitiWorkerAvailable = canRenderGraffitiTextureInWorker()
 let graffitiTextureRenderId = 0
 let graffitiTextureRenderPending = false
+let graffitiSnapshotMaxId = 0
 
 renderGraffitiTexture([])
 
@@ -2292,6 +2294,10 @@ function connectMultiplayer(spaceSlug?: string) {
       if (packet.reset) {
         beginGraffitiSync()
       }
+      if (packet.snapshot) {
+        graffitiSyncSnapshot = packet.snapshot
+        graffitiSnapshotMaxId = Math.max(graffitiSnapshotMaxId, packet.snapshot.id)
+      }
 
       const appended: GraffitiSplat[] = []
       const optimisticSplats = new Map(graffitiSplats
@@ -2299,7 +2305,7 @@ function connectMultiplayer(spaceSlug?: string) {
         .filter(([key]) => key !== ''))
 
       for (const splat of packet.splats) {
-        if (graffitiIds.has(splat.id)) {
+        if (graffitiIds.has(splat.id) || (splat.id !== 0 && splat.id <= graffitiSnapshotMaxId)) {
           continue
         }
 
@@ -2321,7 +2327,7 @@ function connectMultiplayer(spaceSlug?: string) {
       if (graffitiSyncing) {
         if (packet.complete) {
           graffitiSyncing = false
-          renderGraffitiTexture(graffitiSplats)
+          renderGraffitiTextureSync(graffitiSyncSnapshot, graffitiSplats)
         }
 
         return
@@ -3093,6 +3099,8 @@ function beginGraffitiSync() {
   graffitiSplats.length = 0
   graffitiSplats.push(...optimistic)
   graffitiIds.clear()
+  graffitiSnapshotMaxId = 0
+  graffitiSyncSnapshot = undefined
   graffitiSyncing = true
   clearGraffitiPaintQueue()
 }
@@ -4109,6 +4117,15 @@ function scheduleGraffitiTexturePaint(splats: GraffitiSplat[]) {
   scheduleGraffitiTextureFrame()
 }
 
+function renderGraffitiTextureSync(snapshot: GraffitiSnapshot | undefined, splats: GraffitiSplat[]) {
+  if (!snapshot) {
+    renderGraffitiTexture(splats.slice())
+    return
+  }
+
+  renderGraffitiTextureSnapshot(snapshot, splats.slice())
+}
+
 function renderGraffitiTexture(splats: GraffitiSplat[]) {
   const id = ++graffitiTextureRenderId
 
@@ -4143,6 +4160,21 @@ function renderGraffitiTexture(splats: GraffitiSplat[]) {
     })
 }
 
+function renderGraffitiTextureSnapshot(snapshot: GraffitiSnapshot, splats: GraffitiSplat[]) {
+  const id = ++graffitiTextureRenderId
+
+  graffitiTextureRenderPending = true
+  paintGraffitiTextureSnapshot(id, snapshot, splats)
+    .catch((error: unknown) => {
+      if (id === graffitiTextureRenderId) {
+        console.error(error)
+      }
+    })
+    .finally(() => {
+      finishGraffitiTextureRender(id)
+    })
+}
+
 function finishGraffitiTextureRender(id: number) {
   if (id !== graffitiTextureRenderId) {
     return
@@ -4156,11 +4188,53 @@ function finishGraffitiTextureRender(id: number) {
 }
 
 function paintGraffitiTextureReset(splats: GraffitiSplat[]) {
+  paintGraffitiTextureBase()
+  uploadGraffitiTexture()
+  scheduleGraffitiTexturePaint(splats)
+}
+
+async function paintGraffitiTextureSnapshot(id: number, snapshot: GraffitiSnapshot, splats: GraffitiSplat[]) {
+  const image = await loadGraffitiSnapshotImage(snapshot)
+
+  if (id !== graffitiTextureRenderId) {
+    return
+  }
+
+  paintGraffitiTextureBase()
+  graffitiContext.drawImage(image, 0, 0)
+  await paintGraffitiTextureSplats(id, splats)
+  if (id !== graffitiTextureRenderId) {
+    return
+  }
+  paintTShirtLogo()
+  uploadGraffitiTexture()
+}
+
+async function paintGraffitiTextureSplats(id: number, splats: GraffitiSplat[]) {
+  for (let i = 0; i < splats.length; i += graffitiPaintChunk) {
+    paintGraffitiSplats(graffitiContext, splats.slice(i, i + graffitiPaintChunk))
+    await afterNextPaint()
+    if (id !== graffitiTextureRenderId) {
+      return
+    }
+  }
+}
+
+function paintGraffitiTextureBase() {
   graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
   paintLoftPaintingTextures(graffitiContext)
   paintTShirtLogo()
-  uploadGraffitiTexture()
-  scheduleGraffitiTexturePaint(splats)
+}
+
+function loadGraffitiSnapshotImage(snapshot: GraffitiSnapshot) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+
+    image.decoding = 'async'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error(`Failed to load graffiti snapshot ${snapshot.url}`))
+    image.src = snapshot.url
+  })
 }
 
 function clearGraffitiPaintQueue() {

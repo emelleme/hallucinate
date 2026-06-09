@@ -83,8 +83,16 @@ type ConeGraffitiWall = {
 }
 type GraffitiWall = PlaneGraffitiWall | OrientedPlaneGraffitiWall | CylinderGraffitiWall | ConeGraffitiWall
 type ScreenRay = ReturnType<typeof screenRay>
-type GraffitiPaintCanvas = HTMLCanvasElement | OffscreenCanvas
-export type GraffitiPaintContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+type GraffitiLayerCanvas = {
+  constructor: new(width: number, height: number) => GraffitiLayerCanvas
+  getContext(contextId: '2d'): GraffitiPaintContext | null
+  height: number
+  width: number
+}
+type GraffitiPaintCanvas = HTMLCanvasElement | OffscreenCanvas | GraffitiLayerCanvas
+export type GraffitiPaintContext = (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) & {
+  canvas: GraffitiPaintCanvas
+}
 
 const wallYMin = characterFloor + 0.03
 const wallYMax = 5
@@ -166,7 +174,6 @@ const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
 const tShirtLogoAtlasIndex = paintingAtlasIndex + 1
 const tShirtLogoAtlasPadding = 24
-let splatLayerContext: GraffitiPaintContext | undefined
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
   const ray = screenRay(clientX, clientY, projector)
@@ -846,17 +853,14 @@ function paintGraffitiSplat(context: GraffitiPaintContext, splat: GraffitiSplat)
   const pixelsPerMeterY = graffitiCellHeight / (wall.yMax - wall.yMin)
   const scale = graffitiSplatScale(splat.radius)
   const count = 3 + splat.seed % 3
-  const layer = splatLayer(context)
   const padding = Math.ceil(Math.max(pixelsPerMeterX, pixelsPerMeterY) * scale * 0.34)
   const left = Math.max(Math.floor(x - padding), 0)
   const top = Math.max(Math.floor(y - padding), 0)
   const right = Math.min(Math.ceil(x + padding), context.canvas.width)
   const bottom = Math.min(Math.ceil(y + padding), context.canvas.height)
+  const layer = createLayerContext(createLayerCanvas(context.canvas, right - left, bottom - top))
 
-  layer.clearRect(left, top, right - left, bottom - top)
-
-  layer.save()
-  layer.translate(x, y)
+  layer.translate(x - left, y - top)
   layer.scale(pixelsPerMeterX, pixelsPerMeterY)
   layer.fillStyle = `rgb(${Math.round(color[0] * 255)} ${Math.round(color[1] * 255)} ${Math.round(color[2] * 255)})`
 
@@ -886,36 +890,29 @@ function paintGraffitiSplat(context: GraffitiPaintContext, splat: GraffitiSplat)
     layer.fill()
   }
 
-  layer.restore()
-  layer.globalCompositeOperation = 'source-over'
-  context.drawImage(layer.canvas, left, top, right - left, bottom - top, left, top, right - left, bottom - top)
+  context.drawImage(layer.canvas, left, top)
 }
 
-function splatLayer(context: GraffitiPaintContext): GraffitiPaintContext {
-  if (!splatLayerContext || splatLayerContext.canvas.width !== context.canvas.width
-    || splatLayerContext.canvas.height !== context.canvas.height)
-  {
-    const canvas = createLayerCanvas(context.canvas)
-
-    canvas.width = context.canvas.width
-    canvas.height = context.canvas.height
-    splatLayerContext = createLayerContext(canvas)
-  }
-
-  return splatLayerContext
-}
-
-function createLayerCanvas(canvas: GraffitiPaintCanvas): GraffitiPaintCanvas {
+function createLayerCanvas(canvas: GraffitiPaintCanvas, width: number, height: number): GraffitiPaintCanvas {
   if (isOffscreenCanvas(canvas)) {
-    return new OffscreenCanvas(canvas.width, canvas.height)
+    return new OffscreenCanvas(width, height)
   }
 
-  return document.createElement('canvas')
+  if (typeof document === 'object') {
+    const layer = document.createElement('canvas')
+
+    layer.width = width
+    layer.height = height
+
+    return layer
+  }
+
+  return new (canvas as GraffitiLayerCanvas).constructor(width, height)
 }
 
 function createLayerContext(canvas: GraffitiPaintCanvas): GraffitiPaintContext {
   if (isOffscreenCanvas(canvas)) {
-    const context = canvas.getContext('2d')
+    const context = canvas.getContext('2d') as GraffitiPaintContext | null
 
     if (!context) {
       throw new Error('Failed to initialize graffiti splat layer')
@@ -924,7 +921,7 @@ function createLayerContext(canvas: GraffitiPaintCanvas): GraffitiPaintContext {
     return context
   }
 
-  const context = canvas.getContext('2d')
+  const context = canvas.getContext('2d') as GraffitiPaintContext | null
 
   if (!context) {
     throw new Error('Failed to initialize graffiti splat layer')

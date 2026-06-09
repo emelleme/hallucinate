@@ -1,4 +1,6 @@
 import { Database } from 'bun:sqlite'
+import { createCanvas, loadImage } from '@napi-rs/canvas'
+import type { Canvas } from '@napi-rs/canvas'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
@@ -7,7 +9,15 @@ import { analyticsHtml } from './src/analytics-page.ts'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
-import { graffitiColors, graffitiWallBounds, graffitiWallCount, maxGraffitiSplats } from './src/graffiti.ts'
+import {
+  graffitiColors,
+  graffitiTextureSize,
+  graffitiWallBounds,
+  graffitiWallCount,
+  maxGraffitiSplats,
+  paintGraffitiSplats,
+  type GraffitiPaintContext,
+} from './src/graffiti.ts'
 import { photoWallThumbnailHeight, photoWallThumbnailWidth } from './src/photo-wall-data.ts'
 import {
   ACTIONS,
@@ -42,6 +52,7 @@ import {
   encodeVideoProgressRequest,
   encodeVideoSync,
   GRAFFITI,
+  type GraffitiSnapshot,
   instagramMaxLength,
   MESSAGE,
   type MessagePacket,
@@ -173,6 +184,15 @@ const maxHairIndex = 32
 const memoryAssetMaxSize = 3 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
+const graffitiLayerDir = join(import.meta.dir, 'data', 'graffiti', 'layers')
+const graffitiLayerExtension = '.webp'
+const graffitiPackLog = '[graffiti:pack]'
+const graffitiPackPaintChunk = 25
+const graffitiPackQuality = 100
+const graffitiPackSize = 1000
+const graffitiSnapshotDir = join(import.meta.dir, 'data', 'graffiti', 'snapshots')
+const graffitiSnapshotExtension = '.webp'
+const graffitiSnapshotMigrationKey = 'graffiti:snapshot-migration:1000:1'
 const photoDir = join(import.meta.dir, 'data', 'photos')
 const photoExtension = '.webp'
 const photoExtensions = [photoExtension, '.jpg'] as const
@@ -190,14 +210,18 @@ const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
 await migratePhotosToWebp()
 await migratePhotoThumbnails()
+await migrateGraffitiSnapshot()
 const videoPlaylistRequestInterval = 3000
 const videoProgressRequestInterval = 10_000
 const videoProgressBroadcastDelay = 600
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
-let graffitiSplats = await loadGraffitiSplats()
-let nextGraffitiId = (graffitiSplats.at(-1)?.id ?? 0) + 1
+let graffitiSnapshot = loadGraffitiSnapshot()
+let graffitiSplats = loadGraffitiSplats()
+await packGraffitiTail()
+await trimGraffitiHistory()
+let nextGraffitiId = Math.max(graffitiSplats.at(-1)?.id ?? 0, graffitiSnapshot?.lastId ?? 0) + 1
 const spaces = new Map<string, SpaceState>()
 const mainSpace = createSpace('main', 'main', roomCount)
 
@@ -236,6 +260,24 @@ type PhotoThumbnailMigration = {
   height: number
   width: number
 }
+type GraffitiLayer = {
+  id: number
+  firstId: number
+  lastId: number
+  path: string
+  splatCount: number
+}
+type StoredGraffitiSnapshot = {
+  lastId: number
+  path: string
+  splatCount: number
+}
+type GraffitiSnapshotMigration = {
+  completedAt: number
+  count: number
+  lastId: number
+  packSize: number
+}
 
 const server = Bun.serve<SocketData>({
   port,
@@ -269,6 +311,10 @@ const server = Bun.serve<SocketData>({
 
     if (url.pathname === '/photos' || url.pathname.startsWith('/photos/')) {
       return servePhoto(request, url)
+    }
+
+    if (url.pathname.startsWith('/graffiti/')) {
+      return serveGraffitiAsset(request, url)
     }
 
     if (ipConnections(ip) >= maxConnectionsPerIp) {
@@ -680,6 +726,16 @@ function cacheHeaders(path: string) {
     return headers
   }
 
+  if (path.startsWith(graffitiLayerDir)) {
+    headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return headers
+  }
+
+  if (path.startsWith(graffitiSnapshotDir)) {
+    headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return headers
+  }
+
   if (/[/\\]assets[/\\].+-[A-Za-z0-9_-]{8,}\./.test(path)) {
     headers.set('cache-control', 'public, max-age=31536000, immutable')
     return headers
@@ -893,6 +949,23 @@ async function servePhotoFile(request: Request, photoFile: PhotoFile) {
   })
 }
 
+async function serveGraffitiAsset(request: Request, url: URL) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    })
+  }
+
+  const file = graffitiSnapshotFileRequest(url.pathname)
+
+  if (!file) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  return await fileResponse(graffitiSnapshotPath(file), request) ?? new Response('Not Found', { status: 404 })
+}
+
 function listPhotos(offset: number, ip: string) {
   const photos = db.query<{
     createdAt: number
@@ -993,6 +1066,28 @@ function photoFileRequest(path: string): PhotoFile | undefined {
   return match
     ? { timestamp: Number(match[1]), thumbnail: !!match[2], extension: `.${match[3]}` as PhotoExtension }
     : undefined
+}
+
+function graffitiSnapshotFileRequest(path: string) {
+  const match = /^\/graffiti\/snapshots\/(\d+)\.webp$/.exec(path)
+
+  return match ? `${match[1]}${graffitiSnapshotExtension}` : undefined
+}
+
+function graffitiSnapshotFileName(id: number) {
+  return `${id}${graffitiSnapshotExtension}`
+}
+
+function graffitiLayerPath(path: string) {
+  return join(graffitiLayerDir, path)
+}
+
+function graffitiSnapshotPath(path: string) {
+  return join(graffitiSnapshotDir, path)
+}
+
+function graffitiSnapshotUrl(snapshot: StoredGraffitiSnapshot) {
+  return `/graffiti/snapshots/${snapshot.lastId}${graffitiSnapshotExtension}`
 }
 
 async function migratePhotosToWebp() {
@@ -1780,7 +1875,7 @@ function sendGraffiti(client: Client) {
     return
   }
 
-  sendGraffitiSplats(client.socket, graffitiSplats, true)
+  sendGraffitiSplats(client.socket, graffitiSplats, true, graffitiSnapshotPacket())
 }
 
 function sendVideoSync(client: Client) {
@@ -1883,6 +1978,21 @@ function setupDb() {
       seed INTEGER NOT NULL,
       color_index INTEGER NOT NULL,
       radius INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graffiti_layers (
+      id INTEGER PRIMARY KEY,
+      first_id INTEGER NOT NULL,
+      last_id INTEGER NOT NULL,
+      splat_count INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graffiti_snapshot (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_id INTEGER NOT NULL,
+      splat_count INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      created_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS bans (
       value TEXT PRIMARY KEY
@@ -2481,7 +2591,6 @@ async function saveGraffiti(splats: GraffitiSplat[]) {
     INSERT INTO graffiti (id, wall, x, y, seed, color_index, radius)
     VALUES ($id, $wall, $x, $y, $seed, $colorIndex, $radius)
   `)
-  const remove = db.query('DELETE FROM graffiti WHERE id = $id')
 
   for (const splat of splats) {
     const next = { ...splat, id: nextGraffitiId++ }
@@ -2491,17 +2600,14 @@ async function saveGraffiti(splats: GraffitiSplat[]) {
     insert.run(next)
   }
 
-  while (graffitiSplats.length > maxGraffitiSplats) {
-    const removed = graffitiSplats.shift()!
-
-    remove.run({ id: removed.id })
-  }
+  await packGraffitiTail()
+  await trimGraffitiHistory()
 
   return saved
 }
 
-async function loadGraffitiSplats() {
-  const splats = db.query<{
+function loadGraffitiSplats() {
+  return db.query<{
     id: number
     wall: number
     x: number
@@ -2514,15 +2620,171 @@ async function loadGraffitiSplats() {
     FROM graffiti
     ORDER BY id
   `).all()
+}
 
-  const removed = splats.splice(0, Math.max(0, splats.length - maxGraffitiSplats))
-  const remove = db.query('DELETE FROM graffiti WHERE id = $id')
+function loadGraffitiSnapshot() {
+  return db.query<StoredGraffitiSnapshot, []>(`
+    SELECT last_id AS lastId, path, splat_count AS splatCount
+    FROM graffiti_snapshot
+    WHERE id = 1
+  `).get() ?? undefined
+}
 
-  for (const splat of removed) {
-    remove.run({ id: splat.id })
+function loadLegacyGraffitiLayers() {
+  return db.query<GraffitiLayer, []>(`
+    SELECT id, first_id AS firstId, last_id AS lastId, path, splat_count AS splatCount
+    FROM graffiti_layers
+    ORDER BY id
+  `).all()
+}
+
+async function migrateGraffitiSnapshot() {
+  const snapshot = loadGraffitiSnapshot()
+  const layers = loadLegacyGraffitiLayers()
+  const migration = loadJson<GraffitiSnapshotMigration>(graffitiSnapshotMigrationKey)
+
+  if (layers.length === 0 && migration) {
+    return
   }
 
-  return splats
+  if (layers.length === 0) {
+    saveJson(graffitiSnapshotMigrationKey, {
+      completedAt: Date.now(),
+      count: snapshot?.splatCount ?? 0,
+      lastId: snapshot?.lastId ?? 0,
+      packSize: graffitiPackSize,
+    } satisfies GraffitiSnapshotMigration)
+    return
+  }
+
+  const lastLayer = layers.at(-1)!
+  if (snapshot && snapshot.lastId < lastLayer.lastId) {
+    throw new Error(`Graffiti snapshot ${snapshot.lastId} is older than legacy layer ${lastLayer.lastId}`)
+  }
+  if (snapshot && snapshot.lastId >= lastLayer.lastId) {
+    await deleteLegacyGraffitiLayers(layers)
+    return
+  }
+
+  console.log(`${graffitiPackLog} merging ${layers.length} legacy layers into one snapshot`)
+  const canvas = createCanvas(graffitiTextureSize, graffitiTextureSize)
+  const context = canvas.getContext('2d')
+  let count = 0
+
+  for (const layer of layers) {
+    const image = await loadImage(graffitiLayerPath(layer.path))
+
+    context.drawImage(image, 0, 0)
+    count += layer.splatCount
+    await Bun.sleep(0)
+  }
+
+  await writeGraffitiSnapshot(canvas, lastLayer.lastId, count, undefined)
+  await deleteLegacyGraffitiLayers(layers)
+
+  saveJson(graffitiSnapshotMigrationKey, {
+    completedAt: Date.now(),
+    count,
+    lastId: lastLayer.lastId,
+    packSize: graffitiPackSize,
+  } satisfies GraffitiSnapshotMigration)
+  console.log(`${graffitiPackLog} wrote snapshot ${lastLayer.lastId} from legacy layers`)
+}
+
+async function packGraffitiTail() {
+  while (graffitiSplats.length >= graffitiPackSize) {
+    const chunk = graffitiSplats.slice(0, graffitiPackSize)
+
+    graffitiSnapshot = await saveGraffitiSnapshot(chunk, graffitiSnapshot ?? undefined)
+    graffitiSplats.splice(0, graffitiPackSize)
+  }
+}
+
+async function saveGraffitiSnapshot(splats: GraffitiSplat[], previous: StoredGraffitiSnapshot | undefined) {
+  const firstId = splats[0]!.id
+  const lastId = splats.at(-1)!.id
+  const canvas = createCanvas(graffitiTextureSize, graffitiTextureSize)
+  const context = canvas.getContext('2d') as unknown as GraffitiPaintContext
+  const splatCount = (previous?.splatCount ?? 0) + splats.length
+
+  if (previous) {
+    const image = await loadImage(graffitiSnapshotPath(previous.path))
+
+    context.drawImage(image as unknown as CanvasImageSource, 0, 0)
+  }
+
+  await paintGraffitiPackedSplats(context, splats)
+  const snapshot = await writeGraffitiSnapshot(canvas, lastId, splatCount, previous)
+
+  db.query('DELETE FROM graffiti WHERE id >= $firstId AND id <= $lastId').run({ firstId, lastId })
+
+  return snapshot
+}
+
+async function writeGraffitiSnapshot(
+  canvas: Canvas,
+  lastId: number,
+  splatCount: number,
+  previous: StoredGraffitiSnapshot | undefined,
+) {
+  const path = graffitiSnapshotFileName(lastId)
+  const temporary = `${lastId}.tmp${graffitiSnapshotExtension}`
+  const snapshot: StoredGraffitiSnapshot = { lastId, path, splatCount }
+
+  await mkdir(graffitiSnapshotDir, { recursive: true })
+  await Bun.write(graffitiSnapshotPath(temporary), canvas.toBuffer('image/webp', graffitiPackQuality))
+  await rename(graffitiSnapshotPath(temporary), graffitiSnapshotPath(path))
+  db.query(`
+    INSERT INTO graffiti_snapshot (id, last_id, splat_count, path, created_at)
+    VALUES (1, $lastId, $splatCount, $path, $createdAt)
+    ON CONFLICT(id) DO UPDATE SET
+      last_id = excluded.last_id,
+      splat_count = excluded.splat_count,
+      path = excluded.path,
+      created_at = excluded.created_at
+  `).run({ ...snapshot, createdAt: Date.now() })
+
+  if (previous && previous.path !== path && existsSync(graffitiSnapshotPath(previous.path))) {
+    await unlink(graffitiSnapshotPath(previous.path))
+  }
+
+  return snapshot
+}
+
+async function paintGraffitiPackedSplats(context: GraffitiPaintContext, splats: GraffitiSplat[]) {
+  for (let i = 0; i < splats.length; i += graffitiPackPaintChunk) {
+    paintGraffitiSplats(context, splats.slice(i, i + graffitiPackPaintChunk))
+    await Bun.sleep(0)
+  }
+}
+
+async function trimGraffitiHistory() {
+  const removeSplat = db.query('DELETE FROM graffiti WHERE id = $id')
+  let count = graffitiSplats.length
+
+  while (count > maxGraffitiSplats && graffitiSplats.length > 0) {
+    const splat = graffitiSplats.shift()!
+
+    removeSplat.run({ id: splat.id })
+    count--
+  }
+}
+
+async function deleteLegacyGraffitiLayers(layers: GraffitiLayer[]) {
+  const remove = db.query('DELETE FROM graffiti_layers WHERE id = $id')
+
+  for (const layer of layers) {
+    remove.run({ id: layer.id })
+    if (existsSync(graffitiLayerPath(layer.path))) {
+      await unlink(graffitiLayerPath(layer.path))
+    }
+  }
+}
+
+function graffitiSnapshotPacket(): GraffitiSnapshot | undefined {
+  return graffitiSnapshot
+    ? { id: graffitiSnapshot.lastId, url: graffitiSnapshotUrl(graffitiSnapshot) }
+    : undefined
 }
 
 async function loadBannedIps() {
@@ -2743,10 +3005,15 @@ function broadcastGraffiti(splats: GraffitiSplat[]) {
   }
 }
 
-function sendGraffitiSplats(socket: Bun.ServerWebSocket<SocketData>, splats: GraffitiSplat[], sync = false) {
+function sendGraffitiSplats(
+  socket: Bun.ServerWebSocket<SocketData>,
+  splats: GraffitiSplat[],
+  sync = false,
+  snapshot?: GraffitiSnapshot,
+) {
   if (splats.length === 0) {
     if (sync) {
-      socket.send(encodeGraffiti({ splats, reset: true, complete: true }))
+      socket.send(encodeGraffiti({ snapshot, splats, reset: true, complete: true }))
     }
 
     return
@@ -2756,6 +3023,7 @@ function sendGraffitiSplats(socket: Bun.ServerWebSocket<SocketData>, splats: Gra
     const end = Math.min(i + graffitiPacketSplats, splats.length)
 
     socket.send(encodeGraffiti({
+      snapshot: sync && i === 0 ? snapshot : undefined,
       splats: splats.slice(i, end),
       reset: sync && i === 0,
       complete: sync && end >= splats.length,

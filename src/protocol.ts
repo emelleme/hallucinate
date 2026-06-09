@@ -31,7 +31,7 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 44
+export const protocolVersion = 46
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -40,6 +40,7 @@ const motionSize = 17
 const spawnSize = motionSize + 2
 const graffitiReset = 1
 const graffitiComplete = 2
+const graffitiSnapshotSync = 4
 
 export type MotionPacket = {
   id?: number
@@ -138,9 +139,15 @@ export type BeachBallPacket = {
 }
 
 export type GraffitiPacket = {
+  snapshot?: GraffitiSnapshot
   splats: GraffitiSplat[]
   reset?: boolean
   complete?: boolean
+}
+
+export type GraffitiSnapshot = {
+  id: number
+  url: string
 }
 
 export type ActionsPacket = {
@@ -523,13 +530,17 @@ export function decodeBeachBalls(view: DataView): BeachBallPacket {
 }
 
 export function encodeGraffiti(packet: GraffitiPacket) {
-  const data = new ArrayBuffer(4 + packet.splats.length * 13)
+  const snapshot = packet.snapshot
+  const snapshotUrl = snapshot ? textEncoder.encode(snapshot.url) : undefined
+  const snapshotSize = snapshotUrl ? 6 + snapshotUrl.length : 0
+  const data = new ArrayBuffer(4 + packet.splats.length * 13 + snapshotSize)
   const view = new DataView(data)
   let offset = 4
 
   view.setUint8(0, GRAFFITI)
   view.setUint16(1, packet.splats.length)
-  view.setUint8(3, (packet.reset ? graffitiReset : 0) | (packet.complete ? graffitiComplete : 0))
+  view.setUint8(3, (packet.reset ? graffitiReset : 0) | (packet.complete ? graffitiComplete : 0)
+    | (snapshot ? graffitiSnapshotSync : 0))
 
   for (const splat of packet.splats) {
     view.setUint32(offset, splat.id)
@@ -542,6 +553,13 @@ export function encodeGraffiti(packet: GraffitiPacket) {
     offset += 13
   }
 
+  if (snapshot && snapshotUrl) {
+    view.setUint32(offset, snapshot.id)
+    view.setUint16(offset + 4, snapshotUrl.length)
+    new Uint8Array(data, offset + 6, snapshotUrl.length).set(snapshotUrl)
+    offset += 6 + snapshotUrl.length
+  }
+
   return data
 }
 
@@ -549,9 +567,11 @@ export function decodeGraffiti(view: DataView): GraffitiPacket {
   expectAtLeastSize(view, 4)
   const count = view.getUint16(1)
   const flags = view.getUint8(3)
-  expectSize(view, 4 + count * 13)
   const splats: GraffitiSplat[] = []
+  let snapshot: GraffitiSnapshot | undefined
   let offset = 4
+
+  expectAtLeastSize(view, offset + count * 13)
 
   for (let i = 0; i < count; i++) {
     splats.push({
@@ -566,7 +586,23 @@ export function decodeGraffiti(view: DataView): GraffitiPacket {
     offset += 13
   }
 
+  if ((flags & graffitiSnapshotSync) !== 0) {
+    expectAtLeastSize(view, offset + 6)
+    const id = view.getUint32(offset)
+    const length = view.getUint16(offset + 4)
+
+    expectAtLeastSize(view, offset + 6 + length)
+    snapshot = {
+      id,
+      url: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 6, length)),
+    }
+    offset += 6 + length
+  }
+
+  expectSize(view, offset)
+
   return {
+    snapshot,
     splats,
     reset: (flags & graffitiReset) !== 0,
     complete: (flags & graffitiComplete) !== 0,
