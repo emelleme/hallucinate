@@ -4,8 +4,8 @@ import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArc
   loftCouches, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideFoodTruck, outsideFoodTruckSize, outsideFoodTruckTurn, outsideHut,
   outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideStage,
-  outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench, tentDjBooth,
-  tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
+  outsideStageRocks, outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench,
+  tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
 import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
@@ -34,6 +34,10 @@ type CollisionOptions = {
 }
 type HeightOptions = {
   couches?: boolean
+}
+type PaddedPlatform = {
+  bounds: PaddedBounds
+  top: number
 }
 
 const djBoothCollision = paddedBounds(djBooth)
@@ -99,6 +103,10 @@ const stoolTop = characterFloor + 0.72
 const outsideHutStoolTop = characterFloor + outsideHutDeckHeight + 0.72
 const outsideStageTop = characterFloor + 4.2
 const platformStep = 0.42
+const outsideStageRockCollisions: PaddedPlatform[] = outsideStageRocks.map(rock => ({
+  bounds: paddedBounds(rock, 0.18),
+  top: characterFloor + rock.height,
+}))
 const emptySeats = new Set<string>()
 
 export function walkHeight(x: number, y: number, z: number) {
@@ -185,6 +193,11 @@ export function collideRoom(
     for (const speaker of outsideDjSpeakerCollisions) {
       if (!onPaddedPlatform(position, speaker, speakerTop)) {
         collidePaddedBounds(position, speaker)
+      }
+    }
+    for (const rock of outsideStageRockCollisions) {
+      if (!onPaddedPlatform(position, rock.bounds, rock.top)) {
+        collidePaddedBounds(position, rock.bounds)
       }
     }
     for (const speaker of tentDjSpeakerCollisions) {
@@ -310,6 +323,9 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   for (const speaker of outsideDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
   }
+  for (const rock of outsideStageRockCollisions) {
+    collideSpherePaddedBounds(position, radius, rock.bounds, rock.top)
+  }
   for (const speaker of tentDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
   }
@@ -346,6 +362,7 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
       && outsideTShirtStandCollisions.every(stand => !inOrientedBounds(x, z, stand.bounds, 0.12))
       && !inPaddedBounds(x, z, outsidePhotoWallCollision)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && outsideStageRockCollisions.every(rock => !inPaddedBounds(x, z, rock.bounds))
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
@@ -890,6 +907,12 @@ function platformHeight(x: number, z: number) {
     inPaddedBounds(x, z, bounds)
   )) {
     return speakerTop
+  }
+
+  const stageRock = outsideStageRockCollisions.find(rock => inPaddedBounds(x, z, rock.bounds))
+
+  if (stageRock) {
+    return stageRock.top
   }
 
   if (inPaddedBounds(x, z, bartenderBarCollision) || inPaddedBounds(x, z, outsideHutBarCollision)) {

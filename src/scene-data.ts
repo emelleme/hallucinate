@@ -3,6 +3,7 @@ import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 import { characterFloor } from './character-data.ts'
 
 export type TShirtStand = Bounds & { height: number; turn: number }
+export type StageRock = Bounds & { height: number; meshIndex: number; turn: number }
 
 export const djBooth: Bounds = { x: 0, z: -21.55, width: 3.6, depth: 1.24 }
 export const djSpeakers: Bounds[] = [
@@ -26,10 +27,27 @@ export const bartenderStools: Bounds[] = [-2.05, -1.15, -0.25, 0.65, 1.55, 2.25]
 }))
 export const outsideDjBooth: Bounds = { x: 0, z: 29, width: 3.6, depth: 1.24 }
 export const outsideStage: Bounds = { x: outsideDjBooth.x, z: outsideDjBooth.z + 2.15, width: 8.6, depth: 1.55 }
+export const outsideTreeStart: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 export const outsideDjSpeakers: Bounds[] = [
   { x: -4.16, z: 29.08, width: 0.71, depth: 0.79 },
   { x: 4.16, z: 29.08, width: 0.71, depth: 0.79 },
 ]
+const outsideStageRockWidth = 1.48
+const outsideStageRockDepth = 1.32
+const outsideStageRockZ = outsideDjBooth.z - outsideDjBooth.depth / 2 - outsideStageRockDepth / 2 + 0.28
+export const outsideStageRocks: StageRock[] = outsideDjSpeakers.map((speaker, index) => {
+  const side = Math.sign(speaker.x)
+
+  return {
+    x: speaker.x + side * 1.45 + (side > 0 ? 2.5 : 0),
+    z: (outsideStageRockZ + outsideTreeStart.z) * 0.45,
+    width: outsideStageRockWidth,
+    depth: outsideStageRockDepth,
+    height: index === 0 ? 1.08 : 1,
+    meshIndex: index === 0 ? 8 : 2,
+    turn: side * 0.42,
+  }
+})
 export const outsideBuddha: CircleBounds = { x: 11.5, z: 27.9, radius: 1.05 }
 export const outsidePalmTree: CircleBounds = { x: -11, z: 29.15, radius: 0.45 }
 export const outsideTreeSwing = {

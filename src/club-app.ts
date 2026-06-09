@@ -55,6 +55,8 @@ import {
   outsideFoodTruckTurn,
   outsideHutDrinkWall,
   outsidePalmTree,
+  outsideStageRocks,
+  outsideTreeStart,
   outsideToilets,
   outsideTShirtStands,
   roomBounds,
@@ -1365,7 +1367,12 @@ function rockPlacements() {
     meshIndex: number
     position: [number, number, number]
     turn: number
-  }> = []
+  }> = outsideStageRocks.map(rock => ({
+    height: rock.height,
+    meshIndex: rock.meshIndex,
+    position: [rock.x, characterFloor, rock.z] as [number, number, number],
+    turn: rock.turn,
+  }))
   const count = 92
   const inset = 1.15
 
@@ -1473,7 +1480,7 @@ const feedbackMaxAmount = 0.91
 const feedbackToiletRampSeconds = 60
 const feedbackSitResetSeconds = 3
 const tripKinds = [0, 1, 2] as const
-let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
+let outsideTree: CircleBounds = { ...outsideTreeStart }
 let lastStamp = 0
 let graphicsPaused = document.hidden
 let coreLoadStarted = false
