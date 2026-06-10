@@ -1257,9 +1257,12 @@ function syncOnlineSelf() {
   lastOnlineCountValue = onlineCountValue
   lastOnlineAdminView = adminView
 
+  const visible = adminView || onlineCountValue >= publicOnlineCountMin
   const label = nicknameLabel(name)
   const color = identityColor(name)
-  const text = adminView || onlineCountValue >= publicOnlineCountMin ? ` ${onlineCountValue} online` : ' online'
+  const text = ` ${onlineCountValue} online`
+
+  onlineCount.hidden = !visible
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
