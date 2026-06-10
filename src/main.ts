@@ -1,9 +1,10 @@
 import './style.css'
 import { getDomElements } from './dom-elements.ts'
-import { usesTouchControls } from './device.ts'
+import { usesTouchControls, usesTouchMovementControls } from './device.ts'
 import { afterNextPaint, setIntroLoadProgress } from './startup.ts'
 
 document.documentElement.dataset.touchControls = String(usesTouchControls())
+document.documentElement.dataset.touchMovementControls = String(usesTouchMovementControls())
 
 const domElements = getDomElements()
 

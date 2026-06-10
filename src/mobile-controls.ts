@@ -1,25 +1,29 @@
-import { characterFloor } from './character-data.ts'
-import { usesTouchControls } from './device.ts'
-import type { WallProjector } from './projection.ts'
-import type { Vec3 } from './types.ts'
+import { usesTouchControls, usesTouchMovementControls } from './device.ts'
+import { setTouchMoveInput } from './input.ts'
 
 type StyleAction = {
   label: string
   apply: (direction: number) => void
 }
 
-type PointerState = {
-  id: number
+type DpadDirection = {
+  label: string
+  name: string
   x: number
-  y: number
-  moved: boolean
-  longPressed: boolean
-  timer: ReturnType<typeof setTimeout>
+  z: number
 }
 
-const tapMoveThreshold = 10
-const longPressDelay = 520
 const actions: StyleAction[] = []
+const dpadDirections: DpadDirection[] = [
+  { label: '↖', name: 'up-left', x: -1, z: 1 },
+  { label: '▲', name: 'up', x: 0, z: 1 },
+  { label: '↗', name: 'up-right', x: 1, z: 1 },
+  { label: '◀', name: 'left', x: -1, z: 0 },
+  { label: '▶', name: 'right', x: 1, z: 0 },
+  { label: '↙', name: 'down-left', x: -1, z: -1 },
+  { label: '▼', name: 'down', x: 0, z: -1 },
+  { label: '↘', name: 'down-right', x: 1, z: -1 },
+]
 
 export function createMobileControls(options: {
   cycleHair: (direction: number) => void
@@ -31,6 +35,8 @@ export function createMobileControls(options: {
   cycleAccessory: (direction: number) => void
   openChatInput: () => void
   dismissVideoHint: () => void
+  startJumping: () => void
+  stopJumping: () => void
 }) {
   updateTouchControlsMode()
   addEventListener('resize', updateTouchControlsMode)
@@ -49,6 +55,10 @@ export function createMobileControls(options: {
   const toggle = document.createElement('button')
   const panel = document.createElement('div')
   const speak = document.createElement('button')
+  const dpad = createDpad({
+    startJumping: options.startJumping,
+    stopJumping: options.stopJumping,
+  })
 
   root.id = 'mobile-controls'
   root.dataset.open = 'false'
@@ -63,7 +73,7 @@ export function createMobileControls(options: {
   panel.id = 'mobile-menu'
 
   panel.append(...actions.map(actionRow))
-  root.append(toggle, panel, speak)
+  root.append(toggle, panel, speak, dpad)
   document.body.append(root)
 
   toggle.addEventListener('click', () => {
@@ -85,140 +95,93 @@ export function createMobileControls(options: {
 
 function updateTouchControlsMode() {
   document.documentElement.dataset.touchControls = String(usesTouchControls())
+  document.documentElement.dataset.touchMovementControls = String(usesTouchMovementControls())
 }
 
-export function bindTapDestination(options: {
-  canvas: HTMLCanvasElement
-  jump: (target: Vec3) => void
-  projector: WallProjector
-  setDestination: (value: Vec3) => void
-  ignorePointer?: (event: PointerEvent | TouchEvent) => boolean
+function createDpad(options: {
+  startJumping: () => void
+  stopJumping: () => void
 }) {
-  let pointer: PointerState | undefined
+  const root = document.createElement('div')
+  const active = new Map<number, DpadDirection>()
 
-  function start(id: number, x: number, y: number) {
-    pointer = {
-      id,
-      x,
-      y,
-      moved: false,
-      longPressed: false,
-      timer: setTimeout(() => {
-        if (pointer?.id === id && !pointer.moved) {
-          const target = screenGroundPoint(x, y, options.canvas, options.projector)
+  root.id = 'mobile-dpad'
+  root.setAttribute('aria-label', 'Move')
+  root.append(...dpadDirections.map(direction => dpadButton(direction, active)), jumpButton(options))
 
-          if (!target) {
-            return
-          }
+  return root
+}
 
-          pointer.longPressed = true
-          options.jump(target)
-        }
-      }, longPressDelay),
-    }
-  }
+function jumpButton(options: {
+  startJumping: () => void
+  stopJumping: () => void
+}) {
+  const button = document.createElement('button')
+  const active = new Set<number>()
 
-  function move(id: number, x: number, y: number) {
-    if (id !== pointer?.id) {
-      return
-    }
-
-    const dx = x - pointer.x
-    const dy = y - pointer.y
-
-    pointer.moved ||= dx * dx + dy * dy > tapMoveThreshold * tapMoveThreshold
-    if (pointer.moved) {
-      clearTimeout(pointer.timer)
-    }
-  }
-
-  function end(id: number, x: number, y: number) {
-    if (id !== pointer?.id) {
-      return
-    }
-
-    const released = pointer
-
-    pointer = undefined
-    clearTimeout(released.timer)
-    if (released.moved || released.longPressed) {
-      return
-    }
-
-    const target = screenGroundPoint(x, y, options.canvas, options.projector)
-
-    if (target) {
-      options.setDestination(target)
-    }
-  }
-
-  function cancel(id: number) {
-    if (id === pointer?.id) {
-      clearTimeout(pointer.timer)
-      pointer = undefined
-    }
-  }
-
-  options.canvas.addEventListener('pointerdown', event => {
-    if (options.ignorePointer?.(event)) {
-      return
-    }
-
-    if (event.pointerType === 'mouse') {
-      return
-    }
-
-    start(event.pointerId, event.clientX, event.clientY)
-  })
-
-  options.canvas.addEventListener('pointermove', event => {
-    move(event.pointerId, event.clientX, event.clientY)
-  })
-
-  options.canvas.addEventListener('pointerup', event => {
-    end(event.pointerId, event.clientX, event.clientY)
-  })
-
-  options.canvas.addEventListener('pointercancel', event => {
-    cancel(event.pointerId)
-  })
-
-  options.canvas.addEventListener('touchstart', event => {
-    if (pointer || options.ignorePointer?.(event)) {
-      return
-    }
-
-    const touch = event.changedTouches[0]!
-
+  button.type = 'button'
+  button.className = 'mobile-dpad-button'
+  button.dataset.direction = 'jump'
+  button.ariaLabel = 'Jump'
+  button.textContent = 'B'
+  button.addEventListener('pointerdown', event => {
     event.preventDefault()
-    start(touch.identifier, touch.clientX, touch.clientY)
-  }, { passive: false })
-
-  options.canvas.addEventListener('touchmove', event => {
-    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
-
-    if (touch) {
-      event.preventDefault()
-      move(touch.identifier, touch.clientX, touch.clientY)
-    }
-  }, { passive: false })
-
-  options.canvas.addEventListener('touchend', event => {
-    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
-
-    if (touch) {
-      event.preventDefault()
-      end(touch.identifier, touch.clientX, touch.clientY)
-    }
-  }, { passive: false })
-
-  options.canvas.addEventListener('touchcancel', event => {
-    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
-
-    if (touch) {
-      cancel(touch.identifier)
-    }
+    event.stopPropagation()
+    active.add(event.pointerId)
+    button.setPointerCapture(event.pointerId)
+    options.startJumping()
   })
+  for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+    button.addEventListener(eventName, event => {
+      event.preventDefault()
+      event.stopPropagation()
+      active.delete(event.pointerId)
+      if (active.size === 0) {
+        options.stopJumping()
+      }
+    })
+  }
+
+  return button
+}
+
+function dpadButton(direction: DpadDirection, active: Map<number, DpadDirection>) {
+  const button = document.createElement('button')
+
+  button.type = 'button'
+  button.className = 'mobile-dpad-button'
+  button.dataset.direction = direction.name
+  button.ariaLabel = `Move ${direction.name}`
+  button.textContent = direction.label
+  button.addEventListener('pointerdown', event => {
+    event.preventDefault()
+    event.stopPropagation()
+    active.set(event.pointerId, direction)
+    button.setPointerCapture(event.pointerId)
+    syncDpadInput(active)
+  })
+  for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+    button.addEventListener(eventName, event => {
+      event.preventDefault()
+      event.stopPropagation()
+      active.delete(event.pointerId)
+      syncDpadInput(active)
+    })
+  }
+
+  return button
+}
+
+function syncDpadInput(active: Map<number, DpadDirection>) {
+  let x = 0
+  let z = 0
+
+  for (const direction of active.values()) {
+    x += direction.x
+    z += direction.z
+  }
+
+  setTouchMoveInput(Math.sign(x), Math.sign(z))
 }
 
 function actionRow(action: StyleAction) {
@@ -238,30 +201,4 @@ function actionRow(action: StyleAction) {
   row.append(previous, label, next)
 
   return row
-}
-
-function screenGroundPoint(x: number, y: number, canvas: HTMLCanvasElement, projector: WallProjector):
-  | Vec3
-  | undefined
-{
-  const rect = canvas.getBoundingClientRect()
-  const ndcX = ((x - rect.left) / rect.width) * 2 - 1
-  const ndcY = 1 - ((y - rect.top) / rect.height) * 2
-  const rayX = -projector.cameraZX + projector.cameraXX * ndcX * projector.aspect / projector.f
-    + projector.cameraYX * ndcY / projector.f
-  const rayY = -projector.cameraZY + projector.cameraXY * ndcX * projector.aspect / projector.f
-    + projector.cameraYY * ndcY / projector.f
-  const rayZ = -projector.cameraZZ + projector.cameraXZ * ndcX * projector.aspect / projector.f
-    + projector.cameraYZ * ndcY / projector.f
-  const t = (characterFloor - projector.eyeY) / rayY
-
-  if (t <= 0) {
-    return undefined
-  }
-
-  return [
-    projector.eyeX + rayX * t,
-    characterFloor,
-    projector.eyeZ + rayZ * t,
-  ]
 }

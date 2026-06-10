@@ -1,6 +1,8 @@
 import type { Vec3 } from './types.ts'
 
 let alternativeInput = true
+let touchMoveX = 0
+let touchMoveZ = 0
 
 export function readMoveInput(keys: Set<string>, target: Vec3) {
   const left = alternativeInput ? 'a' : 'j'
@@ -9,14 +11,25 @@ export function readMoveInput(keys: Set<string>, target: Vec3) {
   const back = alternativeInput ? 's' : 'k'
 
   target[0] = Number(keys.has(right) || keys.has('arrowright')) - Number(keys.has(left) || keys.has('arrowleft'))
+    + touchMoveX
   target[1] = 0
   target[2] = Number(keys.has(forward) || keys.has('arrowup')) - Number(keys.has(back) || keys.has('arrowdown'))
+    + touchMoveZ
 
   return target
 }
 
 export function setAlternativeInput(value: boolean) {
   alternativeInput = value
+}
+
+export function setTouchMoveInput(x: number, z: number) {
+  touchMoveX = x
+  touchMoveZ = z
+}
+
+export function clearTouchMoveInput() {
+  setTouchMoveInput(0, 0)
 }
 
 export function bindKeyboardInput(options: {

@@ -5,8 +5,14 @@ export function isMobileUserAgent() {
   return /iPad|iPhone|Android/.test(agent) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
+export function isTouchEnabled() {
+  return navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches
+}
+
+export function usesTouchMovementControls() {
+  return isMobileUserAgent() || isTouchEnabled()
+}
+
 export function usesTouchControls() {
-  return matchMedia('(pointer: coarse)').matches
-    || innerWidth <= 1180
-    || isMobileUserAgent()
+  return usesTouchMovementControls() || innerWidth <= 1180
 }

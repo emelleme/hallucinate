@@ -1737,6 +1737,79 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   pointer-events: auto;
 }
 
+#mobile-dpad {
+  position: fixed;
+  left: 12px;
+  bottom: calc(12px + var(--app-bottom));
+  display: none;
+  grid-template-columns: repeat(3, 48px);
+  grid-template-rows: repeat(3, 48px);
+  gap: 6px;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-dpad-button {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 7px;
+  background: rgb(8 8 10 / 0.78);
+  color: rgb(255 245 245);
+  box-shadow: 0 0 18px rgb(255 0 0 / 0.16);
+  cursor: pointer;
+  font: 900 23px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  touch-action: none;
+}
+
+.mobile-dpad-button[data-direction="up-left"] {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.mobile-dpad-button[data-direction="up"] {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.mobile-dpad-button[data-direction="up-right"] {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.mobile-dpad-button[data-direction="left"] {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.mobile-dpad-button[data-direction="jump"] {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.mobile-dpad-button[data-direction="right"] {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.mobile-dpad-button[data-direction="down-left"] {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.mobile-dpad-button[data-direction="down"] {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.mobile-dpad-button[data-direction="down-right"] {
+  grid-column: 3;
+  grid-row: 3;
+}
+
 #mobile-menu {
   opacity: 0;
   width: 100%;
@@ -1793,6 +1866,10 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
 }
 
 html[data-touch-controls="true"] #mobile-controls {
+  display: grid;
+}
+
+html[data-touch-movement-controls="true"] #mobile-dpad {
   display: grid;
 }
 

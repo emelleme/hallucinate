@@ -28,7 +28,7 @@ import {
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
-import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
+import { createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
@@ -294,6 +294,7 @@ const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
 const maxNpcPlayers = 300
 const npcPopulationInterval = 60_000
+const publicOnlineCountMin = 20
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
@@ -1106,6 +1107,7 @@ function setAdminView(value: boolean) {
   chatLog.dataset.admin = String(adminView)
   adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
+  syncOnlineSelf()
   photoWallUi.syncAdmin()
   if (roomsDialog.open) {
     void refreshRoomsList()
@@ -1246,16 +1248,18 @@ function syncOnlineSelf() {
   if (
     name === lastOnlineSelfName
     && onlineCountValue === lastOnlineCountValue
+    && adminView === lastOnlineAdminView
   ) {
     return
   }
 
   lastOnlineSelfName = name
   lastOnlineCountValue = onlineCountValue
+  lastOnlineAdminView = adminView
 
   const label = nicknameLabel(name)
   const color = identityColor(name)
-  const text = ` ${onlineCountValue} online`
+  const text = adminView || onlineCountValue >= publicOnlineCountMin ? ` ${onlineCountValue} online` : ' online'
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
@@ -1625,6 +1629,7 @@ let lastOnlineSelfName = ''
 let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
 let lastOnlineCountValue = -1
+let lastOnlineAdminView = false
 let introWaveSent = false
 let profileSubmitted = false
 
@@ -3031,6 +3036,18 @@ createMobileControls({
   ...styleActions,
   openChatInput: () => toggleChatInput(false),
   dismissVideoHint: helpUi.dismissVideoHint,
+  startJumping: () => {
+    localCharacter.startJumping()
+    if (hasMultiplayer) {
+      multiplayer.sendMotion()
+    }
+  },
+  stopJumping: () => {
+    localCharacter.stopJumping()
+    if (hasMultiplayer) {
+      multiplayer.sendMotion()
+    }
+  },
 })
 
 document.addEventListener('pointerdown', event => {
@@ -3051,17 +3068,6 @@ document.addEventListener('pointerdown', event => {
 
   active.blur()
 }, { capture: true })
-
-bindTapDestination({
-  canvas,
-  ignorePointer: event => resolveAccessoryKind(styleController.accessoryIndex) === 'spray',
-  jump: target => {
-    localCharacter.jumpToward(target)
-    multiplayer.sendMotion()
-  },
-  projector: wallProjector,
-  setDestination: value => localCharacter.setDestination(value, seatAt(value, occupiedSeats, 0.46, true)),
-})
 
 canvas.addEventListener('contextmenu', event => event.preventDefault())
 

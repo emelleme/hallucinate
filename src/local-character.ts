@@ -1,5 +1,5 @@
 import { characterFloor } from './character-data.ts'
-import { readMoveInput } from './input.ts'
+import { clearTouchMoveInput, readMoveInput } from './input.ts'
 import {
   lengthSq,
   normalizeInto,
@@ -114,6 +114,7 @@ export function createLocalCharacter(keys: Set<string>) {
     },
     stopMoving() {
       keys.clear()
+      clearTouchMoveInput()
       input[0] = 0
       input[1] = 0
       input[2] = 0
