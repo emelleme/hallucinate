@@ -10,10 +10,37 @@ const outsideCameraFront = outsideStage.z - outsideStage.depth / 2 - 0.35
 const manualCameraHoldTime = 5000
 const cameraBouncePauseTime = 2500
 const dragMoveThreshold = 3
+const firstPersonEyeLift = 0.07
+const firstPersonFaceOffset = 0.18
+const firstPersonLookDistance = 1.4
+
+type CameraFace = {
+  position: Vec3
+  forward: Vec3
+  up: Vec3
+}
+
+type CameraUpdateOptions = {
+  cameraUp?: Vec3
+  face?: CameraFace
+  loft?: boolean
+  lookDown?: boolean
+}
+
+type CameraBasis = {
+  forwardX: number
+  forwardY: number
+  forwardZ: number
+  upX: number
+  upY: number
+  upZ: number
+}
 
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {
   const position: Vec3 = [-2.2, 0.15, -9.0]
   const target: Vec3 = [-2.2, -0.75, -6.8]
+  const viewUp: Vec3 = [0, 1, 0]
+  let firstPerson = false
   let turn = 0
   let dragX = 0
   let dragY = 0
@@ -26,6 +53,13 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let cameraBouncePausedUntil = 0
   let returning = false
   let wasMoving = false
+
+  function setFirstPerson(value: boolean) {
+    firstPerson = value
+    holdingManualCamera = false
+    returning = false
+    pitch = 0
+  }
 
   function startDrag(x: number, y: number) {
     dragging = true
@@ -44,13 +78,14 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     }
 
     dragMoved = true
+    dragX = x
+    dragY = y
+
     turn -= dx * 0.005
     pitch = clamp(pitch + dy * 0.018, -2.4, 4.2)
     holdingManualCamera = true
     manualCameraHoldUntil = performance.now() + manualCameraHoldTime
     cameraBouncePausedUntil = performance.now() + cameraBouncePauseTime
-    dragX = x
-    dragY = y
   }
 
   canvas.style.touchAction = 'none'
@@ -148,16 +183,30 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   return {
     position,
     target,
+    get firstPerson() {
+      return firstPerson
+    },
+    set firstPerson(value: boolean) {
+      setFirstPerson(value)
+    },
     get turn() {
       return turn
     },
     set turn(value: number) {
       turn = value
     },
+    togglePerspective(characterTurn?: number) {
+      setFirstPerson(!firstPerson)
+
+      if (firstPerson && characterTurn !== undefined) {
+        turn = characterTurn
+      }
+    },
     get() {
       return {
         eye: [position[0], position[1], position[2]] as Vec3,
         center: [target[0], target[1], target[2]] as Vec3,
+        up: [viewUp[0], viewUp[1], viewUp[2]] as Vec3,
       }
     },
     update(
@@ -165,23 +214,27 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       input: Vec3,
       characterTurn: number,
       bounceActive: boolean,
-      lookDown = false,
-      loft = false,
-      cameraUp?: Vec3,
+      options: CameraUpdateOptions = {},
     ) {
+      const lookDown = options.lookDown === true
+      const loft = options.loft === true
+      const cameraUp = options.cameraUp
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
+      const faceBasis = firstPerson && options.face ? cameraBasisFromFace(options.face) : cameraBasis(characterTurn,
+        cameraUp)
+      const followTurn = firstPerson ? cameraBasisTurn(faceBasis) : characterTurn
 
       if (dragging && !dragMoved) {
         wasMoving = moving
         return
       }
 
-      if (holdingManualCamera && !dragging && performance.now() > manualCameraHoldUntil) {
+      if (!firstPerson && holdingManualCamera && !dragging && performance.now() > manualCameraHoldUntil) {
         holdingManualCamera = false
       }
 
-      if (lookDown && !dragging) {
+      if (!firstPerson && lookDown && !dragging) {
         pitch = mix(pitch, 0.9, 1 - Math.exp(-7 * delta))
       }
 
@@ -200,12 +253,13 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
 
       if (!dragging && ((moving && input[2] >= 0) || returning)) {
         const turnSpeed = returning ? 5 : mix(0.8, 2.2, input[2])
+        const targetPitch = firstPerson ? 0 : lookDown ? 0.9 : 0
 
-        turn = smoothAngle(turn, characterTurn, turnSpeed, delta)
-        pitch = mix(pitch, lookDown ? 0.9 : 0, 1 - Math.exp(-4 * delta))
+        turn = smoothAngle(turn, followTurn, turnSpeed, delta)
+        pitch = mix(pitch, targetPitch, 1 - Math.exp(-4 * delta))
 
         if (returning) {
-          const angle = Math.abs(Math.atan2(Math.sin(characterTurn - turn), Math.cos(characterTurn - turn)))
+          const angle = Math.abs(Math.atan2(Math.sin(followTurn - turn), Math.cos(followTurn - turn)))
 
           if (angle < 0.01 && Math.abs(pitch) < 0.01) {
             returning = false
@@ -213,9 +267,44 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         }
       }
 
+      if (firstPerson && !dragging && !holdingManualCamera && !returning) {
+        turn = followTurn
+        pitch = 0
+      }
+
       wasMoving = moving
 
-      const basis = cameraBasis(turn, cameraUp)
+      const basis = firstPerson && !dragging && !holdingManualCamera && !returning
+        ? faceBasis
+        : cameraBasis(turn, firstPerson ? options.face?.up ?? cameraUp : cameraUp)
+
+      viewUp[0] = basis.upX
+      viewUp[1] = basis.upY
+      viewUp[2] = basis.upZ
+
+      if (firstPerson) {
+        if (options.face) {
+          position[0] = options.face.position[0] + faceBasis.upX * firstPersonEyeLift
+            + faceBasis.forwardX * firstPersonFaceOffset
+          position[1] = options.face.position[1] + faceBasis.upY * firstPersonEyeLift
+            + faceBasis.forwardY * firstPersonFaceOffset
+          position[2] = options.face.position[2] + faceBasis.upZ * firstPersonEyeLift
+            + faceBasis.forwardZ * firstPersonFaceOffset
+        }
+        else {
+          const height = 1.2 + firstPersonEyeLift
+
+          position[0] = characterPosition[0] + faceBasis.upX * height + faceBasis.forwardX * firstPersonFaceOffset
+          position[1] = characterPosition[1] + faceBasis.upY * height + faceBasis.forwardY * firstPersonFaceOffset
+          position[2] = characterPosition[2] + faceBasis.upZ * height + faceBasis.forwardZ * firstPersonFaceOffset
+        }
+        target[0] = position[0] + basis.forwardX * firstPersonLookDistance - basis.upX * pitch
+        target[1] = position[1] + basis.forwardY * firstPersonLookDistance - basis.upY * pitch
+        target[2] = position[2] + basis.forwardZ * firstPersonLookDistance - basis.upZ * pitch
+
+        return
+      }
+
       const targetHeight = 1.2
 
       target[0] = characterPosition[0] + basis.upX * targetHeight
@@ -287,7 +376,28 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   }
 }
 
-function cameraBasis(turn: number, up?: Vec3) {
+function cameraBasisFromFace(face: CameraFace): CameraBasis {
+  return {
+    forwardX: face.forward[0],
+    forwardY: face.forward[1],
+    forwardZ: face.forward[2],
+    upX: face.up[0],
+    upY: face.up[1],
+    upZ: face.up[2],
+  }
+}
+
+function cameraBasisTurn(basis: CameraBasis) {
+  const length = Math.hypot(basis.forwardX, basis.forwardZ)
+
+  if (length === 0) {
+    throw new Error('Cannot orient first person camera with vertical face forward')
+  }
+
+  return Math.atan2(basis.forwardX, basis.forwardZ)
+}
+
+function cameraBasis(turn: number, up?: Vec3): CameraBasis {
   const sin = Math.sin(turn)
   const cos = Math.cos(turn)
   let sideX = cos

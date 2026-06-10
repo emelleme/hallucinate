@@ -1,6 +1,6 @@
 import type { Vec3 } from './types.ts'
 
-type Camera = { eye: Vec3; center: Vec3 }
+type Camera = { eye: Vec3; center: Vec3; up?: Vec3 }
 export type Viewport = { width: number; height: number; clientWidth: number; clientHeight: number }
 export type ProjectedPoint = { x: number; y: number }
 export type WallProjector = ReturnType<typeof createWallProjector>
@@ -176,10 +176,19 @@ export function createWallProjector(camera: Camera, viewport: Viewport, target?:
   const cameraZX = -forwardX / forwardLength
   const cameraZY = -forwardY / forwardLength
   const cameraZZ = -forwardZ / forwardLength
-  const cameraXLength = Math.hypot(cameraZZ, cameraZX)
-  const cameraXX = cameraZZ / cameraXLength
-  const cameraXY = 0
-  const cameraXZ = -cameraZX / cameraXLength
+  const up = camera.up ?? [0, 1, 0]
+  const cameraXRawX = up[1] * cameraZZ - up[2] * cameraZY
+  const cameraXRawY = up[2] * cameraZX - up[0] * cameraZZ
+  const cameraXRawZ = up[0] * cameraZY - up[1] * cameraZX
+  const cameraXLength = Math.hypot(cameraXRawX, cameraXRawY, cameraXRawZ)
+
+  if (cameraXLength === 0) {
+    throw new Error('Cannot project wall with parallel camera forward and up')
+  }
+
+  const cameraXX = cameraXRawX / cameraXLength
+  const cameraXY = cameraXRawY / cameraXLength
+  const cameraXZ = cameraXRawZ / cameraXLength
   const cameraYX = cameraZY * cameraXZ - cameraZZ * cameraXY
   const cameraYY = cameraZZ * cameraXX - cameraZX * cameraXZ
   const cameraYZ = cameraZX * cameraXY - cameraZY * cameraXX

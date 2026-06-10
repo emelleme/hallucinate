@@ -4,6 +4,7 @@ export type ClubState = {
   character: Vec3
   camera: Vec3
   cameraTurn: number
+  cameraFirstPerson?: boolean
   characterTurn: number
   velocityY: number
   characterHairIndex?: number
@@ -16,6 +17,7 @@ export type ClubState = {
   bottomStyleIndex?: number
   accessoryIndex?: number
   alternativeInput?: boolean
+  sunglasses?: boolean
   instagram?: string
   nickname?: string
   room?: number

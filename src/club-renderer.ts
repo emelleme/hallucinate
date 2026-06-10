@@ -16,6 +16,7 @@ import type { CharacterBoxGeometry, HairRenderMesh, SceneTarget, Target, Vec3 } 
 type Camera = {
   eye: Vec3
   center: Vec3
+  up?: Vec3
 }
 
 type RoomUniforms = {
@@ -156,7 +157,7 @@ export function renderClubFrame(options: {
   const frame = Math.floor(options.time * 60)
   const outsideNight = 1 - options.dayCycle.daylight
   updateCameraMatrix(mainCameraMatrix, options.camera.eye, options.camera.center, options.target.width,
-    options.target.height)
+    options.target.height, options.camera.up)
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, options.target.frame)
   gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1])

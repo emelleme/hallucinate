@@ -5,8 +5,13 @@ import {
 } from './character-assets.ts'
 import { loadCharacterCoreAssets } from './character-core-loader.ts'
 import { characterGroundJoints, characterScale } from './character-data.ts'
-import { buildCharacterDrawData, headPoseIndex, setPoseCigaretteGeometry } from './character-draw.ts'
-import type { CharacterDrawCache } from './character-draw.ts'
+import {
+  buildCharacterDrawData,
+  characterHeadBasisInto,
+  headPoseIndex,
+  setPoseCigaretteGeometry,
+} from './character-draw.ts'
+import type { CharacterDrawCache, CharacterHeadBasis } from './character-draw.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
 import type { NumberBufferCache } from './character-gpu.ts'
@@ -37,6 +42,7 @@ export function createCharacterRenderSystem(options: {
   boxInstanceSize: number
   buffer: WebGLBuffer
   camera: {
+    firstPerson: boolean
     position: Vec3
     target: Vec3
   }
@@ -60,7 +66,18 @@ export function createCharacterRenderSystem(options: {
   let remainingDanceLoad: Promise<void> | undefined
   const danceLoads = new Map<number, Promise<void>>()
   let boxInstanceCount = 0
-  let headHeight = 1.1
+  const faceOffset: Vec3 = [0, 1.1, 0]
+  const facePosition: Vec3 = [0, 0, 0]
+  const faceBasis: CharacterHeadBasis = {
+    forward: [0, 0, 1],
+    side: [1, 0, 0],
+    up: [0, 1, 0],
+  }
+  const face = {
+    position: facePosition,
+    forward: faceBasis.forward,
+    up: faceBasis.up,
+  }
   let assetsLoaded = false
   let coreProgress = 0
   let detailsLoaded = false
@@ -156,6 +173,7 @@ export function createCharacterRenderSystem(options: {
         mode: options.localCharacter.mode,
         modeTime: options.localCharacter.modeTime,
         poseUp: options.localPoseUp?.(),
+        hideHead: options.camera.firstPerson,
         sunglasses: options.sunglasses(),
         idleClipIndex: options.idleClipIndex(),
         style: {
@@ -178,10 +196,14 @@ export function createCharacterRenderSystem(options: {
       width: options.canvas.width,
     })
 
-    const localHead = drawCache.poses[0]?.[headPoseIndex]
+    const localPose = drawCache.poses[0]
+    const localHead = localPose?.[headPoseIndex]
 
     if (localHead) {
-      headHeight = localHead[1] - options.characterPosition[1]
+      faceOffset[0] = localHead[0] - options.characterPosition[0]
+      faceOffset[1] = localHead[1] - options.characterPosition[1]
+      faceOffset[2] = localHead[2] - options.characterPosition[2]
+      characterHeadBasisInto(localPose, faceBasis)
     }
     updateHairInstances(options.gl, hairRenderMeshes, data.hairInstances, hairInstanceCache)
     boxInstanceCount = data.boxInstances.length / options.boxInstanceSize
@@ -251,8 +273,12 @@ export function createCharacterRenderSystem(options: {
     get boxInstanceCount() {
       return boxInstanceCount
     },
-    get headHeight() {
-      return headHeight
+    get face() {
+      facePosition[0] = options.characterPosition[0] + faceOffset[0]
+      facePosition[1] = options.characterPosition[1] + faceOffset[1]
+      facePosition[2] = options.characterPosition[2] + faceOffset[2]
+
+      return face
     },
     get hairRenderMeshes() {
       return hairRenderMeshes

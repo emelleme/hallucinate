@@ -39,6 +39,7 @@ type CharacterInput = {
   mode?: CharacterMode
   modeTime?: number
   poseUp?: Vec3
+  hideHead?: boolean
   sunglasses?: boolean
   idleClipIndex: number
   style: PlayerStyle
@@ -60,7 +61,7 @@ type BuildOptions = {
   height: number
 }
 
-type HeadBasis = {
+export type CharacterHeadBasis = {
   side: Vec3
   up: Vec3
   forward: Vec3
@@ -146,6 +147,11 @@ const cigaretteGeometry: CigaretteGeometry = {
   emberTip: cigaretteEmberB,
   side: cigaretteSide,
   forward: cigaretteForward,
+}
+const hairBasis: CharacterHeadBasis = {
+  forward: hairForward,
+  side: hairSide,
+  up: hairUp,
 }
 const cigaretteEmber: Vec3 = [1, 0.36, 0.05]
 const sprayCanNozzleSide: Vec3 = [0, 1, 0]
@@ -373,13 +379,14 @@ function addRenderedCharacter(
   const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
   const localReflection = detailedHair
   const turn = characterTurnBasis(player, player.turn)
+  const hideHead = player.hideHead === true
 
   if (style.accessoryKind === 'cigarette') {
     raisePoseCigaretteArm(pose, turn, options.time)
   }
 
   for (const part of characterPartPlans) {
-    if (style.bottomMode === 'pants' || !part.part.bottom) {
+    if ((style.bottomMode === 'pants' || !part.part.bottom) && (!hideHead || part.toIndex !== headTopIndex)) {
       addCharacterPart(target, boxInstances, pose, part, player, turn, style, options.light, localReflection)
     }
   }
@@ -404,16 +411,16 @@ function addRenderedCharacter(
     }
   }
 
-  if (player.sunglasses) {
+  if (player.sunglasses && !hideHead) {
     addSunglasses(target, boxInstances, pose, player, turn, options.light, localReflection)
   }
 
   const hair = playerHair(options.hairMeshes, player.style.hairIndex)
 
-  if (hair && detailedHair) {
+  if (hair && detailedHair && !hideHead) {
     addCharacterHair(target, pose, hair, style.hairColor, options.light)
   }
-  else if (hair && renderHair && options.hairMeshes.length > 0) {
+  else if (hair && renderHair && !hideHead && options.hairMeshes.length > 0) {
     addNpcHairInstance(hairInstances, pose, hair, style.hairColor)
   }
 }
@@ -452,7 +459,7 @@ function addSunglassesLens(
   target: VertexWriter,
   boxInstances: VertexWriter,
   head: Vec3,
-  basis: HeadBasis,
+  basis: CharacterHeadBasis,
   side: number,
   up: number,
   forward: number,
@@ -473,7 +480,7 @@ function addSunglassesBridge(
   target: VertexWriter,
   boxInstances: VertexWriter,
   head: Vec3,
-  basis: HeadBasis,
+  basis: CharacterHeadBasis,
   up: number,
   forward: number,
   player: { turn: number },
@@ -491,7 +498,7 @@ function addSunglassesTopBar(
   target: VertexWriter,
   boxInstances: VertexWriter,
   head: Vec3,
-  basis: HeadBasis,
+  basis: CharacterHeadBasis,
   up: number,
   forward: number,
   player: { turn: number },
@@ -509,7 +516,7 @@ function addSunglassesArm(
   target: VertexWriter,
   boxInstances: VertexWriter,
   head: Vec3,
-  basis: HeadBasis,
+  basis: CharacterHeadBasis,
   sign: -1 | 1,
   up: number,
   forward: number,
@@ -527,7 +534,7 @@ function addSunglassesArm(
 function setSunglassesPoint(
   target: Vec3,
   head: Vec3,
-  basis: HeadBasis,
+  basis: CharacterHeadBasis,
   side: number,
   up: number,
   forward: number,
@@ -1020,7 +1027,7 @@ function addCharacterHair(
   }
 }
 
-function characterHairBasis(pose: Vec3[]) {
+export function characterHeadBasisInto(pose: Vec3[], target: CharacterHeadBasis) {
   const head = pose[headIndex]!
   const top = pose[headTopIndex]!
   const leftArm = pose[leftArmIndex]!
@@ -1030,33 +1037,34 @@ function characterHairBasis(pose: Vec3[]) {
   const upZ = top[2] - head[2]
   const upLength = Math.sqrt(upX * upX + upY * upY + upZ * upZ)
 
-  hairUp[0] = upX / upLength
-  hairUp[1] = upY / upLength
-  hairUp[2] = upZ / upLength
+  target.up[0] = upX / upLength
+  target.up[1] = upY / upLength
+  target.up[2] = upZ / upLength
 
   const sideX = leftArm[0] - rightArm[0]
   const sideY = leftArm[1] - rightArm[1]
   const sideZ = leftArm[2] - rightArm[2]
-  const sideDotUp = sideX * hairUp[0] + sideY * hairUp[1] + sideZ * hairUp[2]
+  const sideDotUp = sideX * target.up[0] + sideY * target.up[1] + sideZ * target.up[2]
 
-  hairSide[0] = sideX - hairUp[0] * sideDotUp
-  hairSide[1] = sideY - hairUp[1] * sideDotUp
-  hairSide[2] = sideZ - hairUp[2] * sideDotUp
+  target.side[0] = sideX - target.up[0] * sideDotUp
+  target.side[1] = sideY - target.up[1] * sideDotUp
+  target.side[2] = sideZ - target.up[2] * sideDotUp
 
-  const sideLength = Math.sqrt(hairSide[0] * hairSide[0] + hairSide[1] * hairSide[1] + hairSide[2] * hairSide[2])
+  const sideLength = Math.sqrt(target.side[0] * target.side[0] + target.side[1] * target.side[1]
+    + target.side[2] * target.side[2])
 
-  hairSide[0] /= sideLength
-  hairSide[1] /= sideLength
-  hairSide[2] /= sideLength
-  hairForward[0] = hairSide[1] * hairUp[2] - hairSide[2] * hairUp[1]
-  hairForward[1] = hairSide[2] * hairUp[0] - hairSide[0] * hairUp[2]
-  hairForward[2] = hairSide[0] * hairUp[1] - hairSide[1] * hairUp[0]
+  target.side[0] /= sideLength
+  target.side[1] /= sideLength
+  target.side[2] /= sideLength
+  target.forward[0] = target.side[1] * target.up[2] - target.side[2] * target.up[1]
+  target.forward[1] = target.side[2] * target.up[0] - target.side[0] * target.up[2]
+  target.forward[2] = target.side[0] * target.up[1] - target.side[1] * target.up[0]
 
-  return {
-    forward: hairForward,
-    side: hairSide,
-    up: hairUp,
-  }
+  return target
+}
+
+function characterHairBasis(pose: Vec3[]) {
+  return characterHeadBasisInto(pose, hairBasis)
 }
 
 function playerHair(hairMeshes: HairMesh[], index: number) {

@@ -7,7 +7,14 @@ export type CameraMatrix = {
   viewProjection: Float32Array
 }
 
-export function updateCameraMatrix(target: CameraMatrix, eye: Vec3, center: Vec3, width: number, height: number) {
+export function updateCameraMatrix(
+  target: CameraMatrix,
+  eye: Vec3,
+  center: Vec3,
+  width: number,
+  height: number,
+  up: Vec3 = [0, 1, 0],
+) {
   const zx = eye[0] - center[0]
   const zy = eye[1] - center[1]
   const zz = eye[2] - center[2]
@@ -15,14 +22,21 @@ export function updateCameraMatrix(target: CameraMatrix, eye: Vec3, center: Vec3
   const z0 = zx / zLength
   const z1 = zy / zLength
   const z2 = zz / zLength
-  const xx = z2
-  const xz = -z0
-  const xLength = Math.hypot(xx, xz)
+  const xx = up[1] * z2 - up[2] * z1
+  const xy = up[2] * z0 - up[0] * z2
+  const xz = up[0] * z1 - up[1] * z0
+  const xLength = Math.hypot(xx, xy, xz)
+
+  if (xLength === 0) {
+    throw new Error('Cannot project camera with parallel forward and up')
+  }
+
   const x0 = xx / xLength
+  const x1 = xy / xLength
   const x2 = xz / xLength
-  const y0 = z1 * x2
+  const y0 = z1 * x2 - z2 * x1
   const y1 = z2 * x0 - z0 * x2
-  const y2 = -z1 * x0
+  const y2 = z0 * x1 - z1 * x0
   const f = 1 / Math.tan(1.08 * 0.5)
   const a = f / (width / height)
   const b = f
@@ -37,7 +51,7 @@ export function updateCameraMatrix(target: CameraMatrix, eye: Vec3, center: Vec3
   data[1] = b * y0
   data[2] = c * z0
   data[3] = -z0
-  data[4] = 0
+  data[4] = a * x1
   data[5] = b * y1
   data[6] = c * z1
   data[7] = -z1
@@ -54,7 +68,7 @@ export function updateCameraMatrix(target: CameraMatrix, eye: Vec3, center: Vec3
   target.forward[1] = -z1
   target.forward[2] = -z2
   target.right[0] = x0
-  target.right[1] = 0
+  target.right[1] = x1
   target.right[2] = x2
   target.up[0] = y0
   target.up[1] = y1

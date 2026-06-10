@@ -42,6 +42,7 @@ export function bindKeyboardInput(options: {
   cyclePants: (direction: number) => void
   cycleAccessory: (direction: number) => void
   toggleSunglasses: () => void
+  togglePerspective: () => void
 }) {
   window.addEventListener('keydown', event => {
     if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
@@ -101,6 +102,16 @@ export function bindKeyboardInput(options: {
 
       options.keys.add(key)
       options.toggleSunglasses()
+      return
+    }
+
+    if (key === 't') {
+      if (options.keys.has(key)) {
+        return
+      }
+
+      options.keys.add(key)
+      options.togglePerspective()
       return
     }
 

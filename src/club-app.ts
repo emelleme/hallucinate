@@ -170,6 +170,7 @@ const {
   reactionButtons,
   sunglassesOverlay,
   sunglassesButton,
+  perspectiveButton,
   breakdanceButton,
   waveButton,
   bubbleButton,
@@ -432,6 +433,7 @@ function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   sunglassesButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  perspectiveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1382,10 +1384,24 @@ function setSunglasses(value: boolean) {
   if (changed && hasMultiplayer) {
     multiplayer.sendMotion()
   }
+  if (changed) {
+    saveCurrentClubState(true)
+  }
 }
 
 function toggleSunglasses() {
   setSunglasses(!sunglasses)
+}
+
+function syncPerspectiveButton() {
+  perspectiveButton.dataset.active = String(cameraController.firstPerson)
+  perspectiveButton.setAttribute('aria-pressed', String(cameraController.firstPerson))
+}
+
+function togglePerspective() {
+  cameraController.togglePerspective(localCharacter.turn)
+  syncPerspectiveButton()
+  saveCurrentClubState(true)
 }
 
 function palmTreeMeshColor(index: number): [number, number, number] {
@@ -2009,6 +2025,7 @@ restoreClubState({
   setAlternativeInput: useAlternativeInput,
   styleController,
 })
+syncPerspectiveButton()
 djVideoUi.setZoneFromPosition()
 djVideoUi.load()
 
@@ -2133,7 +2150,8 @@ const foamForward: Vec3 = [0, 0, 0]
 const foamInterval = 250
 const foamBurstCount = 22
 let foaming = false
-let sunglasses = false
+let sunglasses = savedState?.sunglasses ?? false
+setSunglasses(sunglasses)
 const smokeSystem = createSmokeSystem()
 let smokePuffPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const smokeWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -2946,6 +2964,7 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoom
     nickname,
     room,
     styleController,
+    sunglasses,
   })
 }
 
@@ -2971,6 +2990,7 @@ bindKeyboardInput({
   },
   startBreakdance: () => localCharacter.startBreakdance(),
   toggleSunglasses,
+  togglePerspective,
   openChatInput: () => openChatInput(),
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
@@ -3220,6 +3240,11 @@ photoButton.addEventListener('pointerdown', event => {
 
 sunglassesButton.addEventListener('click', () => {
   toggleSunglasses()
+  canvas.focus()
+})
+
+perspectiveButton.addEventListener('click', () => {
+  togglePerspective()
   canvas.focus()
 })
 
@@ -3915,7 +3940,12 @@ const draw = (stamp: number) => {
   }
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
-    || dancing, localCharacter.jumping, inLoft, localPoseUp())
+    || dancing, {
+      cameraUp: localPoseUp(),
+      face: characterRenderSystem.face,
+      loft: inLoft,
+      lookDown: localCharacter.jumping,
+    })
   if (!inLoft) {
     saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
   }

@@ -8,6 +8,7 @@ import type { Vec3 } from './types.ts'
 
 export function restoreClubState(options: {
   camera: {
+    firstPerson: boolean
     position: Vec3
     turn: number
   }
@@ -37,6 +38,7 @@ export function restoreClubState(options: {
     ])
     options.camera.turn = state.cameraTurn ?? options.camera.turn
     options.localCharacter.turn = state.characterTurn ?? options.localCharacter.turn
+    options.camera.firstPerson = state.cameraFirstPerson ?? options.camera.firstPerson
     options.localCharacter.velocityY = state.velocityY ?? options.localCharacter.velocityY
     options.hairController.index = state.characterHairIndex ?? options.hairController.index
     options.hairController.colorIndex = state.characterHairColorIndex ?? options.hairController.colorIndex
@@ -55,6 +57,7 @@ export function restoreClubState(options: {
 
 export function saveClubState(options: {
   camera: {
+    firstPerson: boolean
     position: Vec3
     turn: number
   }
@@ -69,6 +72,7 @@ export function saveClubState(options: {
   nickname: string
   room: number
   styleController: ReturnType<typeof createCharacterStyleController>
+  sunglasses: boolean
 }) {
   if (!options.characterAssetsLoaded) {
     return
@@ -78,6 +82,7 @@ export function saveClubState(options: {
     character: options.characterPosition,
     camera: options.camera.position,
     cameraTurn: options.camera.turn,
+    cameraFirstPerson: options.camera.firstPerson,
     characterTurn: options.localCharacter.turn,
     velocityY: options.localCharacter.velocityY,
     characterHairIndex: options.hairController.index,
@@ -90,6 +95,7 @@ export function saveClubState(options: {
     bottomStyleIndex: options.styleController.bottomStyleIndex,
     accessoryIndex: options.styleController.accessoryIndex,
     alternativeInput: options.alternativeInput,
+    sunglasses: options.sunglasses,
     instagram: options.instagram,
     nickname: options.nickname,
     room: options.room,
