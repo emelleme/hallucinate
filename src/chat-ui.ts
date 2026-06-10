@@ -55,6 +55,7 @@ export function createChatUi(
   const anchor: Vec3 = [0, 0, 0]
   const point: ProjectedPoint = { x: 0, y: 0 }
   let bubbleId = 0
+  let labelsVisible = true
   const bubbles = new Map<number, ChatBubble>()
   const labels = new Map<number, ChatLabel>()
 
@@ -157,6 +158,9 @@ export function createChatUi(
         renderLabel(label)
         label.element.dataset.speaking = 'false'
         label.hideAt = 0
+        if (!labelsVisible) {
+          hidePositionedElement(label)
+        }
       }
     },
     removeLatest(id: number) {
@@ -188,6 +192,20 @@ export function createChatUi(
       }
 
       bubbles.clear()
+    },
+    setLabelsVisible(value: boolean) {
+      if (labelsVisible === value) {
+        return
+      }
+
+      labelsVisible = value
+      if (!labelsVisible) {
+        for (const label of labels.values()) {
+          if (label.hideAt === 0) {
+            hidePositionedElement(label)
+          }
+        }
+      }
     },
     setLabel(id: number, text: string, labelPosition: Vec3, color: string, instagram = '') {
       let label = labels.get(id)
@@ -241,6 +259,11 @@ export function createChatUi(
           renderLabel(label)
           label.element.dataset.speaking = 'false'
           label.hideAt = 0
+        }
+
+        if (!labelsVisible && label.hideAt === 0) {
+          hidePositionedElement(label)
+          continue
         }
 
         positionElement(label, projector, point, anchor)
@@ -323,10 +346,7 @@ function positionElement(
   anchor[1] = item.position[1] + 1.05
   anchor[2] = item.position[2]
   if (!projectVisiblePointInto(anchor, projector, point)) {
-    if (item.visible) {
-      item.visible = false
-      item.element.dataset.visible = 'false'
-    }
+    hidePositionedElement(item)
     return
   }
 
@@ -341,6 +361,13 @@ function positionElement(
     item.x = x
     item.y = y
     item.element.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`
+  }
+}
+
+function hidePositionedElement(item: { element: HTMLElement; visible: boolean }) {
+  if (item.visible) {
+    item.visible = false
+    item.element.dataset.visible = 'false'
   }
 }
 

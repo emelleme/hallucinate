@@ -1,7 +1,5 @@
-import { createAdaptiveResolution } from './adaptive-pixel-ratio.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
-import { idleClipNames } from './character-assets.ts'
 import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
 import { createCharacterStyleController, glowstickColors, resolveAccessoryKind } from './character-style.ts'
 import { cigaretteExhale, cigaretteHeldSmoke, cigaretteTipSmoke } from './cigarette.ts'
@@ -56,8 +54,8 @@ import {
   outsideHutDrinkWall,
   outsidePalmTree,
   outsideStageRocks,
-  outsideTreeStart,
   outsideToilets,
+  outsideTreeStart,
   outsideTShirtStands,
   roomBounds,
   tent,
@@ -87,7 +85,9 @@ import {
   vertex,
 } from './shaders.ts'
 import { createSmokeSystem, writeSmokeGeometry } from './smoke-puff.ts'
+import { afterNextPaint, introLoadProgressValue, setIntroLoadProgress } from './startup.ts'
 import { loadStaticFbxObject, loadStaticFbxObjects, loadStaticFbxObjectWithPose } from './static-fbx-object.ts'
+import { treeSwing, updateTreeSwing, writeTreeSwingGeometry } from './tree-swing.ts'
 import { loadOutsideTree, updateOutsideTreeShadowMap } from './tree-world.ts'
 import type {
   CharacterMode,
@@ -115,18 +115,20 @@ import {
   createStrobeGeometry,
   createTarget,
   createTreeShadowMap,
-  resizeTarget,
   resizeSceneTarget,
+  resizeTarget,
 } from './webgl.ts'
 
+import { createAdaptiveResolution } from './adaptive-pixel-ratio.ts'
 import { createArcadeUi } from './arcade-ui.ts'
 import { createCameraController } from './camera-controller.ts'
+import { idleClipNames } from './character-assets.ts'
 import { characterFloor } from './character-data.ts'
 import type { VertexWriter } from './character-geometry.ts'
+import type { NumberBufferCache } from './character-gpu.ts'
+import { uploadFloatBuffer } from './character-gpu.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
-import { uploadFloatBuffer } from './character-gpu.ts'
-import type { NumberBufferCache } from './character-gpu.ts'
 import { createChatUi } from './chat-ui.ts'
 import { renderClubFrame } from './club-renderer.ts'
 import { dayCycleAt } from './constants.ts'
@@ -142,10 +144,8 @@ import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
-import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
-import { afterNextPaint, introLoadProgressValue, setIntroLoadProgress } from './startup.ts'
-import { treeSwing, updateTreeSwing, writeTreeSwingGeometry } from './tree-swing.ts'
 import { createObjectTurnBasisCache } from './turn-basis.ts'
+import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -290,8 +290,9 @@ const chatPalette = [
 const keys = new Set<string>()
 const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
-const maxNpcPlayers = 300
+const maxNpcPlayers = 350
 const npcPopulationInterval = 60_000
+const populationUiThreshold = 20
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
@@ -301,6 +302,7 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
+syncPopulationUi()
 type AppSpace = {
   kind: 'main'
 } | {
@@ -921,8 +923,8 @@ adminMusicSubmit.setAttribute('aria-label', 'set room music')
 adminRandomTrackSubmit.type = 'button'
 adminRandomTrackSubmit.textContent = '🔀'
 adminRandomTrackSubmit.setAttribute('aria-label', 'next track')
-adminForm.append(adminUsername, adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminMusicInput, adminMusicSubmit,
-  adminRandomTrackSubmit)
+adminForm.append(adminUsername, adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminMusicInput,
+  adminMusicSubmit, adminRandomTrackSubmit)
 adminDialog.append(adminForm)
 loftMusicDialog.id = 'loft-music-dialog'
 loftMusicForm.method = 'dialog'
@@ -1104,6 +1106,7 @@ function setAdminView(value: boolean) {
   chatLog.dataset.admin = String(adminView)
   adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
+  syncPopulationUi()
   photoWallUi.syncAdmin()
   if (roomsDialog.open) {
     void refreshRoomsList()
@@ -1237,6 +1240,17 @@ function identityName(id: number, name?: string) {
 
 function identityColor(name: string) {
   return chatPalette[chatNicknameHash(name) % chatPalette.length]!
+}
+
+function populationUiVisible() {
+  return adminView || onlineCountValue >= populationUiThreshold
+}
+
+function syncPopulationUi() {
+  const visible = populationUiVisible()
+
+  onlineCount.hidden = !visible
+  chatUi.setLabelsVisible(visible)
 }
 
 function syncOnlineSelf() {
@@ -2303,6 +2317,7 @@ function connectMultiplayer(spaceSlug?: string) {
     },
     onOnlineCount: online => {
       onlineCountValue = online.count
+      syncPopulationUi()
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
@@ -3941,11 +3956,11 @@ const draw = (stamp: number) => {
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
     || dancing, {
-      cameraUp: localPoseUp(),
-      face: characterRenderSystem.face,
-      loft: inLoft,
-      lookDown: localCharacter.jumping,
-    })
+    cameraUp: localPoseUp(),
+    face: characterRenderSystem.face,
+    loft: inLoft,
+    lookDown: localCharacter.jumping,
+  })
   if (!inLoft) {
     saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
   }

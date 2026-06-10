@@ -1872,6 +1872,10 @@ html[data-touch-controls="true"] #chat-form[data-open="true"]~#online-indicator[
   display: grid;
 }
 
+#online-indicator:has(#online-count[hidden]):not(:has(.chat-log-message)) {
+  display: none;
+}
+
 html[data-touch-controls="true"] #chat-log {
   max-height: min(30.1dvh, calc(100dvh - 160px));
 }
