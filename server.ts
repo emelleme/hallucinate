@@ -64,6 +64,7 @@ import {
   npcChatIdCount,
   npcChatIdStart,
   positionScale,
+  type ProfilePacket,
   protocolToScene,
   protocolVersion,
   roomCount,
@@ -180,9 +181,11 @@ const analyticsAssets = new Map([
 ])
 const chatHistoryMax = 100
 const aiNpcChatHistoryLines = 30
-const aiNpcChatDelay = 2_000
+const aiNpcChatPromptDelay = 2_000
+const aiNpcChatRandomDelay = [9_000, 28_000] as const
 const aiNpcChatModel = 'openrouter/free'
 const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? ''
+const aiNpcProfiles = await createAiNpcProfiles()
 const graffitiPacketSplats = 4000
 const defaultLoftVideoId = '0oB97YhEukw'
 const loftRentMs = 30 * dayMs
@@ -468,6 +471,7 @@ const server = Bun.serve<SocketData>({
 
             addChatHistory(client, message)
             broadcastSpace(clientSpace(client), encodeServerMessage(message))
+            schedulePromptedAiNpcChat(clientSpace(client), text)
           }
 
           return
@@ -590,34 +594,67 @@ setInterval(syncRooms, heartbeatInterval)
 setInterval(syncVideoProgress, videoProgressRequestInterval)
 setInterval(logStats, minuteMs)
 setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval)
+
+let aiNpcChatTimer: ReturnType<typeof setTimeout> | undefined
+let aiNpcChatRunning = false
+let pendingAiNpcChatPrompt: { nick: string; spaceKey: string } | undefined
+
 scheduleAiNpcChat()
 
-function scheduleAiNpcChat() {
+function scheduleAiNpcChat(delay = randomRange(aiNpcChatRandomDelay[0], aiNpcChatRandomDelay[1])) {
   if (!openRouterApiKey) {
     return
   }
 
-  setTimeout(runAiNpcChat, aiNpcChatDelay)
+  aiNpcChatTimer ??= setTimeout(runAiNpcChat, delay)
+}
+
+function schedulePromptedAiNpcChat(space: SpaceState, text: string) {
+  const profile = mentionedAiNpcProfile(text)
+
+  if (!profile || !openRouterApiKey) {
+    return
+  }
+
+  pendingAiNpcChatPrompt = { nick: profile.nick, spaceKey: space.key }
+  if (aiNpcChatTimer) {
+    clearTimeout(aiNpcChatTimer)
+  }
+  aiNpcChatTimer = setTimeout(runAiNpcChat, aiNpcChatPromptDelay)
 }
 
 async function runAiNpcChat() {
+  aiNpcChatTimer = undefined
+  if (aiNpcChatRunning) {
+    scheduleAiNpcChat(aiNpcChatPromptDelay)
+    return
+  }
+
+  aiNpcChatRunning = true
   try {
-    if (spaceClients(mainSpace).length > 0) {
-      const message = await createAiNpcChatMessage(mainSpace)
+    const prompt = pendingAiNpcChatPrompt
+    const space = prompt ? spaces.get(prompt.spaceKey)! : mainSpace
+
+    pendingAiNpcChatPrompt = undefined
+    if (space.kind === 'main' && spaceClients(space).some(client => client.enteredAt)) {
+      const message = await createAiNpcChatMessage(space, prompt?.nick)
 
       console.log(`[ai:npc-chat] ${message.id}: <${message.nick}> ${message.text}`)
-      addSpaceChatHistory(mainSpace, message)
-      broadcastSpace(mainSpace, encodeServerMessage(message))
+      addSpaceChatHistory(space, message)
+      broadcastSpace(space, encodeServerMessage(message))
     }
   }
   catch (e) {
     console.error(e)
   }
+  finally {
+    aiNpcChatRunning = false
+  }
 
   scheduleAiNpcChat()
 }
 
-async function createAiNpcChatMessage(space: SpaceState): Promise<MessagePacket> {
+async function createAiNpcChatMessage(space: SpaceState, promptNick?: string): Promise<MessagePacket> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -633,16 +670,17 @@ async function createAiNpcChatMessage(space: SpaceState): Promise<MessagePacket>
           content: [
             'You write the next single line in a public multiplayer rave chat.',
             'Return only JSON shaped exactly like {"nick":"nickname","text":"message"}.',
-            'The nickname should feel random, human, and short.',
+            `The nick must be exactly one of these NPCs: ${aiNpcProfiles.map(profile => profile.nick).join(', ')}.`,
             'The message should be casual, very brief, tiny, playful, and naturally continue the transcript. Make the characters besides simple statements also ask questions to each other and answer, like "where r u from" "sup" ? "all cool" "chillin".',
             'When someone asks something some character, have them answer.',
+            'When someone does the wave emoji, tell them "Hey!" or something like that.',
             'Be diverse, unique, and funny. Make contradictions.',
             'Do not include stage directions, markdown, quotes around the JSON, hate, slurs, threats, or explicit sexual content.',
           ].join(' '),
         },
         {
           role: 'user',
-          content: aiNpcChatPrompt(space.chatHistory),
+          content: aiNpcChatPrompt(space.chatHistory, promptNick),
         },
       ],
       temperature: 1.1,
@@ -655,23 +693,23 @@ async function createAiNpcChatMessage(space: SpaceState): Promise<MessagePacket>
   }
 
   const entry = parseAiNpcChat(openRouterMessageContent(await response.json()))
-  const nick = validateNickname(entry.nick)
+  const profile = aiNpcProfile(entry.nick)
   const text = truncateMessage(entry.text.replace(/\s+/g, ' '))
 
   if (!normalizeChatText(text) || binaryText(text) || slurMatch(text)) {
-    throw new Error(`Invalid AI NPC chat <${nick}> ${text}`)
+    throw new Error(`Invalid AI NPC chat <${profile.nick}> ${text}`)
   }
 
   return {
-    id: npcChatId(nick),
+    id: profile.id,
     insta: '',
-    nick,
+    nick: profile.nick,
     photoTimestamp: 0,
     text,
   }
 }
 
-function aiNpcChatPrompt(history: ChatHistoryEntry[]) {
+function aiNpcChatPrompt(history: ChatHistoryEntry[], promptNick?: string) {
   const lines = history.slice(-aiNpcChatHistoryLines).map((entry, index) => {
     const line = entry.text.replace(/\s+/g, ' ')
 
@@ -680,8 +718,9 @@ function aiNpcChatPrompt(history: ChatHistoryEntry[]) {
 
   return [
     `Previous ${lines.length} chat lines:`,
-    lines.join('\n') || '[1] <maya> this place is glowing tonight',
+    lines.join('\n') || `[1] <${aiNpcProfiles[0]!.nick}> this place is glowing tonight`,
     '',
+    promptNick ? `The next line must be from <${promptNick}> because someone addressed them.` : '',
     `Write line ${lines.length + 1}.`,
   ].join('\n')
 }
@@ -704,8 +743,7 @@ function openRouterMessageContent(payload: unknown) {
 }
 
 function parseAiNpcChat(content: string) {
-  const json = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
-  const parsed = JSON.parse(json) as { nick?: unknown; text?: unknown }
+  const parsed = JSON.parse(jsonContent(content)) as { nick?: unknown; text?: unknown }
 
   if (typeof parsed.nick !== 'string' || typeof parsed.text !== 'string') {
     throw new Error(`Invalid AI NPC chat JSON ${content}`)
@@ -717,14 +755,254 @@ function parseAiNpcChat(content: string) {
   }
 }
 
-function npcChatId(nick: string) {
-  let hash = 2166136261
+function jsonContent(content: string) {
+  return content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
+}
 
-  for (const char of nick) {
-    hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619) >>> 0
+async function createAiNpcProfiles() {
+  if (!openRouterApiKey) {
+    return createFallbackAiNpcProfiles()
   }
 
-  return npcChatIdStart + hash % npcChatIdCount
+  try {
+    const names = await createOpenRouterAiNpcNames()
+
+    return names.map((nick, index) => ({ id: npcChatIdStart + index, insta: '', nick }))
+  }
+  catch (e) {
+    console.error(e)
+    return createFallbackAiNpcProfiles()
+  }
+}
+
+async function createOpenRouterAiNpcNames() {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openRouterApiKey}`,
+      'Content-Type': 'application/json',
+      'X-OpenRouter-Title': 'hallucinate club',
+    },
+    body: JSON.stringify({
+      model: aiNpcChatModel,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'Return only JSON shaped exactly like {"names":["nick"]}.',
+            'Generate short unique avatar nicknames for a surreal multiplayer rave.',
+            'Most names should look like regular short nicknames, usually lowercase, like milo, luna, zara, niko.',
+            'Only about one in four should be a little weirdly cased or contain one digit, like qUiLo, ZzNova, n3on, or kikiFlux.',
+            'Avoid visible clusters: at most two names may share the same first 3 characters or same last 4 characters, case-insensitive.',
+            'Use only letters and digits. No spaces, punctuation, markdown, or explanations.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: `Generate exactly ${npcChatIdCount} names.`,
+        },
+      ],
+      temperature: 1.2,
+      max_tokens: 700,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter NPC names failed ${response.status}: ${await response.text()}`)
+  }
+
+  return parseAiNpcNames(openRouterMessageContent(await response.json()))
+}
+
+function parseAiNpcNames(content: string) {
+  const parsed = JSON.parse(jsonContent(content)) as { names?: unknown }
+
+  if (!Array.isArray(parsed.names) || parsed.names.length !== npcChatIdCount) {
+    throw new Error(`Invalid AI NPC names JSON ${content}`)
+  }
+
+  const names = parsed.names.map(name => validateNickname(String(name).trim()))
+  const unique = new Set(names.map(name => name.toLowerCase()))
+
+  if (unique.size !== npcChatIdCount || names.some(name => !/^[A-Za-z0-9]+$/.test(name))) {
+    throw new Error(`Invalid AI NPC names ${names.join(',')}`)
+  }
+  validateAiNpcNameDiversity(names)
+
+  return names
+}
+
+function validateAiNpcNameDiversity(names: string[]) {
+  const prefixes = new Map<string, number>()
+  const suffixes = new Map<string, number>()
+
+  for (const name of names) {
+    const normalized = name.toLowerCase()
+    const prefix = normalized.slice(0, 3)
+    const suffix = normalized.slice(-4)
+    const prefixCount = (prefixes.get(prefix) ?? 0) + 1
+    const suffixCount = (suffixes.get(suffix) ?? 0) + 1
+
+    if (prefixCount > 2 || suffixCount > 2) {
+      throw new Error(`Clustered AI NPC names ${names.join(',')}`)
+    }
+
+    prefixes.set(prefix, prefixCount)
+    suffixes.set(suffix, suffixCount)
+  }
+}
+
+function createFallbackAiNpcProfiles(): ProfilePacket[] {
+  const first = [
+    'milo',
+    'luna',
+    'zara',
+    'niko',
+    'kiki',
+    'maya',
+    'rex',
+    'nina',
+    'cosmo',
+    'juno',
+    'lolo',
+    'vera',
+    'tito',
+    'mina',
+    'oz',
+    'pax',
+    'noa',
+    'ivy',
+    'rue',
+    'sol',
+    'vex',
+    'yara',
+    'hex',
+    'umi',
+    'zuzu',
+    'io',
+    'nyx',
+    'arlo',
+    'suki',
+    'zero',
+  ]
+  const second = [
+    'glow',
+    'byte',
+    'moon',
+    'bass',
+    'loop',
+    'nova',
+    'echo',
+    'pixel',
+    'melt',
+    'drift',
+    'fizz',
+    'halo',
+    'neon',
+    'wave',
+    'vibe',
+    'dust',
+    'zap',
+    'bloom',
+    'flux',
+    'star',
+    'rift',
+    'haze',
+    'void',
+    'orbit',
+    'static',
+    'pulse',
+    'chrome',
+    'echoes',
+    'quake',
+    'glitch',
+  ]
+  const names = new Set<string>()
+  const prefixes = new Map<string, number>()
+  const suffixes = new Map<string, number>()
+  const profiles: ProfilePacket[] = []
+
+  for (let i = 0; i < npcChatIdCount; i++) {
+    const nick = uniqueAiNpcNick(first, second, names, prefixes, suffixes)
+    const normalized = nick.toLowerCase()
+    const prefix = normalized.slice(0, 3)
+    const suffix = normalized.slice(-4)
+
+    names.add(normalized)
+    prefixes.set(prefix, (prefixes.get(prefix) ?? 0) + 1)
+    suffixes.set(suffix, (suffixes.get(suffix) ?? 0) + 1)
+    profiles.push({ id: npcChatIdStart + i, insta: '', nick })
+  }
+
+  return profiles
+}
+
+function uniqueAiNpcNick(
+  first: string[],
+  second: string[],
+  names: Set<string>,
+  prefixes: Map<string, number>,
+  suffixes: Map<string, number>,
+) {
+  for (;;) {
+    const left = first[Math.floor(Math.random() * first.length)]!
+    const right = second[Math.floor(Math.random() * second.length)]!
+    const base = Math.random() < 0.5 ? left : `${left}${right}`
+    const nick = Math.random() < 0.25 ? weirdNpcNickCase(base) : base
+    const normalized = nick.toLowerCase()
+
+    if (!names.has(normalized) && (prefixes.get(normalized.slice(0, 3)) ?? 0) < 2
+      && (suffixes.get(normalized.slice(-4)) ?? 0) < 2)
+    {
+      return nick
+    }
+  }
+}
+
+function weirdNpcNickCase(value: string) {
+  const leet = new Map([
+    ['a', '4'],
+    ['e', '3'],
+    ['i', '1'],
+    ['o', '0'],
+    ['s', '5'],
+    ['t', '7'],
+  ])
+
+  return [...value].map((char, index) => {
+    if (index > 0 && Math.random() < 0.09 && leet.has(char)) {
+      return leet.get(char)!
+    }
+
+    return Math.random() < 0.28 ? char.toUpperCase() : char
+  }).join('')
+}
+
+function aiNpcProfile(nick: string) {
+  const profile = aiNpcProfiles.find(profile => profile.nick.toLowerCase() === nick.trim().toLowerCase())
+
+  if (!profile) {
+    throw new Error(`Invalid AI NPC nick ${nick}`)
+  }
+
+  return profile
+}
+
+function mentionedAiNpcProfile(text: string) {
+  const normalized = text.toLowerCase()
+
+  return aiNpcProfiles.find(profile =>
+    new RegExp(`(^|\\s|[^\\p{L}\\p{N}_])${escapeRegExp(profile.nick.toLowerCase())}(?=$|\\s|[^\\p{L}\\p{N}_])`, 'u')
+      .test(normalized)
+  )
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function randomRange(min: number, max: number) {
+  return min + Math.random() * (max - min)
 }
 
 function clientIp(request: Request) {
@@ -1959,6 +2237,10 @@ function sendRoomStateWithProfiles(client: Client) {
 }
 
 function sendProfiles(client: Client) {
+  for (const profile of aiNpcProfiles) {
+    client.socket.send(encodeServerProfile(profile))
+  }
+
   for (const next of spaceClients(clientSpace(client))) {
     if (next.nickname) {
       client.socket.send(encodeServerProfile({ id: next.id, insta: next.instagram, nick: next.nickname }))

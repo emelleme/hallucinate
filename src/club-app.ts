@@ -292,7 +292,6 @@ const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
 const maxNpcPlayers = 350
 const npcPopulationInterval = 60_000
-const populationUiThreshold = 20
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
@@ -302,7 +301,6 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
-syncPopulationUi()
 type AppSpace = {
   kind: 'main'
 } | {
@@ -1106,7 +1104,6 @@ function setAdminView(value: boolean) {
   chatLog.dataset.admin = String(adminView)
   adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
-  syncPopulationUi()
   photoWallUi.syncAdmin()
   if (roomsDialog.open) {
     void refreshRoomsList()
@@ -1197,12 +1194,16 @@ function chatMessageColor(message: MessagePacket) {
   return identityColor(name)
 }
 
-function npcChatMessage(message: MessagePacket) {
-  return message.id >= npcChatIdStart && message.id < npcChatIdStart + npcChatIdCount
+function serverNpcId(id: number) {
+  return id >= npcChatIdStart && id < npcChatIdStart + npcChatIdCount
 }
 
-function npcChatPosition() {
-  return npcPlayers[Math.floor(Math.random() * npcPlayers.length)]?.position
+function serverNpcIndex(id: number) {
+  return id - npcChatIdStart
+}
+
+function serverNpcPlayer(id: number) {
+  return npcPlayers[serverNpcIndex(id)]!
 }
 
 function chatMessageKey(message: Pick<MessagePacket, 'id' | 'photoTimestamp' | 'text'>) {
@@ -1250,17 +1251,6 @@ function identityColor(name: string) {
   return chatPalette[chatNicknameHash(name) % chatPalette.length]!
 }
 
-function populationUiVisible() {
-  return adminView || onlineCountValue >= populationUiThreshold
-}
-
-function syncPopulationUi() {
-  const visible = populationUiVisible()
-
-  onlineCount.hidden = !visible
-  chatUi.setLabelsVisible(visible)
-}
-
 function syncOnlineSelf() {
   const name = identityName(multiplayer?.selfId || 0, nickname)
   if (
@@ -1275,7 +1265,7 @@ function syncOnlineSelf() {
 
   const label = nicknameLabel(name)
   const color = identityColor(name)
-  const text = ` ${onlineCountValue} online`
+  const text = ` ${onlineCountValue + npcChatIdCount} online`
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
@@ -1323,6 +1313,24 @@ function syncChatFormColor() {
 function syncNicknameLabels() {
   syncChatFormColor()
 
+  if (appSpace.kind === 'main') {
+    serverNpcLabelsSynced = true
+    for (let i = 0; i < npcChatIdCount; i++) {
+      const id = npcChatIdStart + i
+      const name = playerNicknames.get(id)
+
+      if (name) {
+        const cached = cachedNicknameLabel(id, name, '')
+
+        chatUi.setLabel(id, cached.label, serverNpcPlayer(id).position, cached.color)
+      }
+    }
+  }
+  else if (serverNpcLabelsSynced) {
+    clearServerNpcLabels()
+    serverNpcLabelsSynced = false
+  }
+
   for (const [id, player] of multiplayer.players) {
     const name = identityName(id, playerNicknames.get(id))
     const cached = cachedNicknameLabel(id, name, playerInstagrams.get(id) ?? '')
@@ -1331,7 +1339,25 @@ function syncNicknameLabels() {
   }
 }
 
+function clearServerNpcLabels() {
+  for (let i = 0; i < npcChatIdCount; i++) {
+    chatUi.remove(npcChatIdStart + i)
+  }
+}
+
 function syncRemoteNicknameLabel(id: number) {
+  if (serverNpcId(id)) {
+    const name = playerNicknames.get(id)
+
+    if (name && appSpace.kind === 'main') {
+      const cached = cachedNicknameLabel(id, name, '')
+
+      chatUi.setLabel(id, cached.label, serverNpcPlayer(id).position, cached.color)
+    }
+
+    return
+  }
+
   const player = multiplayer.players.get(id)
 
   if (player) {
@@ -1645,6 +1671,7 @@ let lastOnlineSelfName = ''
 let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
 let lastOnlineCountValue = -1
+let serverNpcLabelsSynced = false
 let introWaveSent = false
 let profileSubmitted = false
 
@@ -2235,6 +2262,7 @@ function resetServerState() {
   chatLogRows.clear()
   chatLog.replaceChildren()
   clearAdminIdLabels()
+  serverNpcLabelsSynced = false
 }
 
 function connectMultiplayer(spaceSlug?: string) {
@@ -2292,8 +2320,8 @@ function connectMultiplayer(spaceSlug?: string) {
         return
       }
 
-      const position = npcChatMessage(message)
-        ? npcChatPosition()
+      const position = serverNpcId(message.id)
+        ? serverNpcPlayer(message.id).position
         : message.id === multiplayer.selfId
           ? characterPosition
           : multiplayer.players.get(message.id)?.position
@@ -2327,7 +2355,6 @@ function connectMultiplayer(spaceSlug?: string) {
     },
     onOnlineCount: online => {
       onlineCountValue = online.count
-      syncPopulationUi()
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
@@ -4515,7 +4542,7 @@ function syncNpcPopulation(stamp: number) {
   }
 
   nextNpcPopulationSyncAt = stamp + npcPopulationInterval
-  setNpcPlayerCount(Math.max(0, maxNpcPlayers - onlineCountValue))
+  setNpcPlayerCount(Math.max(npcChatIdCount, maxNpcPlayers - onlineCountValue))
 }
 
 function setNpcPlayerCount(count: number) {
