@@ -1,6 +1,6 @@
-import { Database } from 'bun:sqlite'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import type { Canvas } from '@napi-rs/canvas'
+import { Database } from 'bun:sqlite'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
@@ -11,12 +11,12 @@ import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
 import {
   graffitiColors,
+  type GraffitiPaintContext,
   graffitiTextureSize,
   graffitiWallBounds,
   graffitiWallCount,
   maxGraffitiSplats,
   paintGraffitiSplats,
-  type GraffitiPaintContext,
 } from './src/graffiti.ts'
 import { photoWallThumbnailHeight, photoWallThumbnailWidth } from './src/photo-wall-data.ts'
 import {
@@ -61,6 +61,8 @@ import {
   type MotionPacket,
   NICKNAME,
   nicknameMaxLength,
+  npcChatIdCount,
+  npcChatIdStart,
   positionScale,
   protocolToScene,
   protocolVersion,
@@ -177,6 +179,10 @@ const analyticsAssets = new Map([
   ['/analytics/uPlot.min.css', join(uplotDir, 'uPlot.min.css')],
 ])
 const chatHistoryMax = 100
+const aiNpcChatHistoryLines = 30
+const aiNpcChatDelay = 2_000
+const aiNpcChatModel = 'openrouter/free'
+const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? ''
 const graffitiPacketSplats = 4000
 const defaultLoftVideoId = '0oB97YhEukw'
 const loftRentMs = 30 * dayMs
@@ -220,7 +226,8 @@ const videoProgressRequestInterval = 10_000
 const videoProgressBroadcastDelay = 600
 const videoPlaylistMaxLength = 5000
 const youtubePlaylistMaxPages = 80
-const youtubeUserAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
+const youtubeUserAgent =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
 const videoPlaylistFetches = new Map<string, Promise<string[]>>()
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
@@ -583,6 +590,141 @@ setInterval(syncRooms, heartbeatInterval)
 setInterval(syncVideoProgress, videoProgressRequestInterval)
 setInterval(logStats, minuteMs)
 setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval)
+scheduleAiNpcChat()
+
+function scheduleAiNpcChat() {
+  if (!openRouterApiKey) {
+    return
+  }
+
+  setTimeout(runAiNpcChat, aiNpcChatDelay)
+}
+
+async function runAiNpcChat() {
+  try {
+    if (spaceClients(mainSpace).length > 0) {
+      const message = await createAiNpcChatMessage(mainSpace)
+
+      console.log(`[ai:npc-chat] ${message.id}: <${message.nick}> ${message.text}`)
+      addSpaceChatHistory(mainSpace, message)
+      broadcastSpace(mainSpace, encodeServerMessage(message))
+    }
+  }
+  catch (e) {
+    console.error(e)
+  }
+
+  scheduleAiNpcChat()
+}
+
+async function createAiNpcChatMessage(space: SpaceState): Promise<MessagePacket> {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openRouterApiKey}`,
+      'Content-Type': 'application/json',
+      'X-OpenRouter-Title': 'hallucinate club',
+    },
+    body: JSON.stringify({
+      model: aiNpcChatModel,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You write the next single line in a public multiplayer rave chat.',
+            'Return only JSON shaped exactly like {"nick":"nickname","text":"message"}.',
+            'The nickname should feel random, human, and short.',
+            'The message should be casual, brief, playful, and naturally continue the transcript. Make the characters besides simple statements also ask questions to each other and answer, like "where r u from" "sup" ? "all cool" "chillin".',
+            'When someone asks something, have another character answer.',
+            'Do not include stage directions, markdown, quotes around the JSON, hate, slurs, threats, or explicit sexual content.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: aiNpcChatPrompt(space.chatHistory),
+        },
+      ],
+      temperature: 1.1,
+      max_tokens: 80,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter chat failed ${response.status}: ${await response.text()}`)
+  }
+
+  const entry = parseAiNpcChat(openRouterMessageContent(await response.json()))
+  const nick = validateNickname(entry.nick)
+  const text = truncateMessage(entry.text.replace(/\s+/g, ' '))
+
+  if (!normalizeChatText(text) || binaryText(text) || slurMatch(text)) {
+    throw new Error(`Invalid AI NPC chat <${nick}> ${text}`)
+  }
+
+  return {
+    id: npcChatId(nick),
+    insta: '',
+    nick,
+    photoTimestamp: 0,
+    text,
+  }
+}
+
+function aiNpcChatPrompt(history: ChatHistoryEntry[]) {
+  const lines = history.slice(-aiNpcChatHistoryLines).map((entry, index) => {
+    const line = entry.text.replace(/\s+/g, ' ')
+
+    return `[${index + 1}] <${entry.nick}> ${line}`
+  })
+
+  return [
+    `Previous ${lines.length} chat lines:`,
+    lines.join('\n') || '[1] <maya> this place is glowing tonight',
+    '',
+    `Write line ${lines.length + 1}.`,
+  ].join('\n')
+}
+
+function openRouterMessageContent(payload: unknown) {
+  const choices = (payload as { choices?: unknown }).choices
+
+  if (!Array.isArray(choices)) {
+    throw new Error('Invalid OpenRouter response choices')
+  }
+
+  const message = (choices[0] as { message?: unknown } | undefined)?.message
+  const content = (message as { content?: unknown } | undefined)?.content
+
+  if (typeof content !== 'string') {
+    throw new Error('Invalid OpenRouter response content')
+  }
+
+  return content
+}
+
+function parseAiNpcChat(content: string) {
+  const json = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
+  const parsed = JSON.parse(json) as { nick?: unknown; text?: unknown }
+
+  if (typeof parsed.nick !== 'string' || typeof parsed.text !== 'string') {
+    throw new Error(`Invalid AI NPC chat JSON ${content}`)
+  }
+
+  return {
+    nick: parsed.nick,
+    text: parsed.text,
+  }
+}
+
+function npcChatId(nick: string) {
+  let hash = 2166136261
+
+  for (const char of nick) {
+    hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619) >>> 0
+  }
+
+  return npcChatIdStart + hash % npcChatIdCount
+}
 
 function clientIp(request: Request) {
   return request.headers.get('cf-connecting-ip')
@@ -1830,7 +1972,11 @@ function sendChatHistory(client: Client) {
 }
 
 function addChatHistory(client: Client, entry: ChatHistoryEntry) {
-  const history = clientSpace(client).chatHistory
+  addSpaceChatHistory(clientSpace(client), entry)
+}
+
+function addSpaceChatHistory(space: SpaceState, entry: ChatHistoryEntry) {
+  const history = space.chatHistory
 
   history.push(entry)
   while (history.length > chatHistoryMax) {
@@ -2362,9 +2508,11 @@ async function fetchYouTubePlaylistUncached(source: string) {
     const pageIds = youtubePlaylistIds(data)
 
     ids.push(...pageIds)
-    console.log(`[video] playlist page source=${source} page=${page + 1} pageTracks=${pageIds.length} totalTracks=${
-      uniqueVideoIds(ids).length
-    }`)
+    console.log(
+      `[video] playlist page source=${source} page=${page + 1} pageTracks=${pageIds.length} totalTracks=${
+        uniqueVideoIds(ids).length
+      }`,
+    )
     const continuation = youtubeContinuation(data)
 
     if (!continuation) {

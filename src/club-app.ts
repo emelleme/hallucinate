@@ -33,7 +33,7 @@ import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
-import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength } from './protocol.ts'
+import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength, npcChatIdCount, npcChatIdStart } from './protocol.ts'
 import type { GraffitiSnapshot, MessagePacket, VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
@@ -1197,6 +1197,14 @@ function chatMessageColor(message: MessagePacket) {
   return identityColor(name)
 }
 
+function npcChatMessage(message: MessagePacket) {
+  return message.id >= npcChatIdStart && message.id < npcChatIdStart + npcChatIdCount
+}
+
+function npcChatPosition() {
+  return npcPlayers[Math.floor(Math.random() * npcPlayers.length)]?.position
+}
+
 function chatMessageKey(message: Pick<MessagePacket, 'id' | 'photoTimestamp' | 'text'>) {
   return `${message.id}\n${message.photoTimestamp}\n${message.text}`
 }
@@ -2284,9 +2292,11 @@ function connectMultiplayer(spaceSlug?: string) {
         return
       }
 
-      const position = message.id === multiplayer.selfId
-        ? characterPosition
-        : multiplayer.players.get(message.id)?.position
+      const position = npcChatMessage(message)
+        ? npcChatPosition()
+        : message.id === multiplayer.selfId
+          ? characterPosition
+          : multiplayer.players.get(message.id)?.position
 
       rememberPlayerProfile(message.id, message.nick, message.insta)
 
