@@ -1590,7 +1590,6 @@ let treeLoaded = false
 let introHidden = false
 document.body.dataset.introVisible = String(!introHidden)
 document.body.dataset.introReady = 'false'
-let videoPlaying = false
 let lastPixelRatio = 0
 let lastBloomScale = 0
 let forcedPixelRatio: number | undefined
@@ -1632,7 +1631,7 @@ function setIntroEffectPointer(event: PointerEvent) {
 }
 
 function startIntro() {
-  if (!submitIntroProfile()) {
+  if (!introReadyToEnter() || !submitIntroProfile()) {
     return
   }
 
@@ -1640,8 +1639,13 @@ function startIntro() {
     introWaveSent = true
     sendChatMessage('👋')
   }
-  videoPlaying = djVideoUi.play()
-  introStart.dataset.playing = String(videoPlaying)
+  djVideoUi.play()
+  introStart.dataset.playing = 'true'
+  enterIntro()
+}
+
+function introReadyToEnter() {
+  return characterRenderSystem.assetsLoaded && introNicknameInput.validity.valid
 }
 
 function submitIntroProfile() {
@@ -2981,7 +2985,13 @@ document.addEventListener('pointerdown', event => {
   }
 
   const active = document.activeElement
-  if (!(active instanceof HTMLInputElement) || event.target instanceof HTMLInputElement) {
+  const target = event.target
+
+  if (!(target instanceof Element)) {
+    throw new Error('Missing pointer target')
+  }
+
+  if (!(active instanceof HTMLInputElement) || target.closest('input, textarea, button, a, select, label')) {
     return
   }
 
@@ -4345,8 +4355,7 @@ function loadCurrentDance() {
 
 function updateIntro() {
   const coreProgress = characterRenderSystem.coreProgress
-  const startReady = characterRenderSystem.assetsLoaded
-    || coreProgress >= 0.98
+  const startReady = introReadyToEnter()
   const progress = characterRenderSystem.assetsLoaded ? 100 : coreLoadStarted
     ? 45 + coreProgress * 55
     : introLoadProgressValue()
@@ -4361,30 +4370,28 @@ function updateIntro() {
     lastIntroStartReady = startReady
   }
 
-  const ready = characterRenderSystem.assetsLoaded && videoPlaying
-
-  if (ready && !introHidden) {
-    introHidden = true
-    document.body.dataset.introVisible = String(!introHidden)
-    removeEventListener('keydown', handleIntroStartKey)
-    intro.dataset.hidden = 'true'
-    introEffectRenderer.stop()
-    multiplayer.sendEnter()
-
-    if (helpSeen) {
-      helpUi.hide()
-      syncOnlineIndicator()
-    }
-    else {
-      helpUi.show()
-      syncOnlineIndicator()
-    }
-    afterNextPaint().then(() => requestIdle(startPostEntryLoads)).catch((error: unknown) => {
-      console.error(error)
-    })
-  }
-
   return nextProgress
+}
+
+function enterIntro() {
+  introHidden = true
+  document.body.dataset.introVisible = String(!introHidden)
+  removeEventListener('keydown', handleIntroStartKey)
+  intro.dataset.hidden = 'true'
+  introEffectRenderer.stop()
+  multiplayer.sendEnter()
+
+  if (helpSeen) {
+    helpUi.hide()
+    syncOnlineIndicator()
+  }
+  else {
+    helpUi.show()
+    syncOnlineIndicator()
+  }
+  afterNextPaint().then(() => requestIdle(startPostEntryLoads)).catch((error: unknown) => {
+    console.error(error)
+  })
 }
 
 function takeRemoteSeats(stamp: number) {
