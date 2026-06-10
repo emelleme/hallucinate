@@ -105,6 +105,9 @@ type StoredVideoPlaylists = {
 }
 
 type StoredVideoQueueEntry = VideoSyncEntry & {
+  cursor?: number
+  nextShuffledIds?: string[]
+  shuffledIds?: string[]
   updatedAt: number
 }
 
@@ -215,6 +218,10 @@ await migrateGraffitiSnapshot()
 const videoPlaylistRequestInterval = 3000
 const videoProgressRequestInterval = 10_000
 const videoProgressBroadcastDelay = 600
+const videoPlaylistMaxLength = 5000
+const youtubePlaylistMaxPages = 80
+const youtubeUserAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
+const videoPlaylistFetches = new Map<string, Promise<string[]>>()
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
@@ -228,6 +235,7 @@ const mainSpace = createSpace('main', 'main', roomCount)
 
 mainSpace.videoQueues = await loadVideoQueues(mainSpace)
 mainSpace.videoPlaylistOrders = await loadVideoPlaylists(mainSpace)
+await syncVideoPlaylistsFromSources(mainSpace, Date.now()).catch((e: unknown) => console.error(e))
 spaces.set(mainSpace.key, mainSpace)
 if (initializeVideoQueuesFromPlaylists(mainSpace, Date.now())) {
   await saveVideoQueues(mainSpace)
@@ -841,6 +849,7 @@ async function handleRoomApi(request: Request, url: URL) {
     saveLoftRoom(next)
     const space = refreshLoftSpace(next)
 
+    await syncVideoPlaylistsFromSources(space, Date.now()).catch((e: unknown) => console.error(e))
     saveVideoQueues(space)
     saveVideoPlaylists(space)
     broadcastVideoSync(space, new Set(['loft']))
@@ -2131,7 +2140,7 @@ function syncLoftMusic(space: SpaceState, room: LoftRoom) {
   space.musicKind = room.musicKind
   space.musicSource = room.musicSource
   if (room.musicKind === 'video') {
-    setVideoPlaylistOrder(space, 'loft', [room.musicSource])
+    setVideoPlaylistOrder(space, 'loft', [room.musicSource], room.musicSource, 'video')
     setVideoQueue(space, { zone: 'loft', currentId: room.musicSource, nextId: room.musicSource, time: 0,
       updatedAt: Date.now() })
     return
@@ -2143,6 +2152,7 @@ function syncLoftMusic(space: SpaceState, room: LoftRoom) {
     space.videoPlaylistOrders = space.videoPlaylistOrders.filter(entry => entry.zone !== 'loft')
     space.videoQueues = space.videoQueues.filter(entry => entry.zone !== 'loft')
   }
+  requestMissingVideoPlaylist(space, 'loft')
 }
 
 function loftSpaceKey(slug: string) {
@@ -2265,6 +2275,10 @@ function spacePlaylistSource(space: SpaceState, zone: VideoZone) {
   return videoPlaylists[zone]
 }
 
+function spacePlaylistZones(space: SpaceState): VideoZone[] {
+  return space.kind === 'loft' ? ['loft'] : ['inside', 'outside', 'tent']
+}
+
 function loadVideoQueues(space: SpaceState) {
   const saved = loadJson<StoredVideoQueues>(spaceStorageKey(space, 'queues'))
 
@@ -2285,12 +2299,263 @@ function saveVideoPlaylists(space: SpaceState) {
   saveJson(spaceStorageKey(space, 'playlists'), { entries: space.videoPlaylistOrders })
 }
 
-function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
-  if (!spacePlaylistSource(space, zone)) {
+async function syncVideoPlaylistsFromSources(space: SpaceState, now: number) {
+  const results = await Promise.all(spacePlaylistZones(space)
+    .filter(zone => spacePlaylistSource(space, zone))
+    .map(zone => syncVideoPlaylistFromSource(space, zone, now)))
+
+  if (results.some(Boolean)) {
+    saveVideoPlaylists(space)
+    saveVideoQueues(space)
+  }
+}
+
+async function syncVideoPlaylistFromSource(space: SpaceState, zone: VideoZone, now: number) {
+  const source = spacePlaylistSource(space, zone)
+
+  if (!source) {
+    return false
+  }
+
+  const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
+
+  if (current?.sourceIds[0] === source && current.sourceIds[1] === 'server' && current.ids.length >= 2) {
+    return ensureVideoQueueFromPlaylist(space, zone, now)
+  }
+
+  const ids = validateVideoPlaylistIds(await fetchYouTubePlaylist(source), `youtube playlist ${source}`)
+
+  return setVideoPlaylistIds(space, zone, ids, now, 'server')
+}
+
+async function fetchYouTubePlaylist(source: string) {
+  const existing = videoPlaylistFetches.get(source)
+
+  if (existing) {
+    return await existing
+  }
+
+  const next = fetchYouTubePlaylistUncached(source)
+    .finally(() => videoPlaylistFetches.delete(source))
+
+  videoPlaylistFetches.set(source, next)
+
+  return await next
+}
+
+async function fetchYouTubePlaylistUncached(source: string) {
+  const response = await fetch(`https://www.youtube.com/playlist?list=${encodeURIComponent(source)}`, {
+    headers: youtubeHeaders(),
+  })
+
+  if (!response.ok) {
+    throw new Error(`YouTube playlist request failed ${source}: ${response.status}`)
+  }
+
+  const text = await response.text()
+  const apiKey = youtubeApiKey(text)
+  const context = extractEmbeddedJson(text, 'INNERTUBE_CONTEXT')
+  let data: unknown = extractEmbeddedJson(text, 'ytInitialData')
+  const ids: string[] = []
+
+  for (let page = 0; page < youtubePlaylistMaxPages; page++) {
+    const pageIds = youtubePlaylistIds(data)
+
+    ids.push(...pageIds)
+    console.log(`[video] playlist page source=${source} page=${page + 1} pageTracks=${pageIds.length} totalTracks=${
+      uniqueVideoIds(ids).length
+    }`)
+    const continuation = youtubeContinuation(data)
+
+    if (!continuation) {
+      const uniqueIds = uniqueVideoIds(ids)
+
+      console.log(`[video] fetched playlist ${source}: ${uniqueIds.length} tracks`)
+      return uniqueIds
+    }
+
+    data = await fetchYouTubePlaylistContinuation(apiKey, context, continuation)
+  }
+
+  throw new Error(`YouTube playlist pagination exceeded ${source}`)
+}
+
+async function fetchYouTubePlaylistContinuation(apiKey: string, context: unknown, continuation: string) {
+  const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      ...youtubeHeaders(),
+      'content-type': 'application/json',
+      origin: 'https://www.youtube.com',
+      referer: 'https://www.youtube.com/',
+    },
+    body: JSON.stringify({ context, continuation }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`YouTube playlist continuation failed: ${response.status}`)
+  }
+
+  return await response.json() as unknown
+}
+
+function youtubeHeaders() {
+  return {
+    accept: '*/*',
+    'accept-language': 'en-US,en;q=0.9',
+    'user-agent': youtubeUserAgent,
+  }
+}
+
+function youtubeApiKey(text: string) {
+  const key = /"INNERTUBE_API_KEY":"([^"]+)"/.exec(text)?.[1]
+
+  if (!key) {
+    throw new Error('Missing YouTube API key')
+  }
+
+  return key
+}
+
+function youtubePlaylistIds(data: unknown) {
+  const ids: string[] = []
+
+  walkJson(data, value => {
+    const playlistVideoId = (value.playlistVideoRenderer as { videoId?: unknown } | undefined)?.videoId
+    const lockupVideoId = (value.lockupViewModel as {
+      rendererContext?: {
+        commandContext?: {
+          onTap?: {
+            innertubeCommand?: {
+              watchEndpoint?: {
+                videoId?: unknown
+              }
+            }
+          }
+        }
+      }
+    } | undefined)?.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId
+    const id = typeof playlistVideoId === 'string' ? playlistVideoId : lockupVideoId
+
+    if (typeof id === 'string') {
+      ids.push(id)
+    }
+  })
+
+  return ids
+}
+
+function youtubeContinuation(data: unknown) {
+  let token: string | undefined
+
+  walkJson(data, value => {
+    if (token) {
+      return
+    }
+
+    const continuation = (value.continuationItemViewModel as {
+      continuationCommand?: {
+        innertubeCommand?: {
+          continuationCommand?: {
+            token?: unknown
+          }
+        }
+      }
+    } | undefined)?.continuationCommand?.innertubeCommand?.continuationCommand?.token
+      ?? (value.continuationCommand as { token?: unknown } | undefined)?.token
+
+    if (typeof continuation === 'string') {
+      token = continuation
+    }
+  })
+
+  return token
+}
+
+function extractEmbeddedJson(text: string, marker: string) {
+  const start = text.indexOf(marker)
+
+  if (start < 0) {
+    throw new Error(`Missing embedded JSON ${marker}`)
+  }
+
+  const first = text.indexOf('{', start)
+
+  if (first < 0) {
+    throw new Error(`Missing embedded JSON body ${marker}`)
+  }
+
+  let depth = 0
+  let quoted = false
+  let escaped = false
+
+  for (let i = first; i < text.length; i++) {
+    const char = text[i]
+
+    if (quoted) {
+      if (escaped) {
+        escaped = false
+      }
+      else if (char === '\\') {
+        escaped = true
+      }
+      else if (char === '"') {
+        quoted = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      quoted = true
+    }
+    else if (char === '{') {
+      depth++
+    }
+    else if (char === '}') {
+      depth--
+      if (depth === 0) {
+        return JSON.parse(text.slice(first, i + 1)) as unknown
+      }
+    }
+  }
+
+  throw new Error(`Unterminated embedded JSON ${marker}`)
+}
+
+function walkJson(value: unknown, visit: (value: Record<string, unknown>) => void) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      walkJson(item, visit)
+    }
     return
   }
 
-  if (space.videoPlaylistOrders.some(entry => entry.zone === zone)) {
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>
+
+    visit(object)
+    for (const child of Object.values(object)) {
+      walkJson(child, visit)
+    }
+  }
+}
+
+function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
+  const source = spacePlaylistSource(space, zone)
+
+  if (!source) {
+    return
+  }
+
+  const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
+
+  if (current?.sourceIds[0] === source && current.sourceIds[1] === 'server' && current.ids.length >= 2) {
+    const now = Date.now()
+
+    if (ensureVideoQueueFromPlaylist(space, zone, now)) {
+      saveVideoQueues(space)
+      broadcastVideoSync(space, new Set([zone]))
+    }
     return
   }
 
@@ -2300,12 +2565,27 @@ function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
     return
   }
 
+  space.videoPlaylistRequests[zone] = now
+  syncVideoPlaylistFromSource(space, zone, now)
+    .then(changed => {
+      if (changed) {
+        saveVideoPlaylists(space)
+        saveVideoQueues(space)
+        broadcastVideoSync(space, new Set([zone]))
+      }
+    })
+    .catch((e: unknown) => {
+      console.error(e)
+      requestClientVideoPlaylist(space, zone)
+    })
+}
+
+function requestClientVideoPlaylist(space: SpaceState, zone: VideoZone) {
   const candidate = [...spaceClients(space)]
     .filter(client => client.poseSynced && clientVideoZone(client) === zone)
     .sort((a, b) => a.id - b.id)[0]
 
   if (candidate) {
-    space.videoPlaylistRequests[zone] = now
     candidate.socket.send(encodeVideoPlaylistRequest({ zones: [zone] }))
   }
 }
@@ -2348,12 +2628,9 @@ async function applyVideoEnded(client: Client, entry: VideoEndedEntry) {
     return
   }
 
-  const order = videoPlaylist(space, entry.zone)
   const now = Date.now()
-  const currentId = queue.nextId
-  const nextId = randomVideoId(order.ids, new Set([currentId]))
 
-  setVideoQueue(space, { zone: entry.zone, currentId, nextId, time: 0, updatedAt: now })
+  advanceVideoQueue(space, entry.zone, now)
   clearClientVideoProgress(space, entry.zone)
   await saveVideoQueues(space)
   broadcastVideoSync(space, new Set([entry.zone]))
@@ -2365,23 +2642,11 @@ async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[])
   const changedZones = new Set<VideoZone>()
 
   for (const entry of entries) {
-    const current = space.videoPlaylistOrders.find(current => current.zone === entry.zone)
     const ids = uniqueVideoIds(entry.ids)
-    const sourceKey = ids.join('\n')
-    const queue = videoQueue(space, entry.zone)
 
-    if (current && current.ids.join('\n') === sourceKey && queue) {
-      continue
+    if (setVideoPlaylistIds(space, entry.zone, ids, now, 'client')) {
+      changedZones.add(entry.zone)
     }
-
-    setVideoPlaylistOrder(space, entry.zone, ids)
-    if (queue) {
-      setRandomNextVideo(space, entry.zone, ids)
-    }
-    else {
-      setRandomVideoQueue(space, entry.zone, now)
-    }
-    changedZones.add(entry.zone)
   }
 
   if (changedZones.size > 0) {
@@ -2395,8 +2660,7 @@ function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   let changed = false
 
   for (const entry of space.videoPlaylistOrders) {
-    if (!videoQueue(space, entry.zone)) {
-      setRandomVideoQueue(space, entry.zone, now)
+    if (ensureVideoQueueFromPlaylist(space, entry.zone, now)) {
       changed = true
     }
   }
@@ -2404,36 +2668,148 @@ function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   return changed
 }
 
-function setVideoPlaylistOrder(space: SpaceState, zone: VideoZone, ids: string[]) {
-  const sourceIds = space.kind === 'loft' && zone === 'loft' && space.musicSource
-    ? [space.musicSource]
-    : ids
+function setVideoPlaylistIds(
+  space: SpaceState,
+  zone: VideoZone,
+  ids: string[],
+  now: number,
+  origin: 'client' | 'server',
+) {
+  const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
+  const sourceKey = ids.join('\n')
+  const source = spacePlaylistSource(space, zone)
+  const currentId = videoQueue(space, zone)?.currentId
+
+  if (current && current.sourceIds[0] === source && current.sourceIds[1] === 'server' && origin === 'client') {
+    return false
+  }
+
+  if (current && current.sourceIds[0] === source && current.sourceIds[1] === origin
+    && current.ids.join('\n') === sourceKey)
+  {
+    return ensureVideoQueueFromPlaylist(space, zone, now)
+  }
+
+  setVideoPlaylistOrder(space, zone, ids, source, origin)
+  setShuffledVideoQueue(space, zone, now, currentId)
+
+  return true
+}
+
+function setVideoPlaylistOrder(
+  space: SpaceState,
+  zone: VideoZone,
+  ids: string[],
+  source = spacePlaylistSource(space, zone),
+  origin: 'client' | 'server' | 'video' = 'server',
+) {
+  const sourceIds = source ? [source, origin] : ids
 
   space.videoPlaylistOrders = [
     ...space.videoPlaylistOrders.filter(entry => entry.zone !== zone),
     { zone, ids, sourceIds },
   ]
+  console.log(`[video] playlist stored ${videoPlaylistStats(space, zone).join(' ')}`)
 }
 
-function setRandomVideoQueue(
+function ensureVideoQueueFromPlaylist(space: SpaceState, zone: VideoZone, now: number) {
+  const queue = videoQueue(space, zone)
+
+  if (!queue) {
+    setShuffledVideoQueue(space, zone, now)
+    return true
+  }
+
+  if (queue.shuffledIds?.[queue.cursor ?? -1] === queue.currentId && queue.nextId) {
+    return false
+  }
+
+  setShuffledVideoQueue(space, zone, now, queue.currentId, queue.time, queue.updatedAt)
+  return true
+}
+
+function setShuffledVideoQueue(
   space: SpaceState,
   zone: VideoZone,
   now: number,
-  currentExclude = new Set<string>(),
+  currentId?: string,
+  time = 0,
+  updatedAt = now,
 ) {
-  const order = videoPlaylist(space, zone).ids
-  const currentId = randomVideoId(order, currentExclude)
-  const nextId = randomVideoId(order, new Set([currentId]))
+  const playlist = videoPlaylist(space, zone).ids
+  const shuffledIds = shuffledVideoIds(playlist)
+  const preservedId = currentId && playlist.includes(currentId) ? currentId : undefined
 
-  setVideoQueue(space, { zone, currentId, nextId, time: 0, updatedAt: now })
+  if (preservedId) {
+    moveVideoIdToFront(shuffledIds, preservedId)
+  }
+
+  setPreparedVideoQueue(space, {
+    zone,
+    currentId: shuffledIds[0]!,
+    nextId: '',
+    time,
+    updatedAt,
+    shuffledIds,
+    cursor: 0,
+  }, now)
+  console.log(`[video] shuffle prepared preserved=${preservedId ?? 'none'} ${videoQueueStats(space, zone).join(' ')}`)
   clearClientVideoProgress(space, zone)
 }
 
-function setRandomNextVideo(space: SpaceState, zone: VideoZone, ids = videoPlaylist(space, zone).ids) {
+function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
   const queue = videoQueue(space, zone)!
-  const nextId = randomVideoId(ids, new Set([queue.currentId]))
 
-  setVideoQueue(space, { ...queue, nextId })
+  if (!queue.shuffledIds || queue.cursor === undefined) {
+    setShuffledVideoQueue(space, zone, now, queue.currentId)
+  }
+
+  const current = videoQueue(space, zone)!
+  const nextCursor = current.cursor! + 1
+
+  if (nextCursor < current.shuffledIds!.length) {
+    setPreparedVideoQueue(space, { ...current, cursor: nextCursor, currentId: current.shuffledIds![nextCursor]!,
+      time: 0, updatedAt: now }, now)
+    console.log(`[video] cursor advanced ${videoQueueStats(space, zone).join(' ')}`)
+    return
+  }
+
+  const shuffledIds = current.nextShuffledIds ?? shuffledVideoIds(videoPlaylist(space, zone).ids, current.currentId)
+
+  setPreparedVideoQueue(space, {
+    zone,
+    currentId: shuffledIds[0]!,
+    nextId: '',
+    time: 0,
+    updatedAt: now,
+    shuffledIds,
+    cursor: 0,
+  }, now)
+  console.log(`[video] shuffle wrapped ${videoQueueStats(space, zone).join(' ')}`)
+}
+
+function setPreparedVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry, now: number) {
+  const nextId = entry.shuffledIds![entry.cursor! + 1]
+
+  if (nextId) {
+    setVideoQueue(space, {
+      ...entry,
+      nextId,
+      updatedAt: entry.updatedAt || now,
+    })
+    console.log(`[video] queue prepared ${videoQueueStats(space, entry.zone).join(' ')}`)
+    return
+  }
+
+  const nextShuffledIds = shuffledVideoIds(videoPlaylist(space, entry.zone).ids, entry.currentId)
+
+  setVideoQueue(space, {
+    ...entry,
+    nextId: nextShuffledIds[0]!,
+    nextShuffledIds,
+    updatedAt: entry.updatedAt || now,
+  })
+  console.log(`[video] queue prepared nextShuffle=true ${videoQueueStats(space, entry.zone).join(' ')}`)
 }
 
 function setVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry) {
@@ -2478,26 +2854,28 @@ function validateVideoPlaylist(client: Client, entries: VideoPlaylistEntry[]) {
       throw new Error(`Duplicate video playlist zone ${entry.zone}`)
     }
 
-    if (entry.ids.length > 255) {
-      throw new Error(`Invalid video playlist length ${entry.ids.length}`)
-    }
-
     const ids = uniqueVideoIds(entry.ids)
 
-    if (ids.length < 2) {
-      throw new Error(`Invalid video playlist length ${ids.length}`)
-    }
-
-    for (const id of ids) {
-      if (!/^[\w-]{6,32}$/.test(id)) {
-        throw new Error(`Invalid video playlist id ${id}`)
-      }
-    }
+    validateVideoPlaylistIds(ids, `client playlist ${entry.zone}`)
 
     seen.add(entry.zone)
   }
 
   return entries
+}
+
+function validateVideoPlaylistIds(ids: string[], label: string) {
+  if (ids.length < 2 || ids.length > videoPlaylistMaxLength) {
+    throw new Error(`Invalid video playlist length ${label}: ${ids.length}`)
+  }
+
+  for (const id of ids) {
+    if (!/^[\w-]{6,32}$/.test(id)) {
+      throw new Error(`Invalid video playlist id ${label}: ${id}`)
+    }
+  }
+
+  return ids
 }
 
 function validateVideoProgress(entry: VideoProgressEntry) {
@@ -2830,30 +3208,29 @@ async function applyAdminMessage(client: Client, packet: ReturnType<typeof decod
     await banClientSubnet(space, packet.id, globalAdmin)
   }
   else if (packet.command === 'randomTrack') {
-    await randomizeVideoTrack(space, space.kind === 'loft' ? 'loft' : roomVideoZone(packet.id))
+    await advanceAdminVideoTrack(space, space.kind === 'loft' ? 'loft' : roomVideoZone(packet.id))
   }
 }
 
-async function randomizeVideoTrack(space: SpaceState, zone: VideoZone) {
+async function advanceAdminVideoTrack(space: SpaceState, zone: VideoZone) {
   const now = Date.now()
 
   if (!spacePlaylistSource(space, zone)) {
-    console.log(`Admin random track skipped: no playlist ${zone}`)
+    console.log(`Admin next track skipped: no playlist ${zone}`)
     return
   }
 
   if (!space.videoPlaylistOrders.some(entry => entry.zone === zone)) {
-    console.log(`Admin random track skipped: missing playlist order ${zone}`)
+    console.log(`Admin next track skipped: missing playlist order ${zone}`)
     return
   }
 
-  const previousQueue = videoQueue(space, zone)
-
-  setRandomVideoQueue(space, zone, now, previousQueue ? new Set([previousQueue.currentId]) : new Set())
-
+  ensureVideoQueueFromPlaylist(space, zone, now)
+  advanceVideoQueue(space, zone, now)
+  clearClientVideoProgress(space, zone)
   const queue = videoQueue(space, zone)!
 
-  console.log(`[video] random queued ${zone}: current=${queue.currentId} next=${queue.nextId}`)
+  console.log(`[video] admin next queued ${videoQueueStats(space, zone, queue).join(' ')}`)
   await saveVideoQueues(space)
   broadcastVideoSync(space, new Set([zone]))
 }
@@ -2870,19 +3247,74 @@ function uniqueVideoIds(ids: string[]) {
   return [...new Set(ids)]
 }
 
-function randomVideoId(ids: string[], exclude = new Set<string>()) {
-  const uniqueIds = [...new Set(ids)]
-  const choices = uniqueIds.filter(id => !exclude.has(id))
+function videoPlaylistStats(space: SpaceState, zone: VideoZone) {
+  const playlist = videoPlaylist(space, zone)
 
-  if (uniqueIds.length === 0) {
+  return [
+    `space=${space.key}`,
+    `zone=${zone}`,
+    `source=${playlist.sourceIds[0] ?? 'none'}`,
+    `origin=${playlist.sourceIds[1] ?? 'legacy'}`,
+    `playlistTracks=${playlist.ids.length}`,
+  ]
+}
+
+function videoQueueStats(space: SpaceState, zone: VideoZone, queue = videoQueue(space, zone)!) {
+  const playlist = videoPlaylist(space, zone)
+  const cursor = queue.cursor ?? -1
+  const shuffleTracks = queue.shuffledIds?.length ?? 0
+  const currentIndex = cursor + 1
+  const remainingTracks = Math.max(0, shuffleTracks - currentIndex)
+
+  return [
+    ...videoPlaylistStats(space, zone),
+    `cursor=${cursor}`,
+    `cursorTrack=${currentIndex}/${shuffleTracks}`,
+    `remainingTracks=${remainingTracks}`,
+    `nextShuffleTracks=${queue.nextShuffledIds?.length ?? 0}`,
+    `current=${queue.currentId}`,
+    `next=${queue.nextId}`,
+    `time=${queue.time}`,
+    `updatedAt=${queue.updatedAt}`,
+    `playlistCursor=${playlist.ids.indexOf(queue.currentId) + 1}/${playlist.ids.length}`,
+  ]
+}
+
+function shuffledVideoIds(ids: string[], previousId?: string) {
+  const shuffledIds = uniqueVideoIds(ids)
+
+  if (shuffledIds.length === 0) {
     throw new Error('Missing video choices')
   }
 
-  if (choices.length === 0) {
-    return uniqueIds[0]!
+  for (let i = shuffledIds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const next = shuffledIds[i]!
+
+    shuffledIds[i] = shuffledIds[j]!
+    shuffledIds[j] = next
   }
 
-  return choices[Math.floor(Math.random() * choices.length)]!
+  if (previousId && shuffledIds.length > 1 && shuffledIds[0] === previousId) {
+    const index = shuffledIds.findIndex(id => id !== previousId)
+    const next = shuffledIds[0]!
+
+    shuffledIds[0] = shuffledIds[index]!
+    shuffledIds[index] = next
+  }
+
+  return shuffledIds
+}
+
+function moveVideoIdToFront(ids: string[], id: string) {
+  const index = ids.indexOf(id)
+
+  if (index < 0) {
+    throw new Error(`Missing video id ${id}`)
+  }
+
+  ids.splice(index, 1)
+  ids.unshift(id)
 }
 
 async function banClient(space: SpaceState, id: number, globalAdmin: boolean) {

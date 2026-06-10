@@ -32,7 +32,7 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 48
+export const protocolVersion = 49
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -439,7 +439,7 @@ export function encodeVideoPlaylist(packet: VideoPlaylistPacket) {
     ids: entry.ids.map(id => textEncoder.encode(id)),
   }))
   const size = 2
-    + encoded.reduce((total, entry) => total + 2 + entry.ids.reduce((idsTotal, id) => idsTotal + 2 + id.length, 0), 0)
+    + encoded.reduce((total, entry) => total + 3 + entry.ids.reduce((idsTotal, id) => idsTotal + 2 + id.length, 0), 0)
   const data = new ArrayBuffer(size)
   const view = new DataView(data)
   let offset = 2
@@ -449,8 +449,8 @@ export function encodeVideoPlaylist(packet: VideoPlaylistPacket) {
 
   for (const entry of encoded) {
     view.setUint8(offset, videoZoneToProtocol(entry.zone))
-    view.setUint8(offset + 1, entry.ids.length)
-    offset += 2
+    view.setUint16(offset + 1, entry.ids.length)
+    offset += 3
 
     for (const id of entry.ids) {
       view.setUint16(offset, id.length)
@@ -469,12 +469,12 @@ export function decodeVideoPlaylist(view: DataView): VideoPlaylistPacket {
   let offset = 2
 
   for (let i = 0; i < count; i++) {
-    expectAtLeastSize(view, offset + 2)
+    expectAtLeastSize(view, offset + 3)
     const zone = protocolToVideoZone(view.getUint8(offset))
-    const idsCount = view.getUint8(offset + 1)
+    const idsCount = view.getUint16(offset + 1)
     const ids: string[] = []
 
-    offset += 2
+    offset += 3
     for (let j = 0; j < idsCount; j++) {
       expectAtLeastSize(view, offset + 2)
       const length = view.getUint16(offset)

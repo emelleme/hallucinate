@@ -920,7 +920,7 @@ adminMusicSubmit.textContent = '🎵'
 adminMusicSubmit.setAttribute('aria-label', 'set room music')
 adminRandomTrackSubmit.type = 'button'
 adminRandomTrackSubmit.textContent = '🔀'
-adminRandomTrackSubmit.setAttribute('aria-label', 'random track')
+adminRandomTrackSubmit.setAttribute('aria-label', 'next track')
 adminForm.append(adminUsername, adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminMusicInput, adminMusicSubmit,
   adminRandomTrackSubmit)
 adminDialog.append(adminForm)
