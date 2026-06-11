@@ -4660,6 +4660,7 @@ const strobeController = createStrobeDrawController({
 })
 const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
+  indoorReflection: point => roomAt(point) === 'inside',
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
 const npcPlayerPool = createPlayers(maxNpcPlayers, outsideTree, occupiedSeats)

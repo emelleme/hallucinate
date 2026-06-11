@@ -5,9 +5,11 @@ import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideSideLightZs, landscapeBounds,
   outsideBounds, outsideCouches, outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools,
-  outsideHutDeckHeight, outsidePhotoWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStands,
-  outsideVideoScreenWall, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle,
-  tentPole, tentVideoAngle, tentVideoWall, type TShirtStand } from './scene-data.ts'
+  outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairs, outsideStage,
+  outsideRooftopStairRiseAtZ, outsideToiletDoor, outsideToilets, outsideTShirtStands, outsideVideoScreenWall,
+  roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
+  tentVideoWall,
+  type TShirtStand } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -151,6 +153,8 @@ function addOutside(target: Vertex[]) {
   ], [landscapeBounds.right, floor, roomBounds.back])
   addGrassQuad(target, [landscapeBounds.left, floor, roomBounds.back], [landscapeBounds.right, floor, roomBounds.back],
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
+  addOutsideRooftop(target, floor)
+  addOutsideRooftopStairs(target, floor)
   addOpenAirHut(target, floor)
   addOutsideLounges(target, floor)
   addOutsideTShirtStands(target, floor)
@@ -158,6 +162,91 @@ function addOutside(target: Vertex[]) {
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
   addTent(target, floor)
+}
+
+function addOutsideRooftop(target: Vertex[], floor: number) {
+  const y = floor + outsideRooftop.height
+  const surface: Vec3 = [0.025, 0.027, 0.032]
+  const edge: Vec3 = [0.045, 0.048, 0.055]
+  const left = outsideRooftop.x - outsideRooftop.width / 2
+  const right = outsideRooftop.x + outsideRooftop.width / 2
+  const back = outsideRooftop.z - outsideRooftop.depth / 2
+  const front = outsideRooftop.z + outsideRooftop.depth / 2
+  const landingBack = outsideRooftopLanding.z - outsideRooftopLanding.depth / 2
+  const landingFront = outsideRooftopLanding.z + outsideRooftopLanding.depth / 2
+
+  addQuad(target, [left, y, front], [right, y, front], [right, y, back], [left, y, back], surface, 0)
+  addBox(target, outsideRooftop.x, y + 0.015, roomBounds.back - 0.06, outsideRooftop.width, 0.05, 0.12, edge, 0)
+  addBox(target, outsideRooftop.x, y + 0.015, roomBounds.front + 0.06, outsideRooftop.width, 0.05, 0.12, edge, 0)
+  addBox(target, roomBounds.left - 0.06, y + 0.015, (back + landingBack) / 2, 0.12, 0.05, landingBack - back,
+    edge, 0)
+  addBox(target, roomBounds.left - 0.06, y + 0.015, (landingFront + front) / 2, 0.12, 0.05, front - landingFront,
+    edge, 0)
+  addBox(target, roomBounds.right + 0.06, y + 0.015, outsideRooftop.z, 0.12, 0.05, outsideRooftop.depth, edge, 0)
+}
+
+function addOutsideRooftopStairs(target: Vertex[], floor: number) {
+  const concrete: Vec3 = [0.06, 0.062, 0.066]
+  const tread: Vec3 = [0.095, 0.098, 0.1]
+  const rail: Vec3 = [0.02, 0.64, 0.92]
+  const stairs = outsideRooftopStairs
+  const landing = outsideRooftopLanding
+  const back = stairs.z - stairs.depth / 2
+  const front = stairs.z + stairs.depth / 2
+  const stepDepth = stairs.depth / stairs.steps
+  const landingLift = 0.048
+  const landingSideRailX = stairs.x - stairs.width / 2 - 0.08
+
+  for (let i = 0; i < stairs.steps; i++) {
+    const top = stairs.height * (i + 1) / stairs.steps
+    const z = front - stepDepth * (i + 0.5)
+
+    addBox(target, stairs.x, floor + top / 2, z, stairs.width, top, stepDepth + 0.025, concrete, 0)
+  }
+
+  addStairSideRail(target, landingSideRailX, floor, front, back, rail)
+
+  addBox(target, landing.x, floor + landing.height - 0.04 + landingLift, landing.z, landing.width, 0.08,
+    landing.depth, tread, 0)
+  addRooftopLandingSideRail(target, floor, landing, landingSideRailX, landing.z - landing.depth / 2, back, rail)
+  addRooftopLandingEndRail(target, floor, landing, landingSideRailX, rail)
+}
+
+function addStairSideRail(target: Vertex[], x: number, floor: number, front: number, back: number, color: Vec3) {
+  const height = outsideRooftopStairRiseAtZ(back)
+
+  addQuad(target, [x, floor + 0.32, front], [x, floor + 0.86, front], [x, floor + height + 0.86, back],
+    [x, floor + height + 0.32, back], color, 0.32)
+}
+
+function addRooftopLandingSideRail(
+  target: Vertex[],
+  floor: number,
+  landing: typeof outsideRooftopLanding,
+  x: number,
+  back: number,
+  front: number,
+  color: Vec3,
+) {
+  const y = floor + landing.height
+
+  addQuad(target, [x, y + 0.32, front], [x, y + 0.86, front], [x, y + 0.86, back],
+    [x, y + 0.32, back], color, 0.32)
+}
+
+function addRooftopLandingEndRail(
+  target: Vertex[],
+  floor: number,
+  landing: typeof outsideRooftopLanding,
+  left: number,
+  color: Vec3,
+) {
+  const y = floor + landing.height
+  const back = landing.z - landing.depth / 2
+  const right = landing.x + landing.width / 2
+
+  addQuad(target, [right, y + 0.32, back], [left, y + 0.32, back], [left, y + 0.86, back], [right, y + 0.86, back], color,
+    0.32)
 }
 
 function addOutsideToilets(target: Vertex[], floor: number) {

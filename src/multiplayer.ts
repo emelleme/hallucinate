@@ -620,7 +620,8 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
 
 function validRemotePose(packet: SpawnPacket) {
   return !seatedMode(protocolToMode(packet.mode))
-    || Boolean(seatAt([protocolToScene(packet.x), characterFloor, protocolToScene(packet.y)], undefined, 0.46, true))
+    || Boolean(seatAt([protocolToScene(packet.x), protocolToScene(packet.height), protocolToScene(packet.y)], undefined,
+      0.46, true))
 }
 
 function seatedMode(mode: CharacterMode | undefined) {

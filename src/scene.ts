@@ -3,9 +3,10 @@ import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArcade, loftBounds, loftCornerFigures,
   loftCouches, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideFoodTruck, outsideFoodTruckSize, outsideFoodTruckTurn, outsideHut,
-  outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideStage,
-  outsideStageRocks, outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench,
-  tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
+  outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideRooftop,
+  outsideRooftopLanding, outsideRooftopStairs, outsideRooftopStairRiseAtZ, outsideStage, outsideStageRocks,
+  outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers,
+  tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
 import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
@@ -102,7 +103,13 @@ const tableTop = characterFloor + 0.4
 const stoolTop = characterFloor + 0.72
 const outsideHutStoolTop = characterFloor + outsideHutDeckHeight + 0.72
 const outsideStageTop = characterFloor + 4.2
+const outsideRooftopTop = characterFloor + outsideRooftop.height
 const platformStep = 0.42
+const outsideRooftopStairSidePadding = 0.72
+const outsideRooftopStairSideInset = 0.24
+const outsideRooftopStairWalkLift = 0.12
+const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outsideRooftopLanding.width / 2
+  - (outsideRooftop.x - outsideRooftop.width / 2) + 0.05
 const outsideStageRockCollisions: PaddedPlatform[] = outsideStageRocks.map(rock => ({
   bounds: paddedBounds(rock, 0.18),
   top: characterFloor + rock.height,
@@ -110,7 +117,19 @@ const outsideStageRockCollisions: PaddedPlatform[] = outsideStageRocks.map(rock 
 const emptySeats = new Set<string>()
 
 export function walkHeight(x: number, y: number, z: number) {
-  const platform = platformHeight(x, z)
+  if ((inBoundsInclusive(x, z, outsideRooftop) || inBoundsInclusive(x, z, outsideRooftopLanding))
+    && y > outsideRooftopTop - platformStep)
+  {
+    return outsideRooftopTop
+  }
+
+  const stairs = outsideRooftopStairHeight(x, z)
+
+  if (stairs !== undefined && y > stairs - platformStep) {
+    return stairs
+  }
+
+  const platform = platformHeight(x, z, isOutside([x, y, z]))
 
   if (platform !== undefined && y > platform - platformStep) {
     return platform
@@ -146,7 +165,8 @@ function isAtTentDoor(position: Vec3, padding = 0) {
 }
 
 export function isOutside(position: Vec3) {
-  return position[0] < roomBounds.left || position[0] > roomBounds.right || position[2] < roomBounds.back
+  return onOutsideRooftopPath(position)
+    || position[0] < roomBounds.left || position[0] > roomBounds.right || position[2] < roomBounds.back
     || position[2] > roomBounds.front
 }
 
@@ -165,9 +185,15 @@ export function collideRoom(
   previous?: Vec3,
   options?: CollisionOptions,
 ) {
-  if (outside) {
+  const outsideZone = outside || (previous !== undefined && onOutsideRooftopPath(previous))
+
+  if (outsideZone) {
     position[0] = clamp(position[0], outsideBounds.left, outsideBounds.right)
     position[2] = clamp(position[2], outsideBounds.back, outsideBounds.front)
+    collideOutsideRooftopPath(position, previous)
+    if (onOutsideRooftopPath(position)) {
+      return
+    }
     collideBuildingWalls(position, 0.45)
     collideTentWalls(position, 0.35)
     collideCircle(position, tentPole)
@@ -428,6 +454,12 @@ export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.4
     return couchSeatAt(loftCouches, 'loft-couch', position, occupiedSeats, padding, includeOccupied, walkLoftHeight)
   }
 
+  const outside = isOutside(position)
+
+  if (!outside) {
+    return stoolSeatAt(position, occupiedSeats, padding, includeOccupied, 0, bartenderStools.length)
+  }
+
   const swingSeat = treeSwingSeatAt(position, occupiedSeats, padding, includeOccupied)
 
   if (swingSeat) {
@@ -457,19 +489,7 @@ export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.4
     return couchSeat
   }
 
-  for (let i = 0; i < seatStools.length; i++) {
-    const stool = seatStools[i]!
-    const seat = cachedStoolSeats[i]!
-
-    if (position[0] > stool.x - stool.width * 0.5 - padding
-      && position[0] < stool.x + stool.width * 0.5 + padding
-      && position[2] > stool.z - stool.depth * 0.5 - padding
-      && position[2] < stool.z + stool.depth * 0.5 + padding
-      && (includeOccupied || !occupiedSeats.has(seat.id)))
-    {
-      return seat
-    }
-  }
+  return stoolSeatAt(position, occupiedSeats, padding, includeOccupied, bartenderStools.length, seatStools.length)
 }
 
 export function seats() {
@@ -575,6 +595,29 @@ function couchSeatAt(
       const seats = idPrefix === 'couch' ? cachedOutsideCouchSeatsByCouch[i]! : cachedLoftCouchSeatsByCouch[i]!
 
       return nearestSeat(seats, position, occupiedSeats, includeOccupied)
+    }
+  }
+}
+
+function stoolSeatAt(
+  position: Vec3,
+  occupiedSeats: Set<string>,
+  padding: number,
+  includeOccupied: boolean,
+  start: number,
+  end: number,
+) {
+  for (let i = start; i < end; i++) {
+    const stool = seatStools[i]!
+    const seat = cachedStoolSeats[i]!
+
+    if (position[0] > stool.x - stool.width * 0.5 - padding
+      && position[0] < stool.x + stool.width * 0.5 + padding
+      && position[2] > stool.z - stool.depth * 0.5 - padding
+      && position[2] < stool.z + stool.depth * 0.5 + padding
+      && (includeOccupied || !occupiedSeats.has(seat.id)))
+    {
+      return seat
     }
   }
 }
@@ -896,26 +939,175 @@ function inBounds(x: number, z: number, bounds: Bounds) {
     && z > bounds.z - bounds.depth / 2 && z < bounds.z + bounds.depth / 2
 }
 
-function platformHeight(x: number, z: number) {
-  if (inPaddedBounds(x, z, djBoothCollision) || inPaddedBounds(x, z, outsideDjBoothCollision)
-    || inPaddedBounds(x, z, tentDjBoothCollision))
+function inBoundsInclusive(x: number, z: number, bounds: Bounds, padding = 0) {
+  return x >= bounds.x - bounds.width / 2 - padding && x <= bounds.x + bounds.width / 2 + padding
+    && z >= bounds.z - bounds.depth / 2 - padding && z <= bounds.z + bounds.depth / 2 + padding
+}
+
+function onOutsideRooftopPath(position: Vec3) {
+  const stairs = outsideRooftopStairPathHeight(position[0], position[2])
+
+  return (stairs !== undefined && position[1] > stairs - platformStep)
+    || ((inBoundsInclusive(position[0], position[2], outsideRooftop)
+      || inBoundsInclusive(position[0], position[2], outsideRooftopLanding))
+      && position[1] > outsideRooftopTop - platformStep)
+}
+
+function collideOutsideRooftopPath(position: Vec3, previous?: Vec3) {
+  const fromPath = previous ? onOutsideRooftopPath(previous) : onOutsideRooftopPath(position)
+  const stairHeight = outsideRooftopStairHeightAtZ(position[2])
+  const currentStairPath = outsideRooftopStairPathHeight(position[0], position[2]) !== undefined
+  const previousStairPath = previous !== undefined && outsideRooftopStairPathHeight(previous[0], previous[2]) !== undefined
+  const inStairPath = currentStairPath || previousStairPath
+  const inLandingZ = inOutsideRooftopLandingZ(position[2])
+  const nearLandingZ = inOutsideRooftopLandingZ(position[2], outsideRooftopLandingTransitionPadding)
+  const landingLeft = outsideRooftopLanding.x - outsideRooftopLanding.width / 2
+  const landingRight = outsideRooftopLanding.x + outsideRooftopLanding.width / 2
+  const landingBack = outsideRooftopLanding.z - outsideRooftopLanding.depth / 2
+  const landingFront = outsideRooftopLanding.z + outsideRooftopLanding.depth / 2
+  const roofLeft = outsideRooftop.x - outsideRooftop.width / 2
+  const roofRight = outsideRooftop.x + outsideRooftop.width / 2
+  const roofBack = outsideRooftop.z - outsideRooftop.depth / 2
+  const roofFront = outsideRooftop.z + outsideRooftop.depth / 2
+  const landingExit = roofLeft + outsideRooftopLandingTransitionPadding
+
+  if (previous) {
+    collideOutsideRooftopSideWall(position, previous, roofLeft, roofBack, landingBack)
+    collideOutsideRooftopSideWall(position, previous, roofLeft, landingFront, roofFront)
+  }
+
+  const fromRoofSide = previous !== undefined && inBoundsInclusive(previous[0], previous[2], outsideRooftop)
+    && !inBoundsInclusive(previous[0], previous[2], outsideRooftopLanding)
+    && previous[1] > outsideRooftopTop - platformStep
+  const fromLandingSide = previous === undefined || inBoundsInclusive(previous[0], previous[2], outsideRooftopLanding)
+    || (nearLandingZ && previous[0] < landingExit)
+  const fromStairSide = previous !== undefined && previousStairPath && previous[0] < roofLeft
+  const crossingToRoof = nearLandingZ && position[1] > outsideRooftopTop - platformStep && position[0] > landingRight
+
+  if (fromRoofSide && currentStairPath && !inLandingZ && position[1] > outsideRooftopTop - platformStep)
   {
+    position[0] = Math.max(position[0], roofLeft)
+    return
+  }
+
+  if (!crossingToRoof && fromLandingSide && fromPath && inStairPath && stairHeight !== undefined
+    && position[1] > stairHeight - platformStep)
+  {
+    const stairs = outsideRooftopStairs
+    const left = stairs.x - stairs.width / 2 + outsideRooftopStairSideInset
+    const right = stairs.x + stairs.width / 2 - outsideRooftopStairSideInset
+    const topTransition = nearLandingZ && position[1] > outsideRooftopTop - platformStep
+
+    position[0] = clamp(position[0], topTransition ? Math.min(left, landingLeft) : left,
+      topTransition ? Math.max(right, landingRight) : right)
+    if (topTransition && !currentStairPath) {
+      position[2] = clamp(position[2], landingBack, landingFront)
+    }
+    return
+  }
+
+  if (fromStairSide && currentStairPath && stairHeight !== undefined && position[1] > stairHeight - platformStep) {
+    const stairs = outsideRooftopStairs
+
+    position[0] = clamp(position[0], stairs.x - stairs.width / 2 + outsideRooftopStairSideInset,
+      stairs.x + stairs.width / 2 - outsideRooftopStairSideInset)
+    return
+  }
+
+  if (fromPath && nearLandingZ && position[0] < landingExit && position[1] > outsideRooftopTop - platformStep) {
+    position[0] = clamp(position[0], landingLeft, landingExit)
+    position[2] = clamp(position[2], landingBack, landingFront)
+    return
+  }
+
+  if (!fromPath || position[1] <= outsideRooftopTop - platformStep) {
+    return
+  }
+
+  position[0] = clamp(position[0], inLandingZ ? landingLeft : roofLeft, inLandingZ ? Math.max(roofRight,
+    landingRight) : roofRight)
+  position[2] = clamp(position[2], roofBack, roofFront)
+}
+
+function collideOutsideRooftopSideWall(position: Vec3, previous: Vec3, x: number, back: number, front: number) {
+  if (previous[1] <= outsideRooftopTop - platformStep
+    || !inBoundsInclusive(previous[0], previous[2], outsideRooftop)
+    || !segmentOverlaps(previous[2], position[2], back, front, 0))
+  {
+    return
+  }
+
+  if (previous[0] >= x && position[0] < x) {
+    position[0] = x
+  }
+}
+
+function inOutsideRooftopLandingZ(z: number, padding = 0) {
+  return z >= outsideRooftopLanding.z - outsideRooftopLanding.depth / 2 - padding
+    && z <= outsideRooftopLanding.z + outsideRooftopLanding.depth / 2 + padding
+}
+
+function outsideRooftopStairHeight(x: number, z: number) {
+  if (!inBoundsInclusive(x, z, outsideRooftopStairs)) {
+    return undefined
+  }
+
+  return outsideRooftopStairHeightAtZ(z)
+}
+
+function outsideRooftopStairPathHeight(x: number, z: number) {
+  const stairs = outsideRooftopStairs
+
+  if (x < stairs.x - stairs.width / 2 + outsideRooftopStairSideInset - outsideRooftopStairSidePadding
+    || x > stairs.x + stairs.width / 2 - outsideRooftopStairSideInset + outsideRooftopStairSidePadding
+    || z < stairs.z - stairs.depth / 2
+    || z > stairs.z + stairs.depth / 2)
+  {
+    return undefined
+  }
+
+  return outsideRooftopStairHeightAtZ(z)
+}
+
+function outsideRooftopStairHeightAtZ(z: number) {
+  return characterFloor + clamp(outsideRooftopStairRiseAtZ(z) + outsideRooftopStairWalkLift, 0,
+    outsideRooftopStairs.height)
+}
+
+function platformHeight(x: number, z: number, outside: boolean) {
+  if (outside) {
+    if (inPaddedBounds(x, z, outsideDjBoothCollision) || inPaddedBounds(x, z, tentDjBoothCollision)) {
+      return djBoothTop
+    }
+
+    if (outsideDjSpeakerCollisions.some(bounds => inPaddedBounds(x, z, bounds))
+      || tentDjSpeakerCollisions.some(bounds => inPaddedBounds(x, z, bounds)))
+    {
+      return speakerTop
+    }
+
+    const stageRock = outsideStageRockCollisions.find(rock => inPaddedBounds(x, z, rock.bounds))
+
+    if (stageRock) {
+      return stageRock.top
+    }
+
+    if (inPaddedBounds(x, z, outsideHutBarCollision)) {
+      return barTop
+    }
+
+    return undefined
+  }
+
+  if (inPaddedBounds(x, z, djBoothCollision)) {
     return djBoothTop
   }
 
-  if ([...djSpeakerCollisions, ...outsideDjSpeakerCollisions, ...tentDjSpeakerCollisions].some(bounds =>
-    inPaddedBounds(x, z, bounds)
-  )) {
+  if (djSpeakerCollisions.some(bounds => inPaddedBounds(x, z, bounds))) {
     return speakerTop
   }
 
-  const stageRock = outsideStageRockCollisions.find(rock => inPaddedBounds(x, z, rock.bounds))
-
-  if (stageRock) {
-    return stageRock.top
-  }
-
-  if (inPaddedBounds(x, z, bartenderBarCollision) || inPaddedBounds(x, z, outsideHutBarCollision)) {
+  if (inPaddedBounds(x, z, bartenderBarCollision)) {
     return barTop
   }
 }

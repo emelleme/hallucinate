@@ -196,6 +196,40 @@ export const videoPlaylists: Partial<Record<VideoZone, string>> = {
 }
 export const backDoor = { x: -4.75, z: 4, width: 1.45, height: 2.55 }
 export const roomBounds = { left: -7, right: 7, back: -24, front: 4 }
+export const outsideRooftop: Bounds & { height: number } = {
+  x: (roomBounds.left + roomBounds.right) / 2,
+  z: (roomBounds.back + roomBounds.front) / 2,
+  width: roomBounds.right - roomBounds.left + 0.18,
+  depth: roomBounds.front - roomBounds.back + 0.18,
+  height: 7,
+}
+export const outsideRooftopStairs: Bounds & { height: number; steps: number } = {
+  x: roomBounds.left - 1.04,
+  z: -10.4,
+  width: 1.86,
+  depth: 13.2,
+  height: outsideRooftop.height,
+  steps: 28,
+}
+export function outsideRooftopStairRiseAtZ(z: number) {
+  const back = outsideRooftopStairs.z - outsideRooftopStairs.depth / 2
+  const front = outsideRooftopStairs.z + outsideRooftopStairs.depth / 2
+
+  return outsideRooftopStairs.height * ((front - z) / (front - back))
+}
+
+const outsideRooftopLandingDepth = 1.9
+const outsideRooftopLandingWidth = outsideRooftopStairs.width + 0.38
+const outsideRooftopLandingOffset = -1.45
+
+export const outsideRooftopLanding: Bounds & { height: number } = {
+  x: outsideRooftopStairs.x,
+  z: outsideRooftopStairs.z - outsideRooftopStairs.depth / 2 + outsideRooftopLandingDepth / 2
+    + outsideRooftopLandingOffset,
+  width: outsideRooftopLandingWidth,
+  depth: outsideRooftopLandingDepth,
+  height: outsideRooftop.height,
+}
 export const insideSideLightZs = [-2, -6, -10, -14, -18, -22] as const
 const arcadeCabinetSize = { width: 0.88, depth: 0.86, height: 2.2 } as const
 export const insideArcade: Bounds & { height: number; turn: number } = {

@@ -12,6 +12,7 @@ const nightUplightStrength = 0.36
 
 export function createSceneLighting(options: {
   getTree: () => CircleBounds
+  indoorReflection: (point: Vec3) => boolean
   strobeReflection: (point: Vec3, normal: Vec3) => number
 }) {
   function addSunLitTriangle(
@@ -69,7 +70,7 @@ export function createSceneLighting(options: {
   }
 
   const addLocalReflection: CharacterLight = (color, point, normal, target) => {
-    const orange = orangeReflection(point, normal)
+    const orange = options.indoorReflection(point) ? orangeReflection(point, normal) : 0
     const white = options.strobeReflection(point, normal)
 
     target[0] = clamp(color[0] + orange * 1.35 + white * 2.85, 0, 1)

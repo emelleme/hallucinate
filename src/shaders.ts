@@ -1,4 +1,4 @@
-import { landscapeBounds, tent } from './scene-data.ts'
+import { landscapeBounds, outsideRooftop, outsideRooftopLanding, outsideRooftopStairs, tent } from './scene-data.ts'
 
 import { characterFloor } from './character-data.ts'
 import { imageTextureHaze, tShirtHaze } from './geometry.ts'
@@ -14,6 +14,20 @@ const tentWallTopGlsl = glslFloat(tentWallTop)
 const tentRoofHeightGlsl = glslFloat(tentTop - tentWallTop)
 const tentRoofShellBottom = glslFloat(tentWallTop - 0.15)
 const tentRoofShellTop = glslFloat(tentTop + 0.15)
+const rooftopLeft = glslFloat(outsideRooftop.x - outsideRooftop.width / 2 - 0.05)
+const rooftopRight = glslFloat(outsideRooftop.x + outsideRooftop.width / 2 + 0.05)
+const rooftopBack = glslFloat(outsideRooftop.z - outsideRooftop.depth / 2 - 0.05)
+const rooftopFront = glslFloat(outsideRooftop.z + outsideRooftop.depth / 2 + 0.05)
+const rooftopBottom = glslFloat(characterFloor + outsideRooftop.height - 0.36)
+const stairLeft = glslFloat(outsideRooftopStairs.x - outsideRooftopStairs.width / 2 - 0.16)
+const stairRight = glslFloat(outsideRooftopStairs.x + outsideRooftopStairs.width / 2 + 0.16)
+const stairBack = glslFloat(outsideRooftopStairs.z - outsideRooftopStairs.depth / 2 - 0.05)
+const stairFront = glslFloat(outsideRooftopStairs.z + outsideRooftopStairs.depth / 2 + 0.05)
+const landingLeft = glslFloat(outsideRooftopLanding.x - outsideRooftopLanding.width / 2 - 0.05)
+const landingRight = glslFloat(outsideRooftopLanding.x + outsideRooftopLanding.width / 2 + 0.05)
+const landingBack = glslFloat(outsideRooftopLanding.z - outsideRooftopLanding.depth / 2 - 0.05)
+const landingFront = glslFloat(outsideRooftopLanding.z + outsideRooftopLanding.depth / 2 + 0.05)
+const elevatedOutdoorBottom = glslFloat(characterFloor - 0.12)
 const treeShadowLeft = glslFloat(landscapeBounds.left)
 const treeShadowFront = glslFloat(landscapeBounds.front)
 const treeShadowWidth = glslFloat(landscapeBounds.right - landscapeBounds.left)
@@ -144,6 +158,13 @@ layout(location = 1) out vec4 bloomPixel;
 
 bool sceneVisible() {
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool rooftopPoint = worldPosition.x > ${rooftopLeft} && worldPosition.x < ${rooftopRight}
+    && worldPosition.z > ${rooftopBack} && worldPosition.z < ${rooftopFront} && worldPosition.y > ${rooftopBottom};
+  bool stairPoint = worldPosition.x > ${stairLeft} && worldPosition.x < ${stairRight}
+    && worldPosition.z > ${stairBack} && worldPosition.z < ${stairFront} && worldPosition.y > ${elevatedOutdoorBottom};
+  bool landingPoint = worldPosition.x > ${landingLeft} && worldPosition.x < ${landingRight}
+    && worldPosition.z > ${landingBack} && worldPosition.z < ${landingFront} && worldPosition.y > ${rooftopBottom};
+  bool elevatedOutdoorPoint = rooftopPoint || stairPoint || landingPoint;
   vec2 tentOffset = worldPosition.xz - vec2(${tentX}, ${tentZ});
   bool tentPoint = dot(tentOffset, tentOffset) < ${tentVisibleRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
   bool tentInterior = dot(tentOffset, tentOffset) < ${tentInteriorRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
@@ -158,7 +179,7 @@ bool sceneVisible() {
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
   if (renderZone == 0) {
-    return !outsidePoint || door;
+    return (!outsidePoint && !elevatedOutdoorPoint) || door;
   }
   if (renderZone == 2) {
     return tentPoint;
@@ -167,7 +188,7 @@ bool sceneVisible() {
     return true;
   }
 
-  return (outsidePoint && !tentInterior) || (shell && light < 0.12) || door;
+  return (outsidePoint && !tentInterior) || elevatedOutdoorPoint || (shell && light < 0.12) || door;
 }
 
 void main() {
@@ -228,6 +249,13 @@ bool sceneVisible() {
   }
 
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool rooftopPoint = worldPosition.x > ${rooftopLeft} && worldPosition.x < ${rooftopRight}
+    && worldPosition.z > ${rooftopBack} && worldPosition.z < ${rooftopFront} && worldPosition.y > ${rooftopBottom};
+  bool stairPoint = worldPosition.x > ${stairLeft} && worldPosition.x < ${stairRight}
+    && worldPosition.z > ${stairBack} && worldPosition.z < ${stairFront} && worldPosition.y > ${elevatedOutdoorBottom};
+  bool landingPoint = worldPosition.x > ${landingLeft} && worldPosition.x < ${landingRight}
+    && worldPosition.z > ${landingBack} && worldPosition.z < ${landingFront} && worldPosition.y > ${rooftopBottom};
+  bool elevatedOutdoorPoint = rooftopPoint || stairPoint || landingPoint;
   vec2 tentOffset = worldPosition.xz - vec2(${tentX}, ${tentZ});
   float tentDistance = length(tentOffset);
   float tentRoofT = clamp((worldPosition.y - ${tentWallTopGlsl}) / ${tentRoofHeightGlsl}, 0.0, 1.0);
@@ -247,7 +275,7 @@ bool sceneVisible() {
   bool graffiti = hazeAmount > 5.5;
 
   if (renderZone == 0) {
-    return !outsidePoint || door;
+    return (!outsidePoint && !elevatedOutdoorPoint) || door;
   }
   if (renderZone == 2) {
     return tentPoint;
@@ -256,7 +284,8 @@ bool sceneVisible() {
     return true;
   }
 
-  return (outsidePoint && (!tentInterior || tentRoofShell || graffiti)) || (shell && light < 0.12) || door;
+  return (outsidePoint && (!tentInterior || tentRoofShell || graffiti)) || elevatedOutdoorPoint
+    || (shell && light < 0.12) || door;
 }
 
 float hash(vec2 point) {
@@ -277,6 +306,13 @@ float noise(vec2 point) {
 
 float outsideSurfaceMask() {
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool rooftopPoint = worldPosition.x > ${rooftopLeft} && worldPosition.x < ${rooftopRight}
+    && worldPosition.z > ${rooftopBack} && worldPosition.z < ${rooftopFront} && worldPosition.y > ${rooftopBottom};
+  bool stairPoint = worldPosition.x > ${stairLeft} && worldPosition.x < ${stairRight}
+    && worldPosition.z > ${stairBack} && worldPosition.z < ${stairFront} && worldPosition.y > ${elevatedOutdoorBottom};
+  bool landingPoint = worldPosition.x > ${landingLeft} && worldPosition.x < ${landingRight}
+    && worldPosition.z > ${landingBack} && worldPosition.z < ${landingFront} && worldPosition.y > ${rooftopBottom};
+  bool elevatedOutdoorPoint = rooftopPoint || stairPoint || landingPoint;
   vec2 tentOffset = worldPosition.xz - vec2(${tentX}, ${tentZ});
   float tentDistance = length(tentOffset);
   float tentRoofT = clamp((worldPosition.y - ${tentWallTopGlsl}) / ${tentRoofHeightGlsl}, 0.0, 1.0);
@@ -284,7 +320,7 @@ float outsideSurfaceMask() {
   bool tentInterior = dot(tentOffset, tentOffset) < ${tentInteriorRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
   bool tentRoofShell = worldPosition.y > ${tentRoofShellBottom} && worldPosition.y < ${tentRoofShellTop} && abs(tentDistance - tentRoofRadius) < 0.24;
 
-  return outsidePoint && (!tentInterior || tentRoofShell) ? 1.0 : 0.0;
+  return (outsidePoint && (!tentInterior || tentRoofShell)) || elevatedOutdoorPoint ? 1.0 : 0.0;
 }
 
 vec3 outsideModeColor(vec3 color) {
@@ -489,6 +525,13 @@ layout(location = 1) out vec4 bloomPixel;
 
 bool sceneVisible() {
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool rooftopPoint = worldPosition.x > ${rooftopLeft} && worldPosition.x < ${rooftopRight}
+    && worldPosition.z > ${rooftopBack} && worldPosition.z < ${rooftopFront} && worldPosition.y > ${rooftopBottom};
+  bool stairPoint = worldPosition.x > ${stairLeft} && worldPosition.x < ${stairRight}
+    && worldPosition.z > ${stairBack} && worldPosition.z < ${stairFront} && worldPosition.y > ${elevatedOutdoorBottom};
+  bool landingPoint = worldPosition.x > ${landingLeft} && worldPosition.x < ${landingRight}
+    && worldPosition.z > ${landingBack} && worldPosition.z < ${landingFront} && worldPosition.y > ${rooftopBottom};
+  bool elevatedOutdoorPoint = rooftopPoint || stairPoint || landingPoint;
   vec2 tentOffset = worldPosition.xz - vec2(${tentX}, ${tentZ});
   bool tentPoint = dot(tentOffset, tentOffset) < ${tentVisibleRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
   bool tentInterior = dot(tentOffset, tentOffset) < ${tentInteriorRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
@@ -497,9 +540,9 @@ bool sceneVisible() {
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
   return renderZone == 3 ? true
-    : renderZone == 0 ? (!outsidePoint || door)
+    : renderZone == 0 ? ((!outsidePoint && !elevatedOutdoorPoint) || door)
     : renderZone == 2 ? tentPoint
-    : ((outsidePoint && !tentInterior) || door);
+    : ((outsidePoint && !tentInterior) || elevatedOutdoorPoint);
 }
 
 float smokeDensity(vec2 uv) {
@@ -587,6 +630,13 @@ layout(location = 1) out vec4 bloomPixel;
 
 bool sceneVisible() {
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
+  bool rooftopPoint = worldPosition.x > ${rooftopLeft} && worldPosition.x < ${rooftopRight}
+    && worldPosition.z > ${rooftopBack} && worldPosition.z < ${rooftopFront} && worldPosition.y > ${rooftopBottom};
+  bool stairPoint = worldPosition.x > ${stairLeft} && worldPosition.x < ${stairRight}
+    && worldPosition.z > ${stairBack} && worldPosition.z < ${stairFront} && worldPosition.y > ${elevatedOutdoorBottom};
+  bool landingPoint = worldPosition.x > ${landingLeft} && worldPosition.x < ${landingRight}
+    && worldPosition.z > ${landingBack} && worldPosition.z < ${landingFront} && worldPosition.y > ${rooftopBottom};
+  bool elevatedOutdoorPoint = rooftopPoint || stairPoint || landingPoint;
   vec2 tentOffset = worldPosition.xz - vec2(${tentX}, ${tentZ});
   bool tentPoint = dot(tentOffset, tentOffset) < ${tentVisibleRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
   bool tentInterior = dot(tentOffset, tentOffset) < ${tentInteriorRadiusSq} && worldPosition.y > -2.2 && worldPosition.y < 5.0;
@@ -595,9 +645,9 @@ bool sceneVisible() {
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
   return renderZone == 3 ? true
-    : renderZone == 0 ? (!outsidePoint || door)
+    : renderZone == 0 ? ((!outsidePoint && !elevatedOutdoorPoint) || door)
     : renderZone == 2 ? tentPoint
-    : ((outsidePoint && !tentInterior) || door);
+    : ((outsidePoint && !tentInterior) || elevatedOutdoorPoint || door);
 }
 
 void main() {
