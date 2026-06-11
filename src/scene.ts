@@ -1,17 +1,67 @@
-import { characterFloor } from './character-data.ts'
-import { clamp } from './math.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArcade, loftBounds, loftCornerFigures,
-  loftCouches, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
-  outsideDjBooth, outsideDjSpeakers, outsideFoodTruck, outsideFoodTruckSize, outsideFoodTruckTurn, outsideHut,
-  outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideRooftop,
-  outsideRooftopLanding, outsideRooftopStairs, outsideRooftopStairRiseAtZ, outsideScheduleWall, outsideStage,
-  outsideStageRocks, outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench,
-  tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle, upstairsBar, upstairsBarCounterRail,
-  upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches, upstairsDjBooth, upstairsDjSpeakers, upstairsDoor } from './scene-data.ts'
+import {
+  backDoor,
+  bartenderBar,
+  bartenderStools,
+  djBooth,
+  djSpeakers,
+  insideArcade,
+  loftBounds,
+  loftCornerFigures,
+  loftCouches,
+  loftDjBooth,
+  loftDjSpeakers,
+  loftPlants,
+  loftTables,
+  outsideBounds,
+  outsideBuddha,
+  outsideCouches,
+  outsideDjBooth,
+  outsideDjSpeakers,
+  outsideFoodTruck,
+  outsideFoodTruckSize,
+  outsideFoodTruckTurn,
+  outsideHut,
+  outsideHutBar,
+  outsideHutBarStools,
+  outsideHutDeckHeight,
+  outsidePalmTree,
+  outsidePhotoWall,
+  outsideRooftop,
+  outsideRooftopLanding,
+  outsideRooftopStairRiseAtZ,
+  outsideRooftopStairs,
+  outsideScheduleWall,
+  outsideStage,
+  outsideStageRocks,
+  outsideToiletDoor,
+  outsideToilets,
+  outsideTShirtStands,
+  roomBounds,
+  tent,
+  tentCenterBench,
+  tentDjBooth,
+  tentDjSpeakers,
+  tentDoor,
+  tentDoorAngle,
+  tentPole,
+  tentVideoAngle,
+  upstairsBar,
+  upstairsBarCounterRail,
+  upstairsBarDrinkCounter,
+  upstairsBarStools,
+  upstairsCouches,
+  upstairsDjBooth,
+  upstairsDjSpeakers,
+  upstairsDoor,
+} from './scene-data.ts'
 import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
+import { characterFloor } from './character-data.ts'
+import { clamp } from './math.ts'
+
 export type Seat = {
+  cameraTarget?: Vec3
   id: string
   position: Vec3
   turn: number
@@ -115,6 +165,8 @@ const outsideStageTop = characterFloor + 4.2
 const outsideRooftopTop = characterFloor + outsideRooftop.height
 const upstairsBarCounterHeight = outsideRooftopTop + 1
 const upstairsStoolTop = outsideRooftopTop + 0.72
+const boothCameraHeight = 1.12
+const upstairsBoothCameraTarget = boothCameraTarget(upstairsDjBooth, outsideRooftopTop)
 const platformStep = 0.42
 const outsideRooftopStairSidePadding = 0.72
 const outsideRooftopStairSideInset = 0.24
@@ -123,7 +175,7 @@ const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outside
   - (outsideRooftop.x - outsideRooftop.width / 2) + 0.05
 const outsideStageRockCollisions: PaddedPlatform[] = outsideStageRocks.map(rock => ({
   bounds: paddedBounds(rock, 0.18),
-  top: characterFloor + rock.height,
+  top: characterFloor + rock.height - 0.1,
 }))
 const emptySeats = new Set<string>()
 
@@ -193,7 +245,13 @@ export function isUpstairs(position: Vec3) {
 }
 
 export function roomAt(position: Vec3): VideoZone {
-  return inTent(position[0], position[2]) ? 'tent' : isUpstairs(position) ? 'upstairs' : isOutside(position) ? 'outside' : 'inside'
+  return inTent(position[0], position[2])
+    ? 'tent'
+    : isUpstairs(position)
+    ? 'upstairs'
+    : isOutside(position)
+    ? 'outside'
+    : 'inside'
 }
 
 export function usesSkyBackground(_camera: { eye: Vec3; center: Vec3 }) {
@@ -576,8 +634,8 @@ export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.4
 
   if (isUpstairs(position)) {
     return couchSeatAt(upstairsCouches, 'upstairs-couch', position, occupiedSeats, padding, includeOccupied, walkHeight)
-      ?? stoolSeatAt(position, occupiedSeats, padding, includeOccupied, bartenderStools.length + outsideHutBarStools.length,
-        seatStools.length)
+      ?? stoolSeatAt(position, occupiedSeats, padding, includeOccupied,
+        bartenderStools.length + outsideHutBarStools.length, seatStools.length)
   }
 
   if (!outside) {
@@ -775,6 +833,7 @@ function couchSeats(
   idPrefix: string,
   couchIndex: number,
   heightAt: (x: number, y: number, z: number) => number,
+  cameraTarget?: Vec3,
 ): Seat[] {
   const direction = couchSeatDirection(couch.face)
   const side = couchSeatSide(couch.face)
@@ -784,6 +843,7 @@ function couchSeats(
   const floor = idPrefix === 'upstairs-couch' ? outsideRooftopTop : characterFloor
 
   return offsets.map((offset, index) => ({
+    ...(cameraTarget ? { cameraTarget } : {}),
     id: `${idPrefix}:${couchIndex}:${index}`,
     position: [
       couch.x + direction[0] * depth * 0.12 + side[0] * offset,
@@ -799,6 +859,7 @@ function stoolSeat(stool: Bounds, index: number): Seat {
   const upstairs = index >= bartenderStools.length + outsideHutBarStools.length
 
   return {
+    ...(upstairs ? { cameraTarget: upstairsBoothCameraTarget } : {}),
     id: `stool:${index}`,
     position: [stool.x, (upstairs ? outsideRooftopTop : walkHeight(stool.x, characterFloor, stool.z)) + 0.34, stool.z],
     turn: upstairs ? Math.atan2(upstairsBar.x - stool.x, upstairsBar.z - stool.z) : outside ? Math.PI / 2 : Math.PI,
@@ -815,9 +876,10 @@ const cachedLoftCouchSeatsByCouch = loftCouches.map((couch, index) =>
   couchSeats(couch, 'loft-couch', index, walkLoftHeight)
 )
 const cachedUpstairsCouchSeatsByCouch = upstairsCouches.map((couch, index) =>
-  couchSeats(couch, 'upstairs-couch', index, walkHeight)
+  couchSeats(couch, 'upstairs-couch', index, walkHeight, upstairsBoothCameraTarget)
 )
 const cachedOutsideCouchSeats = cachedOutsideCouchSeatsByCouch.flat()
+const cachedLoftCouchSeats = cachedLoftCouchSeatsByCouch.flat()
 const cachedUpstairsCouchSeats = cachedUpstairsCouchSeatsByCouch.flat()
 const cachedStoolSeats = seatStools.map((stool, index) => stoolSeat(stool, index))
 const cachedSeats = [
@@ -828,7 +890,13 @@ const cachedSeats = [
   ...cachedUpstairsCouchSeats,
   ...cachedStoolSeats,
 ]
-const cachedSeatById = new Map([...treeSwingSeats, ...cachedSeats].map(seat => [seat.id, seat]))
+const cachedSeatById = new Map<string, Seat>(
+  [...treeSwingSeats, ...cachedSeats, ...cachedLoftCouchSeats].map(seat => [seat.id, seat] as const),
+)
+
+function boothCameraTarget(booth: Bounds, floor = characterFloor): Vec3 {
+  return [booth.x, floor + boothCameraHeight, booth.z]
+}
 
 function couchSeatDirection(face: (typeof outsideCouches)[number]['face']): Vec3 {
   if (face === 'north') {
@@ -1092,7 +1160,8 @@ function collideOutsideRooftopPath(position: Vec3, previous?: Vec3) {
   const fromPath = previous ? onOutsideRooftopPath(previous) : onOutsideRooftopPath(position)
   const stairHeight = outsideRooftopStairHeightAtZ(position[2])
   const currentStairPath = outsideRooftopStairPathHeight(position[0], position[2]) !== undefined
-  const previousStairPath = previous !== undefined && outsideRooftopStairPathHeight(previous[0], previous[2]) !== undefined
+  const previousStairPath = previous !== undefined
+    && outsideRooftopStairPathHeight(previous[0], previous[2]) !== undefined
   const inStairPath = currentStairPath || previousStairPath
   const inLandingZ = inOutsideRooftopLandingZ(position[2])
   const nearLandingZ = inOutsideRooftopLandingZ(position[2], outsideRooftopLandingTransitionPadding)
@@ -1119,8 +1188,7 @@ function collideOutsideRooftopPath(position: Vec3, previous?: Vec3) {
   const fromStairSide = previous !== undefined && previousStairPath && previous[0] < roofLeft
   const crossingToRoof = nearLandingZ && position[1] > outsideRooftopTop - platformStep && position[0] > landingRight
 
-  if (fromRoofSide && currentStairPath && !inLandingZ && position[1] > outsideRooftopTop - platformStep)
-  {
+  if (fromRoofSide && currentStairPath && !inLandingZ && position[1] > outsideRooftopTop - platformStep) {
     position[0] = Math.max(position[0], roofLeft)
     return
   }
@@ -1160,8 +1228,8 @@ function collideOutsideRooftopPath(position: Vec3, previous?: Vec3) {
     return
   }
 
-  position[0] = clamp(position[0], inLandingZ ? landingLeft : roofLeft, inLandingZ ? Math.max(roofRight,
-    landingRight) : roofRight)
+  position[0] = clamp(position[0], inLandingZ ? landingLeft : roofLeft,
+    inLandingZ ? Math.max(roofRight, landingRight) : roofRight)
   position[2] = clamp(position[2], roofBack, roofFront)
 }
 
@@ -1231,8 +1299,8 @@ function outsideRooftopStairPathHeight(x: number, z: number) {
 }
 
 function outsideRooftopStairHeightAtZ(z: number) {
-  return characterFloor + clamp(outsideRooftopStairRiseAtZ(z) + outsideRooftopStairWalkLift, 0,
-    outsideRooftopStairs.height)
+  return characterFloor
+    + clamp(outsideRooftopStairRiseAtZ(z) + outsideRooftopStairWalkLift, 0, outsideRooftopStairs.height)
 }
 
 function platformHeight(x: number, z: number, outside: boolean) {

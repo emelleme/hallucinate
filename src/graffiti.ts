@@ -5,6 +5,9 @@ import {
   outsideFoodTruck,
   outsideFoodTruckSize,
   outsideFoodTruckTurn,
+  outsideHut,
+  outsideHutDeckHeight,
+  outsideRooftopStairs,
   outsideToiletDoor,
   outsideToilets,
   outsideRooftop,
@@ -45,17 +48,33 @@ type PlaneGraffitiWall = {
   yMax: number
   normal: Vec3
   sides: GraffitiSides
+  segments?: number
+  texture?: number
+  yMaxAt?: (x: number) => number
 }
 type OrientedPlaneGraffitiWall = {
   kind: 'oriented-plane'
   center: Vec3
   tangent: Vec3
   normal: Vec3
+  up?: Vec3
   min: number
   max: number
   yMin: number
   yMax: number
+  oneSided?: boolean
+  surface?: boolean
+  textureBounds?: readonly [number, number, number, number]
   sides: GraffitiSides
+}
+type OrientedPlaneOptions = {
+  oneSided?: boolean
+  sides?: GraffitiSides
+  surface?: boolean
+  textureBounds?: readonly [number, number, number, number]
+  up?: Vec3
+  yMax?: number
+  yMin?: number
 }
 type CylinderGraffitiWall = {
   kind: 'cylinder'
@@ -130,7 +149,7 @@ const upstairsDoorBack = upstairsDoor.z - upstairsDoor.width / 2
 const upstairsDoorFront = upstairsDoor.z + upstairsDoor.width / 2
 const upstairsDoorTop = characterFloor + outsideRooftop.height + upstairsDoor.height + 0.05
 
-const walls: GraffitiWall[] = [
+const wallTextureWalls: GraffitiWall[] = [
   planeWall('z', roomBounds.front, roomBounds.left, roomBounds.right, wallYMin, wallYMax, [0, 0, 1], 'front'),
   planeWall('z', roomBounds.back, roomBounds.left, roomBounds.right, wallYMin, wallYMax, [0, 0, -1], 'front'),
   planeWall('x', roomBounds.left, roomBounds.back, roomBounds.front, wallYMin, wallYMax, [-1, 0, 0], 'front'),
@@ -182,10 +201,10 @@ const walls: GraffitiWall[] = [
   planeWall('x', roomBounds.left - 0.06, upstairsDoorBack, upstairsDoorFront, upstairsDoorTop, upstairsWallYMax,
     [-1, 0, 0], 'front'),
   ...foodTruckGraffitiWalls(),
+  ...stairGraffitiWalls(),
 ]
-export const graffitiWallCount = walls.length
 
-const graffitiWallAtlasRows = Math.ceil(graffitiWallCount / graffitiAtlasColumns)
+const graffitiWallAtlasRows = Math.ceil(wallTextureWalls.length / graffitiAtlasColumns)
 const paintingAtlasRows = 1
 const graffitiAtlasRows = graffitiWallAtlasRows + paintingAtlasRows
 const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
@@ -194,6 +213,16 @@ const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
 const tShirtLogoAtlasIndex = paintingAtlasIndex + 1
 const tShirtLogoAtlasPadding = 24
+const stairBackAtlasIndex = paintingAtlasIndex + 2
+const hutRoofTextureIndex = paintingAtlasIndex + 3
+const hutRoofBackTextureBounds = splitWallTextureBounds(hutRoofTextureIndex, 0, 2)
+const hutRoofFrontTextureBounds = splitWallTextureBounds(hutRoofTextureIndex, 1, 2)
+const walls: GraffitiWall[] = [
+  ...wallTextureWalls,
+  stairBackGraffitiWall(stairBackAtlasIndex),
+  ...hutRoofGraffitiWalls(),
+]
+export const graffitiWallCount = walls.length
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
   const ray = screenRay(clientX, clientY, projector)
@@ -228,15 +257,10 @@ export function addGraffitiWallGeometry(target: Vertex[]) {
   }
 }
 
-export function graffitiWallBounds(wallIndex: number) {
+export function graffitiWallContains(wallIndex: number, x: number, y: number) {
   const wall = wallAt(wallIndex)
 
-  return {
-    min: wall.min,
-    max: wall.max,
-    yMin: wall.yMin,
-    yMax: wall.yMax,
-  }
+  return x >= wall.min && x <= wall.max && y >= wall.yMin && y <= wallYMaxAt(wall, x)
 }
 
 export function createGraffitiCanvas() {
@@ -472,7 +496,9 @@ function planeWallHit(wall: PlaneGraffitiWall, ray: ScreenRay) {
   const worldZ = ray.eyeZ + ray.z * distance
   const along = wall.axis === 'x' ? worldZ : worldX
 
-  if (worldY < wall.yMin || worldY > wall.yMax || along < wall.min + wallMargin || along > wall.max - wallMargin) {
+  if (worldY < wall.yMin || worldY > wallYMaxAt(wall, along)
+    || along < wall.min + wallMargin || along > wall.max - wallMargin)
+  {
     return
   }
 
@@ -490,6 +516,10 @@ function orientedPlaneWallHit(wall: OrientedPlaneGraffitiWall, ray: ScreenRay) {
     return
   }
 
+  if (wall.oneSided && component >= 0) {
+    return
+  }
+
   const distance = (
     (wall.center[0] - ray.eyeX) * wall.normal[0]
     + (wall.center[1] - ray.eyeY) * wall.normal[1]
@@ -503,15 +533,20 @@ function orientedPlaneWallHit(wall: OrientedPlaneGraffitiWall, ray: ScreenRay) {
   const worldX = ray.eyeX + ray.x * distance
   const worldY = ray.eyeY + ray.y * distance
   const worldZ = ray.eyeZ + ray.z * distance
-  const along = (worldX - wall.center[0]) * wall.tangent[0] + (worldZ - wall.center[2]) * wall.tangent[2]
+  const up = orientedWallUp(wall)
+  const dx = worldX - wall.center[0]
+  const dy = worldY - wall.center[1]
+  const dz = worldZ - wall.center[2]
+  const along = dx * wall.tangent[0] + dy * wall.tangent[1] + dz * wall.tangent[2]
+  const height = dx * up[0] + dy * up[1] + dz * up[2]
 
-  if (worldY < wall.yMin || worldY > wall.yMax || along < wall.min + wallMargin || along > wall.max - wallMargin) {
+  if (height < wall.yMin || height > wall.yMax || along < wall.min + wallMargin || along > wall.max - wallMargin) {
     return
   }
 
   return {
     x: along,
-    y: worldY,
+    y: height,
     distance: distance * ray.length,
   }
 }
@@ -628,10 +663,12 @@ function addGraffitiSplat(target: Vertex[], splat: GraffitiSplat) {
 
 function wallPoint(wall: GraffitiWall, x: number, y: number): Vec3 {
   if (wall.kind === 'oriented-plane') {
+    const up = orientedWallUp(wall)
+
     return [
-      wall.center[0] + wall.tangent[0] * x + wall.normal[0] * wallEpsilon,
-      y,
-      wall.center[2] + wall.tangent[2] * x + wall.normal[2] * wallEpsilon,
+      wall.center[0] + wall.tangent[0] * x + up[0] * y + wall.normal[0] * wallEpsilon,
+      wall.center[1] + wall.tangent[1] * x + up[1] * y + wall.normal[1] * wallEpsilon,
+      wall.center[2] + wall.tangent[2] * x + up[2] * y + wall.normal[2] * wallEpsilon,
     ]
   }
 
@@ -665,6 +702,10 @@ function wallTangent(wall: GraffitiWall, x: number): Vec3 {
 }
 
 function wallUp(wall: GraffitiWall, x: number): Vec3 {
+  if (wall.kind === 'oriented-plane') {
+    return orientedWallUp(wall)
+  }
+
   if (wall.kind !== 'cone') {
     return [0, 1, 0]
   }
@@ -680,8 +721,16 @@ function wallUp(wall: GraffitiWall, x: number): Vec3 {
   ]
 }
 
+function orientedWallUp(wall: OrientedPlaneGraffitiWall) {
+  return wall.up ?? ([0, 1, 0] as Vec3)
+}
+
 function addGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: GraffitiWall, side: 1 | -1) {
   if (wall.kind === 'oriented-plane') {
+    if (wall.surface) {
+      addOrientedPlaneGraffitiWallSurface(target, wallIndex, wall, side)
+    }
+
     return
   }
 
@@ -698,21 +747,58 @@ function addGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: Graff
   addConeGraffitiWallSurface(target, wallIndex, wall, side)
 }
 
+function addOrientedPlaneGraffitiWallSurface(
+  target: Vertex[],
+  wallIndex: number,
+  wall: OrientedPlaneGraffitiWall,
+  side: 1 | -1,
+) {
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(wallIndex)
+
+  addGraffitiQuad(target,
+    orientedPlanePoint(wall, wall.min, wall.yMin, side),
+    orientedPlanePoint(wall, wall.max, wall.yMin, side),
+    orientedPlanePoint(wall, wall.max, wall.yMax, side),
+    orientedPlanePoint(wall, wall.min, wall.yMax, side),
+    u0, v0, u1, v1)
+}
+
+function orientedPlanePoint(wall: OrientedPlaneGraffitiWall, x: number, y: number, side: 1 | -1): Vec3 {
+  const up = orientedWallUp(wall)
+
+  return [
+    wall.center[0] + wall.tangent[0] * x + up[0] * y + wall.normal[0] * wallEpsilon * side,
+    wall.center[1] + wall.tangent[1] * x + up[1] * y + wall.normal[1] * wallEpsilon * side,
+    wall.center[2] + wall.tangent[2] * x + up[2] * y + wall.normal[2] * wallEpsilon * side,
+  ]
+}
+
 function addPlaneGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: PlaneGraffitiWall, side: 1 | -1) {
-  const [u0, v0, u1, v1] = wallTextureBounds(wallIndex)
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(wallIndex)
+  const segments = wall.segments ?? 1
+  const span = wall.max - wall.min
 
-  if (wall.axis === 'x') {
-    const x = wall.value + wall.normal[0] * wallEpsilon * side
+  for (let i = 0; i < segments; i++) {
+    const a = wall.min + span * i / segments
+    const b = wall.min + span * (i + 1) / segments
+    const left = u0 + (a - wall.min) / span * (u1 - u0)
+    const right = u0 + (b - wall.min) / span * (u1 - u0)
+    const top = wallYMaxAt(wall, (a + b) / 2)
+    const topV = wallTextureV(wall, top, v0, v1)
 
-    addGraffitiQuad(target, [x, wall.yMin, wall.min], [x, wall.yMin, wall.max], [x, wall.yMax, wall.max], [x, wall.yMax,
-      wall.min], u0, v0, u1, v1)
-    return
+    if (wall.axis === 'x') {
+      const x = wall.value + wall.normal[0] * wallEpsilon * side
+
+      addGraffitiQuad(target, [x, wall.yMin, a], [x, wall.yMin, b], [x, top, b], [x, top, a],
+        left, topV, right, v1)
+    }
+    else {
+      const z = wall.value + wall.normal[2] * wallEpsilon * side
+
+      addGraffitiQuad(target, [a, wall.yMin, z], [b, wall.yMin, z], [b, top, z], [a, top, z],
+        left, topV, right, v1)
+    }
   }
-
-  const z = wall.value + wall.normal[2] * wallEpsilon * side
-
-  addGraffitiQuad(target, [wall.min, wall.yMin, z], [wall.max, wall.yMin, z], [wall.max, wall.yMax, z], [wall.min,
-    wall.yMax, z], u0, v0, u1, v1)
 }
 
 function addCylinderGraffitiWallSurface(
@@ -721,7 +807,7 @@ function addCylinderGraffitiWallSurface(
   wall: CylinderGraffitiWall,
   side: 1 | -1,
 ) {
-  const [u0, v0, u1, v1] = wallTextureBounds(wallIndex)
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(wallIndex)
   const span = wall.max - wall.min
 
   for (let i = 0; i < wall.segments; i++) {
@@ -753,7 +839,7 @@ function cylinderWallPoint(wall: CylinderGraffitiWall, x: number, y: number, sid
 }
 
 function addConeGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: ConeGraffitiWall, side: 1 | -1) {
-  const [u0, v0, u1, v1] = wallTextureBounds(wallIndex)
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(wallIndex)
   const xSpan = wall.max - wall.min
   const ySpan = wall.yMax - wall.yMin
 
@@ -820,6 +906,32 @@ function wallTextureBounds(wall: number) {
   return [u0, v0, u1, v1] as const
 }
 
+function graffitiWallTextureIndex(wallIndex: number) {
+  const wall = wallAt(wallIndex)
+
+  return wall.kind === 'plane' && wall.texture !== undefined ? wall.texture : wallIndex
+}
+
+function graffitiWallTextureBounds(wallIndex: number) {
+  const wall = wallAt(wallIndex)
+
+  return wall.kind === 'oriented-plane' && wall.textureBounds
+    ? wall.textureBounds
+    : wallTextureBounds(graffitiWallTextureIndex(wallIndex))
+}
+
+function splitWallTextureBounds(wall: number, index: number, count: number) {
+  const [u0, v0, u1, v1] = wallTextureBounds(wall)
+  const height = (v1 - v0) / count
+  const top = v0 + height * index
+
+  return [u0, top, u1, top + height] as const
+}
+
+function wallTextureV(wall: GraffitiWall, y: number, v0: number, v1: number) {
+  return v1 - (y - wall.yMin) / (wall.yMax - wall.yMin) * (v1 - v0)
+}
+
 function addSplatQuad(target: Vertex[], center: Vec3, tangent: Vec3, up: Vec3, sizeX: number, sizeY: number,
   color: Vec3)
 {
@@ -865,8 +977,9 @@ function paintGraffitiSplat(context: GraffitiPaintContext, splat: GraffitiSplat)
   const color = graffitiColors[splat.colorIndex % graffitiColors.length]!
   const wall = wallAt(splat.wall)
   const [x, y] = splatCanvasPoint(splat)
-  const pixelsPerMeterX = graffitiCellWidth / (wall.max - wall.min)
-  const pixelsPerMeterY = graffitiCellHeight / (wall.yMax - wall.yMin)
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(splat.wall)
+  const pixelsPerMeterX = (u1 - u0) * graffitiTextureSize / (wall.max - wall.min)
+  const pixelsPerMeterY = (v1 - v0) * graffitiTextureSize / (wall.yMax - wall.yMin)
   const scale = graffitiSplatScale(splat.radius)
   const count = 3 + splat.seed % 3
   const padding = Math.ceil(Math.max(pixelsPerMeterX, pixelsPerMeterY) * scale * 0.34)
@@ -952,14 +1065,17 @@ function isOffscreenCanvas(canvas: GraffitiPaintCanvas): canvas is OffscreenCanv
 
 function splatCanvasPoint(splat: GraffitiSplat) {
   const wall = wallAt(splat.wall)
-  const cellX = splat.wall % graffitiAtlasColumns * graffitiCellWidth
-  const cellY = Math.floor(splat.wall / graffitiAtlasColumns) * graffitiCellHeight
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(splat.wall)
+  const cellX = u0 * graffitiTextureSize
+  const cellY = v0 * graffitiTextureSize
+  const width = (u1 - u0) * graffitiTextureSize
+  const height = (v1 - v0) * graffitiTextureSize
   const u = (splat.x - wall.min) / (wall.max - wall.min)
   const v = 1 - (splat.y - wall.yMin) / (wall.yMax - wall.yMin)
 
   return [
-    cellX + u * graffitiCellWidth,
-    cellY + v * graffitiCellHeight,
+    cellX + u * width,
+    cellY + v * height,
   ]
 }
 
@@ -1003,6 +1119,7 @@ function planeWall(
   yMax: number,
   normal: Vec3,
   sides: GraffitiSides,
+  texture?: number,
 ): PlaneGraffitiWall {
   return {
     kind: 'plane',
@@ -1014,7 +1131,110 @@ function planeWall(
     yMax,
     normal,
     sides,
+    texture,
   }
+}
+
+function profilePlaneWall(
+  axis: 'x' | 'z',
+  value: number,
+  min: number,
+  max: number,
+  yMin: number,
+  yMax: number,
+  normal: Vec3,
+  sides: GraffitiSides,
+  segments: number,
+  yMaxAt: (x: number) => number,
+): PlaneGraffitiWall {
+  return {
+    ...planeWall(axis, value, min, max, yMin, yMax, normal, sides),
+    segments,
+    yMaxAt,
+  }
+}
+
+function wallYMaxAt(wall: GraffitiWall, x: number) {
+  return wall.kind === 'plane' && wall.yMaxAt ? wall.yMaxAt(x) : wall.yMax
+}
+
+function stairGraffitiWalls(): PlaneGraffitiWall[] {
+  const stairs = outsideRooftopStairs
+  const back = stairs.z - stairs.depth / 2
+  const front = stairs.z + stairs.depth / 2
+  const left = stairs.x - stairs.width / 2
+  const right = stairs.x + stairs.width / 2
+  const top = characterFloor + stairs.height
+
+  return [
+    profilePlaneWall('x', left, back, front, wallYMin, top, [-1, 0, 0], 'front', stairs.steps,
+      stairSideYMaxAt),
+    profilePlaneWall('x', right, back, front, wallYMin, top, [1, 0, 0], 'front', stairs.steps,
+      stairSideYMaxAt),
+  ]
+}
+
+function stairBackGraffitiWall(texture: number) {
+  const stairs = outsideRooftopStairs
+  const stepOverlap = 0.025
+  const back = stairs.z - stairs.depth / 2 - stepOverlap / 2
+  const left = stairs.x - stairs.width / 2
+  const right = stairs.x + stairs.width / 2
+  const top = characterFloor + stairs.height
+
+  return planeWall('z', back, left, right, wallYMin, top, [0, 0, -1], 'front', texture)
+}
+
+function stairSideYMaxAt(z: number) {
+  const stairs = outsideRooftopStairs
+  const back = stairs.z - stairs.depth / 2
+  const front = stairs.z + stairs.depth / 2
+  const step = Math.max(1, Math.min(stairs.steps, Math.ceil((front - z) / (front - back) * stairs.steps)))
+
+  return characterFloor + stairs.height * step / stairs.steps
+}
+
+function hutRoofGraffitiWalls(): OrientedPlaneGraffitiWall[] {
+  const eave = 0.48
+  const left = outsideHut.x - outsideHut.width / 2
+  const right = outsideHut.x + outsideHut.width / 2
+  const back = outsideHut.z - outsideHut.depth / 2
+  const front = outsideHut.z + outsideHut.depth / 2
+  const deckTop = characterFloor + outsideHutDeckHeight
+  const roofBottom = deckTop + 2.53
+  const ridge = deckTop + 3.8
+  const width = right - left + eave * 2
+  const tangent: Vec3 = [1, 0, 0]
+
+  return [
+    hutRoofGraffitiWall(back - eave, roofBottom, ridge, width, tangent, hutRoofBackTextureBounds, -1),
+    hutRoofGraffitiWall(front + eave, roofBottom, ridge, width, tangent, hutRoofFrontTextureBounds, 1),
+  ]
+}
+
+function hutRoofGraffitiWall(
+  edgeZ: number,
+  roofBottom: number,
+  ridge: number,
+  width: number,
+  tangent: Vec3,
+  textureBounds: readonly [number, number, number, number],
+  normalZSign: -1 | 1,
+) {
+  const rise = ridge - roofBottom
+  const run = Math.abs(outsideHut.z - edgeZ)
+  const length = Math.hypot(rise, run)
+  const up: Vec3 = [0, rise / length, (outsideHut.z - edgeZ) / length]
+  const normal: Vec3 = [0, run / length, normalZSign * rise / length]
+
+  return orientedPlaneWall([outsideHut.x, roofBottom, edgeZ], tangent, normal, width, {
+    oneSided: true,
+    surface: true,
+    textureBounds,
+    up,
+    yMin: 0,
+    yMax: length,
+  })
 }
 
 function foodTruckGraffitiWalls(): OrientedPlaneGraffitiWall[] {
@@ -1083,7 +1303,7 @@ function nearestFoodTruckWall(a: Vec3, b: Vec3, c: Vec3) {
 }
 
 function foodTruckGraffitiUv(index: number, wall: OrientedPlaneGraffitiWall, point: Vec3): [number, number] {
-  const [u0, v0, u1, v1] = wallTextureBounds(index)
+  const [u0, v0, u1, v1] = graffitiWallTextureBounds(index)
   const x = (point[0] - wall.center[0]) * wall.tangent[0] + (point[2] - wall.center[2]) * wall.tangent[2]
   const u = (x - wall.min) / (wall.max - wall.min)
   const v = 1 - (point[1] - wall.yMin) / (wall.yMax - wall.yMin)
@@ -1099,17 +1319,22 @@ function orientedPlaneWall(
   tangent: Vec3,
   normal: Vec3,
   width: number,
+  options: OrientedPlaneOptions = {},
 ): OrientedPlaneGraffitiWall {
   return {
     kind: 'oriented-plane',
     center,
     tangent,
     normal,
+    up: options.up,
     min: -width / 2,
     max: width / 2,
-    yMin: foodTruckYMin,
-    yMax: foodTruckYMax,
-    sides: 'front',
+    yMin: options.yMin ?? foodTruckYMin,
+    yMax: options.yMax ?? foodTruckYMax,
+    oneSided: options.oneSided,
+    surface: options.surface,
+    textureBounds: options.textureBounds,
+    sides: options.sides ?? 'front',
   }
 }
 

@@ -24,7 +24,9 @@ type CameraUpdateOptions = {
   cameraUp?: Vec3
   face?: CameraFace
   loft?: boolean
+  lookAt?: Vec3
   lookDown?: boolean
+  manualHold?: boolean
   sideViewTurn?: number
 }
 
@@ -219,6 +221,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     ) {
       const lookDown = options.lookDown === true
       const loft = options.loft === true
+      const manualHold = options.manualHold === true
       const cameraUp = options.cameraUp
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
@@ -232,7 +235,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         return
       }
 
-      if (!firstPerson && holdingManualCamera && !dragging && performance.now() > manualCameraHoldUntil) {
+      if (!firstPerson && holdingManualCamera && !dragging && !manualHold && performance.now() > manualCameraHoldUntil) {
         holdingManualCamera = false
       }
 
@@ -313,11 +316,20 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         return
       }
 
-      const targetHeight = 1.2
+      const lookAt = options.lookAt
 
-      target[0] = characterPosition[0] + basis.upX * targetHeight
-      target[1] = characterPosition[1] + basis.upY * targetHeight
-      target[2] = characterPosition[2] + basis.upZ * targetHeight
+      if (lookAt) {
+        target[0] = lookAt[0]
+        target[1] = lookAt[1]
+        target[2] = lookAt[2]
+      }
+      else {
+        const targetHeight = 1.2
+
+        target[0] = characterPosition[0] + basis.upX * targetHeight
+        target[1] = characterPosition[1] + basis.upY * targetHeight
+        target[2] = characterPosition[2] + basis.upZ * targetHeight
+      }
       const zone = loft ? 'loft' : roomAt(characterPosition)
 
       if (holdingManualCamera && !dragging) {

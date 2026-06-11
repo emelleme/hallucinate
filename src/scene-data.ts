@@ -117,8 +117,7 @@ export const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625
 export const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
 export const outsideVideoScreenWall = { ...outsideVideoWall, z: outsideVideoWall.z - 0.5 }
 export const outsidePhotoWall = { x: -21.48, y: 0.45, z: 5.85, width: 7.2, height: 4.2, normal: [1, 0, 0] as Vec3 }
-export const outsideScheduleWall = { x: -21.48, y: 0.65, z: 13.85, width: 7.2, height: 3.35,
-  normal: [1, 0, 0] as Vec3 }
+export const outsideScheduleWall = { x: -21.48, y: 0.65, z: 13.85, width: 7.2, height: 3.35, normal: [1, 0, 0] as Vec3 }
 export const tent = {
   x: 25,
   z: 25,

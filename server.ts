@@ -13,7 +13,7 @@ import {
   graffitiColors,
   type GraffitiPaintContext,
   graffitiTextureSize,
-  graffitiWallBounds,
+  graffitiWallContains,
   graffitiWallCount,
   maxGraffitiSplats,
   paintGraffitiSplats,
@@ -3091,9 +3091,7 @@ function validateGraffiti(splats: GraffitiSplat[]) {
       throw new Error('Invalid graffiti splat')
     }
 
-    const wall = graffitiWallBounds(splat.wall)
-
-    if (splat.x < wall.min || splat.x > wall.max || splat.y < wall.yMin || splat.y > wall.yMax) {
+    if (!graffitiWallContains(splat.wall, splat.x, splat.y)) {
       throw new Error('Invalid graffiti splat')
     }
   }

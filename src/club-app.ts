@@ -66,6 +66,7 @@ import {
   nearInsideArcade,
   roomAt,
   seatAt,
+  seatById,
   usesSkyBackground,
   walkHeight,
   walkLoftHeight,
@@ -3981,13 +3982,17 @@ const draw = (stamp: number) => {
     renderPlayers.push(player)
   }
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
+  const seatedLookAt = sitting ? seatById(localCharacter.seat).cameraTarget : undefined
+
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
     || dancing, {
     cameraUp: localPoseUp(),
     face: characterRenderSystem.face,
     loft: inLoft,
+    lookAt: seatedLookAt,
     lookDown: localCharacter.jumping,
-    sideViewTurn: sitting ? seatedCameraTurn(localCharacter.turn) : undefined,
+    manualHold: sitting,
+    sideViewTurn: sitting ? seatedCameraTurn(characterPosition, localCharacter.turn, seatedLookAt) : undefined,
   })
   if (!inLoft) {
     saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
@@ -4278,13 +4283,12 @@ function localPoseUp() {
   return localCharacter.seat === treeSwing.seat.id ? treeSwing.normal : undefined
 }
 
-function seatedCameraTurn(characterTurn: number) {
-  const left = characterTurn - Math.PI / 2
-  const right = characterTurn + Math.PI / 2
-  const leftForwardZ = Math.cos(left)
-  const rightForwardZ = Math.cos(right)
+function seatedCameraTurn(position: Vec3, characterTurn: number, lookAt?: Vec3) {
+  if (lookAt) {
+    return Math.atan2(lookAt[0] - position[0], lookAt[2] - position[2])
+  }
 
-  return leftForwardZ > rightForwardZ ? left : right
+  return characterTurn
 }
 
 function treeSwingControl() {
