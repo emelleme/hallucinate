@@ -1,16 +1,12 @@
 import type { CameraMatrix } from './camera-matrix.ts'
 import { domWallCorners } from './dom-wall.ts'
-import type { DomWall } from './dom-wall.ts'
-import { outsidePhotoWall } from './scene-data.ts'
+import { photoWallColumns, photoWallRows, photoWallSurface } from './photo-wall-data.ts'
 import { videoPreviewFragment, videoPreviewVertex } from './shaders.ts'
 import type { Vec3 } from './types.ts'
 import { createProgram } from './webgl.ts'
 
-const atlasColumns = 3
-const atlasRows = 3
 const atlasCellSize = 256
 const vertexSize = 5
-const wallOffset = 0.035
 
 export function createPhotoWallRenderer(gl: WebGL2RenderingContext) {
   const program = createProgram(gl, videoPreviewVertex, videoPreviewFragment)
@@ -29,8 +25,8 @@ export function createPhotoWallRenderer(gl: WebGL2RenderingContext) {
     throw new Error('Failed to initialize photo wall renderer')
   }
 
-  canvas.width = atlasColumns * atlasCellSize
-  canvas.height = atlasRows * atlasCellSize
+  canvas.width = photoWallColumns * atlasCellSize
+  canvas.height = photoWallRows * atlasCellSize
   gl.bindVertexArray(array)
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
   gl.bufferData(gl.ARRAY_BUFFER, geometry, gl.STATIC_DRAW)
@@ -64,11 +60,11 @@ export function createPhotoWallRenderer(gl: WebGL2RenderingContext) {
       ready = false
       context.fillStyle = 'black'
       context.fillRect(0, 0, canvas.width, canvas.height)
-      const images = await Promise.all(urls.slice(0, atlasColumns * atlasRows).map(loadImage))
+      const images = await Promise.all(urls.slice(0, photoWallColumns * photoWallRows).map(loadImage))
 
       for (let i = 0; i < images.length; i++) {
-        drawImageCover(context, images[i]!, i % atlasColumns * atlasCellSize,
-          Math.floor(i / atlasColumns) * atlasCellSize, atlasCellSize, atlasCellSize)
+        drawImageCover(context, images[i]!, i % photoWallColumns * atlasCellSize,
+          Math.floor(i / photoWallColumns) * atlasCellSize, atlasCellSize, atlasCellSize)
       }
 
       gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -101,17 +97,12 @@ export function createPhotoWallRenderer(gl: WebGL2RenderingContext) {
 }
 
 function photoWallGeometry() {
-  const wall: DomWall = {
-    ...outsidePhotoWall,
-    x: outsidePhotoWall.x + outsidePhotoWall.normal[0] * wallOffset,
-    z: outsidePhotoWall.z + outsidePhotoWall.normal[2] * wallOffset,
-  }
   const a: Vec3 = [0, 0, 0]
   const b: Vec3 = [0, 0, 0]
   const c: Vec3 = [0, 0, 0]
   const d: Vec3 = [0, 0, 0]
 
-  domWallCorners(wall, a, b, c, d)
+  domWallCorners(photoWallSurface, a, b, c, d)
 
   return new Float32Array([
     ...a,

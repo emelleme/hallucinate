@@ -4,10 +4,10 @@ import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideArc
   loftCouches, loftDjBooth, loftDjSpeakers, loftPlants, loftTables, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideFoodTruck, outsideFoodTruckSize, outsideFoodTruckTurn, outsideHut,
   outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, outsidePalmTree, outsidePhotoWall, outsideRooftop,
-  outsideRooftopLanding, outsideRooftopStairs, outsideRooftopStairRiseAtZ, outsideStage, outsideStageRocks,
-  outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers,
-  tentDoor, tentDoorAngle, tentPole, tentVideoAngle, upstairsBar, upstairsBarCounterRail, upstairsBarDrinkCounter,
-  upstairsBarStools, upstairsCouches, upstairsDjBooth, upstairsDjSpeakers, upstairsDoor } from './scene-data.ts'
+  outsideRooftopLanding, outsideRooftopStairs, outsideRooftopStairRiseAtZ, outsideScheduleWall, outsideStage,
+  outsideStageRocks, outsideToiletDoor, outsideToilets, outsideTShirtStands, roomBounds, tent, tentCenterBench,
+  tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle, upstairsBar, upstairsBarCounterRail,
+  upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches, upstairsDjBooth, upstairsDjSpeakers, upstairsDoor } from './scene-data.ts'
 import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
@@ -83,8 +83,10 @@ const outsideTShirtStandCollisions = outsideTShirtStands.map(stand => ({
   bounds: orientedBounds(stand.x, stand.z, stand.width, stand.depth, stand.turn),
   top: characterFloor + stand.height,
 }))
-const outsidePhotoWallBounds = photoWallBounds()
-const outsidePhotoWallCollision = paddedBounds(photoWallBounds(), 0.18)
+const outsidePhotoWallBounds = wallPanelBounds(outsidePhotoWall)
+const outsidePhotoWallCollision = paddedBounds(outsidePhotoWallBounds, 0.18)
+const outsideScheduleWallBounds = wallPanelBounds(outsideScheduleWall)
+const outsideScheduleWallCollision = paddedBounds(outsideScheduleWallBounds, 0.18)
 const outsideToiletWallCollisions = toiletWallBounds().map(bounds => paddedBounds(bounds, 0.18))
 const outsideHutBarDeckBounds: Bounds = {
   x: (outsideHut.x - outsideHut.width / 2 + outsideHutBar.x) / 2,
@@ -239,7 +241,8 @@ export function collideRoom(
     for (const stand of outsideTShirtStandCollisions) {
       collideOrientedBounds(position, stand.bounds, 0.12)
     }
-    collidePhotoWall(position, previous)
+    collideWallPanel(position, outsidePhotoWallBounds, outsidePhotoWallCollision, previous)
+    collideWallPanel(position, outsideScheduleWallBounds, outsideScheduleWallCollision, previous)
 
     for (const speaker of outsideDjSpeakerCollisions) {
       if (!onPaddedPlatform(position, speaker, speakerTop)) {
@@ -445,6 +448,7 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
     collideSphereOrientedBounds(position, radius, stand.bounds, stand.top)
   }
   collideSpherePaddedBounds(position, radius, outsidePhotoWallCollision, characterFloor + outsidePhotoWall.height)
+  collideSpherePaddedBounds(position, radius, outsideScheduleWallCollision, characterFloor + outsideScheduleWall.height)
 
   for (const speaker of outsideDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
@@ -500,6 +504,7 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds, y = 
       && !inOrientedBounds(x, z, outsideFoodTruckCollision, 0.28)
       && outsideTShirtStandCollisions.every(stand => !inOrientedBounds(x, z, stand.bounds, 0.12))
       && !inPaddedBounds(x, z, outsidePhotoWallCollision)
+      && !inPaddedBounds(x, z, outsideScheduleWallCollision)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
       && outsideStageRockCollisions.every(rock => !inPaddedBounds(x, z, rock.bounds))
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
@@ -936,25 +941,25 @@ function hutPostBounds(bounds: Bounds): Bounds[] {
   ]
 }
 
-function photoWallBounds(): Bounds {
+function wallPanelBounds(wall: typeof outsidePhotoWall): Bounds {
   return {
-    x: outsidePhotoWall.x - 0.06,
-    z: outsidePhotoWall.z,
+    x: wall.x - 0.06,
+    z: wall.z,
     width: 0.12,
-    depth: outsidePhotoWall.width + 0.36,
+    depth: wall.width + 0.36,
   }
 }
 
-function collidePhotoWall(position: Vec3, previous?: Vec3) {
-  const back = outsidePhotoWallBounds.z - outsidePhotoWallBounds.depth / 2
-  const front = outsidePhotoWallBounds.z + outsidePhotoWallBounds.depth / 2
+function collideWallPanel(position: Vec3, bounds: Bounds, collision: PaddedBounds, previous?: Vec3) {
+  const back = bounds.z - bounds.depth / 2
+  const front = bounds.z + bounds.depth / 2
   const padding = 0.42
 
   if (previous) {
-    collideVerticalWall(position, previous, outsidePhotoWallBounds.x, back, front, padding)
+    collideVerticalWall(position, previous, bounds.x, back, front, padding)
   }
 
-  collidePaddedBounds(position, outsidePhotoWallCollision)
+  collidePaddedBounds(position, collision)
 }
 
 function toiletWallBounds(): Bounds[] {

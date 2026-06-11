@@ -1,7 +1,13 @@
 import { createDomWallProjection } from './dom-wall.ts'
-import { photoWallColumns, photoWallPaintedSlots, photoWallRows } from './photo-wall-data.ts'
+import {
+  photoWallColumns,
+  photoWallPaintedSlots,
+  photoWallScale,
+  photoWallSlot,
+  photoWallSlotHeight,
+  photoWallSurface,
+} from './photo-wall-data.ts'
 import { projectedQuadTransform, type WallProjector } from './projection.ts'
-import { outsidePhotoWall } from './scene-data.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = {
@@ -33,11 +39,15 @@ type PhotoElement = {
   photo?: Photo
   thumbnailUrl: string
 }
+type PhotoSource =
+  | { kind: 'element'; image: HTMLImageElement }
+  | { kind: 'wall'; index: number }
 
 const refreshInterval = 30_000
 const hiddenPhotoWallOpacity = '0.01'
 const parkedPhotoWallSize = 12
 const photoLoadAheadSlots = photoWallPaintedSlots
+const photoWallMinDepth = 0.05
 const viewerMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const viewerMotionDuration = 560
 const viewerSlideDuration = 420
@@ -56,10 +66,13 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       transform: `translate3d(calc(100dvw - ${parkedPhotoWallSizePx}), calc(100dvh - ${parkedPhotoWallSizePx}), 0)`,
       width: parkedPhotoWallSizePx,
     },
+    minDepth: photoWallMinDepth,
     opacity: '0.92',
+    scale: photoWallScale,
   })
   const panel = document.createElement('div')
   const grid = document.createElement('div')
+  const flightGrid = document.createElement('div')
   const viewer = document.createElement('dialog')
   const viewerStage = document.createElement('div')
   const viewerPolaroid = document.createElement('div')
@@ -68,6 +81,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const viewerNext = document.createElement('button')
   const viewerLike = document.createElement('button')
   const viewerClose = document.createElement('button')
+  const flightItem = document.createElement('div')
+  const flightImage = document.createElement('img')
   const photoElements: PhotoElement[] = []
   const fullPhotoPreloads = new Map<string, Promise<void>>()
   let activePhotoIndexes = new Set<number>()
@@ -75,8 +90,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   let viewerAnimation: Animation | undefined
   let viewerClosing = false
   let viewerSlideBusy = false
-  let viewerSourceImage: HTMLImageElement | undefined
-  let viewerSourceRect: DOMRect | undefined
+  let viewerSource: PhotoSource | undefined
   let viewedPhoto: Photo | undefined
   let page: PhotoPage = { limit: 30, offset: 0, photos: [], total: 0 }
   let visible = false
@@ -88,6 +102,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
   panel.id = 'photo-wall-panel'
   grid.id = 'photo-wall-grid'
+  flightGrid.id = 'photo-wall-flight-grid'
   viewer.id = 'photo-viewer-dialog'
   viewerStage.id = 'photo-viewer-stage'
   viewerPolaroid.id = 'photo-viewer-polaroid'
@@ -96,6 +111,11 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerNext.id = 'photo-viewer-next'
   viewerLike.id = 'photo-viewer-like'
   viewerClose.id = 'photo-viewer-close'
+  flightItem.className = 'photo-wall-item'
+  flightItem.dataset.photo = 'true'
+  flightItem.dataset.ready = 'true'
+  flightImage.decoding = 'async'
+  flightImage.loading = 'eager'
   viewerPrevious.className = 'photo-viewer-control photo-viewer-previous'
   viewerNext.className = 'photo-viewer-control photo-viewer-next'
   viewerLike.className = 'photo-viewer-control photo-viewer-like'
@@ -115,7 +135,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerClose.type = 'button'
   viewerClose.textContent = '✕'
   viewerClose.setAttribute('aria-label', 'close photo')
-  panel.append(grid)
+  flightItem.append(flightImage)
+  panel.append(grid, flightGrid)
   viewerPolaroid.append(viewerImage, viewerPrevious, viewerNext, viewerLike, viewerClose)
   viewerStage.append(viewerPolaroid)
   viewer.append(viewerStage)
@@ -192,7 +213,9 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       return page.photos.slice(0, 9).map(photo => photo.thumbnailUrl)
     },
     open(photo: Photo, sourceImage?: HTMLImageElement) {
-      return openViewer(photo, page.photos.findIndex(item => item.timestamp === photo.timestamp), sourceImage)
+      const source = sourceImage ? { kind: 'element', image: sourceImage } satisfies PhotoSource : photoSource(photo)
+
+      return openViewer(photo, page.photos.findIndex(item => item.timestamp === photo.timestamp), source)
     },
     syncAdmin() {
       render()
@@ -200,7 +223,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     update(camera: Camera, projector: WallProjector) {
       const wasVisible = visible
 
-      visible = projection.update(camera, projector, outsidePhotoWall)
+      visible = projection.update(camera, projector, photoWallSurface)
       element.style.pointerEvents = visible ? 'auto' : 'none'
 
       if (visible && !wasVisible && !viewer.open) {
@@ -320,9 +343,14 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
   function resetPhotoWallScroll() {
     grid.scrollTop = 0
+    flightGrid.scrollTop = 0
     requestAnimationFrame(() => {
       grid.scrollTop = 0
-      requestAnimationFrame(() => grid.scrollTop = 0)
+      flightGrid.scrollTop = 0
+      requestAnimationFrame(() => {
+        grid.scrollTop = 0
+        flightGrid.scrollTop = 0
+      })
     })
   }
 
@@ -337,6 +365,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function handlePhotoWallScroll() {
+    flightGrid.scrollTop = grid.scrollTop
     syncVisiblePhotos()
     checkPhotoWallScroll()
   }
@@ -362,8 +391,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function visiblePhotoRange() {
-    const rowHeight = grid.clientHeight / photoWallRows
-    const row = rowHeight > 0 ? Math.floor(grid.scrollTop / rowHeight) : 0
+    const row = Math.floor(grid.scrollTop / photoWallSlotHeight)
     const start = Math.max(0, row * photoWallColumns)
 
     return {
@@ -440,7 +468,9 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }
     syncLikeButton(element.like, photo)
     element.item.onclick = () => {
-      void openViewer(photo, page.photos.indexOf(photo), element.image)
+      const index = page.photos.indexOf(photo)
+
+      void openViewer(photo, index, { kind: 'wall', index })
     }
     element.item.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') {
@@ -448,7 +478,9 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       }
 
       event.preventDefault()
-      void openViewer(photo, page.photos.indexOf(photo), element.image)
+      const index = page.photos.indexOf(photo)
+
+      void openViewer(photo, index, { kind: 'wall', index })
     }
   }
 
@@ -485,12 +517,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   async function openViewer(
     photo: Photo,
     index = page.photos.findIndex(item => item.timestamp === photo.timestamp),
-    sourceImage?: HTMLImageElement,
+    source = photoSource(photo),
     animate = true,
   ) {
     const openId = ++viewerOpenId
-    const targetSourceImage = sourceImage ?? photoElement(photo)?.image
-    const targetSourceRect = targetSourceImage?.getBoundingClientRect()
 
     try {
       await preloadFullPhoto(photo)
@@ -521,14 +551,13 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       viewer.showModal()
     }
 
-    viewerSourceRect = targetSourceRect
-    viewerSourceImage = targetSourceImage
-    if (animate && targetSourceImage) {
+    viewerSource = source
+    if (animate && source) {
       const targetTransform = viewerTargetTransform(tilt)
       let sourceTransform = ''
 
       try {
-        sourceTransform = prepareViewerAtSource(targetSourceImage)
+        sourceTransform = prepareViewerAtSource(source)
       }
       catch (e) {
         console.error(e)
@@ -552,15 +581,15 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       return
     }
 
-    const sourceImage = viewerSourceImage
+    const source = viewerSource
 
-    if (sourceImage && !viewerMotion.matches) {
+    if (source && !viewerMotion.matches) {
       const tilt = viewedPhoto ? photoTilt(viewedPhoto) : 0
       const targetTransform = viewerTargetTransform(tilt)
       let sourceTransform = ''
 
       try {
-        sourceTransform = viewerSourceTransform(sourceImage)
+        sourceTransform = viewerSourceTransform(source)
       }
       catch (e) {
         console.error(e)
@@ -593,8 +622,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     viewerAnimation = undefined
     viewerClosing = false
     viewerSlideBusy = false
-    viewerSourceImage = undefined
-    viewerSourceRect = undefined
+    viewerSource = undefined
     delete viewer.dataset.closing
     viewerPolaroid.style.visibility = ''
     viewerPolaroid.style.opacity = ''
@@ -695,6 +723,12 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     return photoElements.find(element => element.photo?.timestamp === photo.timestamp)
   }
 
+  function photoSource(photo: Photo): PhotoSource | undefined {
+    const index = page.photos.findIndex(item => item.timestamp === photo.timestamp)
+
+    return index >= 0 ? { kind: 'wall', index } : undefined
+  }
+
   function preloadNeighborPhotos(index: number) {
     const previous = page.photos[index - 1]
     const next = page.photos[index + 1]
@@ -739,10 +773,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function syncViewerSource(photo: Photo) {
-    const source = photoElement(photo)?.image
-
-    viewerSourceImage = source
-    viewerSourceRect = source?.getBoundingClientRect()
+    viewerSource = photoSource(photo)
   }
 
   function animateViewerFrom(sourceTransform: string, targetTransform: string) {
@@ -771,12 +802,12 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }, { once: true })
   }
 
-  function prepareViewerAtSource(sourceImage: HTMLImageElement) {
+  function prepareViewerAtSource(source: PhotoSource) {
     if (viewerMotion.matches) {
       return ''
     }
 
-    const transform = viewerSourceTransform(sourceImage)
+    const transform = viewerSourceTransform(source)
 
     viewerPolaroid.style.opacity = '0.72'
     viewerPolaroid.style.transformOrigin = '0 0'
@@ -785,11 +816,14 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     return transform
   }
 
-  function viewerSourceTransform(sourceImage: HTMLImageElement) {
+  function viewerSourceTransform(source: PhotoSource) {
     const targetRect = viewerImage.getBoundingClientRect()
-    const sourceQuad = sourceImageQuad(sourceImage)
-    const imageTransform = new DOMMatrix(projectedQuadTransform(targetRect.width, targetRect.height, sourceQuad))
     const polaroidRect = viewerPolaroid.getBoundingClientRect()
+    const quad = photoSourceQuad(source).map(point => ({
+      x: point.x - polaroidRect.left,
+      y: point.y - polaroidRect.top,
+    }))
+    const imageTransform = new DOMMatrix(projectedQuadTransform(targetRect.width, targetRect.height, quad))
     const imageOffsetX = targetRect.left - polaroidRect.left
     const imageOffsetY = targetRect.top - polaroidRect.top
 
@@ -806,20 +840,54 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     return `translate(${centerX}px, ${centerY}px) rotate(${tilt}deg) translate(${-centerX}px, ${-centerY}px)`
   }
 
-  function sourceImageQuad(sourceImage: HTMLImageElement) {
+  function photoSourceQuad(source: PhotoSource) {
+    if (source.kind === 'wall') {
+      return wallSlotQuad(source.index)
+    }
+
+    const rect = source.image.getBoundingClientRect()
+
+    return rectQuad(rect.left, rect.top, rect.width, rect.height)
+  }
+
+  function rectQuad(x: number, y: number, width: number, height: number) {
+    return [
+      { x, y: y + height },
+      { x: x + width, y: y + height },
+      { x: x + width, y },
+      { x, y },
+    ]
+  }
+
+  function wallSlotQuad(index: number) {
+    syncFlightSource(index)
     const wallTransform = new DOMMatrix(getComputedStyle(element).transform)
-    const x = sourceImage.offsetLeft + sourceImage.parentElement!.offsetLeft + grid.offsetLeft + panel.offsetLeft
-    const y = sourceImage.offsetTop + sourceImage.parentElement!.offsetTop + grid.offsetTop + panel.offsetTop
-      - grid.scrollTop
-    const width = sourceImage.offsetWidth
-    const height = sourceImage.offsetHeight
+    const slot = photoWallSlot(index, flightGrid.scrollTop)
 
     return [
-      matrixPoint(wallTransform, x, y + height),
-      matrixPoint(wallTransform, x + width, y + height),
-      matrixPoint(wallTransform, x + width, y),
-      matrixPoint(wallTransform, x, y),
+      matrixPoint(wallTransform, slot.x, slot.y + slot.height),
+      matrixPoint(wallTransform, slot.x + slot.width, slot.y + slot.height),
+      matrixPoint(wallTransform, slot.x + slot.width, slot.y),
+      matrixPoint(wallTransform, slot.x, slot.y),
     ]
+  }
+
+  function syncFlightSource(index: number) {
+    const element = photoElements[index]
+    const photo = element?.photo
+
+    if (!element || !photo) {
+      throw new Error(`Missing photo wall source ${index}`)
+    }
+
+    flightGrid.scrollTop = grid.scrollTop
+    flightItem.style.gridColumn = String(index % photoWallColumns + 1)
+    flightItem.style.gridRow = String(Math.floor(index / photoWallColumns) + 1)
+    flightImage.alt = element.image.alt
+    flightImage.src = element.image.currentSrc || photo.thumbnailUrl
+    if (flightItem.parentElement !== flightGrid) {
+      flightGrid.append(flightItem)
+    }
   }
 
   function matrixPoint(matrix: DOMMatrix, x: number, y: number) {

@@ -119,6 +119,23 @@ type StoredVideoPlaylistEntry = VideoPlaylistEntry & {
   sourceIds: string[]
 }
 
+type VideoScheduleColumn = {
+  sets: VideoScheduleSet[]
+  zone: VideoZone
+}
+
+type VideoScheduleSet = {
+  duration: number
+  id: string
+  startAt: number
+  title: string
+}
+
+type YouTubeVideoMetadata = {
+  duration: number
+  title: string
+}
+
 type ChatHistoryEntry = MessagePacket
 
 type LoftRoom = {
@@ -219,10 +236,12 @@ const videoPlaylistRequestInterval = 3000
 const videoProgressRequestInterval = 10_000
 const videoProgressBroadcastDelay = 600
 const videoPlaylistMaxLength = 5000
+const videoScheduleCount = 5
 const youtubePlaylistMaxPages = 80
 const youtubeUserAgent =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
 const videoPlaylistFetches = new Map<string, Promise<string[]>>()
+const youtubeMetadataCache = new Map<string, Promise<YouTubeVideoMetadata>>()
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
@@ -317,6 +336,10 @@ const server = Bun.serve<SocketData>({
 
     if (url.pathname === '/api/photos' || url.pathname.startsWith('/api/photos/')) {
       return handlePhotoApi(request, url, ip)
+    }
+
+    if (url.pathname === '/api/video-schedule') {
+      return handleVideoScheduleApi()
     }
 
     if (url.pathname === '/photos' || url.pathname.startsWith('/photos/')) {
@@ -1583,7 +1606,7 @@ function changeRoom(client: Client, room: number) {
 
   const previousZone = clientVideoZone(client)
 
-  removeFromRoom(client)
+  removeFromRoom(client, false)
   addToRoom(client, room)
   if (client.video?.zone !== clientVideoZone(client)) {
     client.video = undefined
@@ -1600,11 +1623,13 @@ function addToRoom(client: Client, room: number) {
   clientSpace(client).rooms[room]!.add(client)
 }
 
-function removeFromRoom(client: Client) {
+function removeFromRoom(client: Client, notify = true) {
   const space = clientSpace(client)
 
   space.rooms[client.room]!.delete(client)
-  broadcast(client, encodeLeave(client.id))
+  if (notify) {
+    broadcast(client, encodeLeave(client.id))
+  }
 }
 
 function validateMotion(client: Client, motion: MotionPacket) {
@@ -1809,7 +1834,7 @@ function sendRoomState(client: Client) {
   client.socket.send(encodeRoomState({
     selfId: client.id,
     room: client.room,
-    players: [...space.rooms[client.room]!.values()].map(player => player.pose),
+    players: [...spaceClients(space)].map(player => player.pose),
   }))
 }
 
@@ -2304,6 +2329,91 @@ function loadVideoPlaylists(space: SpaceState) {
 
 function saveVideoPlaylists(space: SpaceState) {
   saveJson(spaceStorageKey(space, 'playlists'), { entries: space.videoPlaylistOrders })
+}
+
+async function handleVideoScheduleApi() {
+  const columns = await Promise.all((['inside', 'outside', 'upstairs', 'tent'] satisfies VideoZone[])
+    .map(zone => videoScheduleColumn(mainSpace, zone)))
+
+  return Response.json({ columns })
+}
+
+async function videoScheduleColumn(space: SpaceState, zone: VideoZone): Promise<VideoScheduleColumn> {
+  const ids = upcomingVideoIds(space, zone, videoScheduleCount)
+  const metadata = await Promise.all(ids.map(id => youtubeVideoMetadata(id)))
+  const queue = videoQueue(space, zone)
+  const now = Date.now()
+  let startAt = queue ? now - videoSyncTime(space, queue) * 1000 : now
+  const sets = ids.map((id, index) => {
+    const data = metadata[index]!
+    const set = { duration: data.duration, id, startAt, title: data.title }
+
+    startAt += data.duration * 1000
+
+    return set
+  })
+
+  return { zone, sets }
+}
+
+function upcomingVideoIds(space: SpaceState, zone: VideoZone, count: number) {
+  const queue = videoQueue(space, zone)
+
+  if (!queue) {
+    requestMissingVideoPlaylist(space, zone)
+    return []
+  }
+
+  const ids = [
+    ...(queue.shuffledIds?.slice(queue.cursor ?? 0) ?? [queue.currentId]),
+    ...(queue.nextShuffledIds ?? []),
+  ]
+
+  return uniqueVideoIds(ids).slice(0, count)
+}
+
+async function youtubeVideoMetadata(id: string) {
+  const existing = youtubeMetadataCache.get(id)
+
+  if (existing) {
+    return await existing
+  }
+
+  const next = fetchYouTubeVideoMetadata(id)
+
+  youtubeMetadataCache.set(id, next)
+
+  return await next
+}
+
+async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetadata> {
+  const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(id)}`, {
+    headers: youtubeHeaders(),
+  })
+
+  if (!response.ok) {
+    throw new Error(`YouTube metadata request failed ${id}: ${response.status}`)
+  }
+
+  const text = await response.text()
+  const data = extractEmbeddedJson(text, 'ytInitialPlayerResponse') as {
+    videoDetails?: {
+      lengthSeconds?: unknown
+      title?: unknown
+    }
+  }
+  const title = data.videoDetails?.title
+  const duration = Number(data.videoDetails?.lengthSeconds)
+
+  if (typeof title !== 'string') {
+    throw new Error(`Missing YouTube title ${id}`)
+  }
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Missing YouTube duration ${id}`)
+  }
+
+  return { duration, title }
 }
 
 async function syncVideoPlaylistsFromSources(space: SpaceState, now: number) {
@@ -3612,7 +3722,7 @@ function broadcastSpace(space: SpaceState, data: ArrayBuffer) {
 function broadcast(source: Client, data: ArrayBuffer) {
   const space = clientSpace(source)
 
-  for (const client of space.rooms[source.room]!) {
+  for (const client of spaceClients(space)) {
     if (client !== source) {
       client.socket.send(data)
     }

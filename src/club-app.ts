@@ -147,6 +147,7 @@ import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import type { Photo } from './photo-wall-ui.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createSceneLighting } from './scene-lighting.ts'
+import { createScheduleWallUi } from './schedule-wall-ui.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
 import { createObjectTurnBasisCache } from './turn-basis.ts'
@@ -164,6 +165,7 @@ const {
   canvas,
   djVideo,
   photoWall,
+  scheduleWall,
   chatForm,
   chatInput,
   chatBubble,
@@ -347,6 +349,7 @@ const photoWallUi = createPhotoWallUi(photoWall, {
   onLike: photo => sendChatMessage('❤️', photo.timestamp),
   recoverFocus: () => canvas.focus(),
 })
+const scheduleWallUi = createScheduleWallUi(scheduleWall)
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)
@@ -2346,6 +2349,7 @@ function connectMultiplayer(spaceSlug?: string) {
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
     onVideoSync: entries => {
       djVideoUi.applySync(entries)
+      void scheduleWallUi.refresh()
       videoPreviewRenderer.prepareAll(entries.map(entry => ({ id: entry.currentId, zone: entry.zone })))
         .catch((error: unknown) => console.error(error))
     },
@@ -4027,13 +4031,16 @@ const draw = (stamp: number) => {
     }
     if (outside) {
       photoWallUi.update(camera, projector)
+      scheduleWallUi.update(camera, projector)
     }
     else {
       photoWallUi.hide()
+      scheduleWallUi.hide()
     }
   }
   else {
     photoWallUi.hide()
+    scheduleWallUi.hide()
     foodTruckWallProjection.hide()
     bartenderDrinkWallProjection.hide()
     outsideHutDrinkWallProjection.hide()

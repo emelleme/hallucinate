@@ -10,6 +10,7 @@ function createDomElements() {
   const canvas = document.createElement('canvas')
   const djVideo = document.createElement('div')
   const photoWall = document.createElement('div')
+  const scheduleWall = document.createElement('div')
   const chatForm = document.createElement('form')
   const chatInput = document.createElement('input')
   const chatSubmit = document.createElement('button')
@@ -63,6 +64,9 @@ function createDomElements() {
 
   photoWall.id = 'photo-wall'
   photoWall.className = 'absolute opacity-0'
+
+  scheduleWall.id = 'schedule-wall'
+  scheduleWall.className = 'absolute opacity-0'
 
   chatForm.id = 'chat-form'
   chatForm.className = 'absolute opacity-0'
@@ -205,7 +209,7 @@ function createDomElements() {
   introPanel.append(introTrack, introProgress, introNicknameField, introInstagramField, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
-  document.body.prepend(canvas, djVideo, photoWall, sunglassesOverlay, chatForm, chatBubble, onlineIndicator,
+  document.body.prepend(canvas, djVideo, photoWall, scheduleWall, sunglassesOverlay, chatForm, chatBubble, onlineIndicator,
     reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton, perspectiveButton,
     photoButton, roomsButton, supportLink, merchCards, intro)
 
@@ -213,6 +217,7 @@ function createDomElements() {
     canvas,
     djVideo,
     photoWall,
+    scheduleWall,
     chatForm,
     chatInput,
     chatBubble,

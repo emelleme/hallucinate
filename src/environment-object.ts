@@ -5,8 +5,9 @@ import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideSideLightZs, landscapeBounds,
   outsideBounds, outsideCouches, outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools,
-  outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairs, outsideStage,
-  outsideRooftopStairRiseAtZ, outsideToiletDoor, outsideToilets, outsideTShirtStands, outsideVideoScreenWall,
+  outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairs,
+  outsideRooftopStairRiseAtZ, outsideScheduleWall, outsideStage, outsideToiletDoor, outsideToilets,
+  outsideTShirtStands, outsideVideoScreenWall,
   roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
   tentVideoWall, upstairsBar, upstairsBarCounterRail, upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches,
   upstairsDjBooth, upstairsDjSpeakers, upstairsDoor, upstairsVideoWall, upstairsWallHeight,
@@ -40,7 +41,8 @@ export function addRoom(target: Vertex[]) {
   addQuad(target, [doorRight, -2, 4], [doorLeft, -2, 4], [doorLeft, -2 + backDoor.height, 4], [doorRight,
     -2 + backDoor.height, 4], [0.001, 0.001, 0.001], 0, 9001)
   addOutsideVideoBackdrop(target)
-  addOutsidePhotoBackdrop(target)
+  addOutsideWallBackdrop(target, outsidePhotoWall)
+  addOutsideWallBackdrop(target, outsideScheduleWall)
   addDoorPerimeterStripes(target)
   addBartenderBar(target)
   addDjBooth(target)
@@ -58,15 +60,16 @@ function addOutsideVideoBackdrop(target: Vertex[]) {
   addQuad(target, [right, bottom, z], [left, bottom, z], [left, top, z], [right, top, z], color, 0)
 }
 
-function addOutsidePhotoBackdrop(target: Vertex[]) {
-  const wall = outsidePhotoWall
+function addOutsideWallBackdrop(target: Vertex[], wall: typeof outsidePhotoWall) {
   const back = wall.z - wall.width / 2
   const front = wall.z + wall.width / 2
   const bottom = wall.y - wall.height / 2
   const top = wall.y + wall.height / 2
   const height = top - bottom
   const x = wall.x - 0.06
+  const floor = -1.95
   const color: Vec3 = [0.002, 0.003, 0.006]
+  const brace: Vec3 = [0.004, 0.004, 0.005]
   const frame: Vec3 = [0.02, 0.62, 0.92]
   const glow = 2.2
 
@@ -75,6 +78,30 @@ function addOutsidePhotoBackdrop(target: Vertex[]) {
   addBox(target, x, wall.y, front + 0.06, 0.12, height + 0.26, 0.12, frame, glow)
   addBox(target, x, bottom - 0.06, wall.z, 0.12, 0.12, wall.width + 0.36, frame, glow)
   addBox(target, x, top + 0.06, wall.z, 0.12, 0.12, wall.width + 0.36, frame, glow)
+  addWallPost(target, x, back + 0.24, bottom - 0.02, floor)
+  addWallPost(target, x, wall.z, bottom - 0.02, floor)
+  addWallPost(target, x, front - 0.24, bottom - 0.02, floor)
+  addWallBrace(target, x, back + 0.34, bottom + 0.68, floor + 0.08)
+  addWallBrace(target, x, front - 0.34, bottom + 0.68, floor + 0.08)
+  addWallBrace(target, x, wall.z, top - 0.18, floor + 0.08)
+}
+
+function addWallPost(target: Vertex[], x: number, z: number, top: number, bottom: number) {
+  const brace: Vec3 = [0.004, 0.004, 0.005]
+  const height = top - bottom
+
+  addBox(target, x, bottom + height / 2, z, 0.14, height, 0.14, brace, 0)
+}
+
+function addWallBrace(target: Vertex[], x: number, z: number, top: number, bottom: number) {
+  const brace: Vec3 = [0.004, 0.004, 0.005]
+  const backX = x - 0.92
+  const half = 0.055
+
+  addQuad(target, [backX, bottom, z - half], [backX, bottom, z + half], [x, top, z + half], [x, top, z - half],
+    brace, 0)
+  addQuad(target, [backX + 0.12, bottom, z + half], [backX + 0.12, bottom, z - half], [x + 0.12, top, z - half],
+    [x + 0.12, top, z + half], brace, 0)
 }
 
 function addDoorPerimeterStripes(target: Vertex[]) {
