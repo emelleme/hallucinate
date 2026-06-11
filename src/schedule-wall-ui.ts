@@ -1,5 +1,6 @@
 import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
-import { projectedQuadTransform, projectWallPointWithMinDepthInto, type ProjectedPoint, type WallProjector } from './projection.ts'
+import { type ProjectedPoint, projectedQuadTransform, projectWallPointWithMinDepthInto,
+  type WallProjector } from './projection.ts'
 import { outsideScheduleWall } from './scene-data.ts'
 import type { Vec3, VideoZone } from './types.ts'
 

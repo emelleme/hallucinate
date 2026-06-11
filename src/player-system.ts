@@ -19,8 +19,8 @@ import {
   upstairsDoor,
 } from './scene-data.ts'
 import { collideRoom, isOutside, roomAt, seatAt, seatById, seats, walkHeight } from './scene.ts'
-import { createObjectTurnBasisCache } from './turn-basis.ts'
 import { treeSwing } from './tree-swing.ts'
+import { createObjectTurnBasisCache } from './turn-basis.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const npcConfig = {
@@ -434,8 +434,7 @@ function updateDestinationPlayer(
 
     if (!player.lingeringUntil) {
       player.lingeringUntil = time
-        + seededRange(player.seed, Math.floor(time * 2.9), player.destination.linger![0],
-          player.destination.linger![1])
+        + seededRange(player.seed, Math.floor(time * 2.9), player.destination.linger![0], player.destination.linger![1])
       player.nextDecision = time
     }
 
@@ -666,7 +665,9 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
   }
 
   if (player.position[1] < upstairsFloor - 0.7) {
-    if (!onUpstairsStairPath(player.position) && distanceSq(player.position, upstairsStairBottom) > npcConfig.arrive.waypoint ** 2) {
+    if (!onUpstairsStairPath(player.position)
+      && distanceSq(player.position, upstairsStairBottom) > npcConfig.arrive.waypoint ** 2)
+    {
       return travelPathTarget(player, upstairsStairBottom, outsideTree)
     }
 
@@ -833,7 +834,8 @@ function playerDestination(
   }
 
   if (pick < weights.lounge) {
-    return seatDestination(seed, step, occupiedSeats, 'lounge') ?? treeDestination(seed, step, outsideTree, occupiedSeats)
+    return seatDestination(seed, step, occupiedSeats, 'lounge')
+      ?? treeDestination(seed, step, outsideTree, occupiedSeats)
   }
 
   if (pick < weights.stool) {
@@ -873,8 +875,7 @@ function choosePlayerDestination(
   player.travelSpeed = travelSpeed(player.seed, Math.floor(time * 5.1))
   player.lingeringUntil = player.destination.kind === 'random'
     ? time
-      + seededRange(player.seed, Math.floor(time * 2.9), player.destination.linger![0],
-        player.destination.linger![1])
+      + seededRange(player.seed, Math.floor(time * 2.9), player.destination.linger![0], player.destination.linger![1])
     : undefined
   player.nextDecision = time
   player.pauseUntil = undefined
@@ -1045,8 +1046,8 @@ function restroomDestination(seed: number, step: number): PlayerDestination {
 }
 
 function photoWallDestination(seed: number, step: number): PlayerDestination {
-  const z = outsidePhotoWall.z + seededRange(seed, step + 127, -outsidePhotoWall.width * 0.32,
-    outsidePhotoWall.width * 0.32)
+  const z = outsidePhotoWall.z
+    + seededRange(seed, step + 127, -outsidePhotoWall.width * 0.32, outsidePhotoWall.width * 0.32)
   const x = outsidePhotoWall.x + seededRange(seed, step + 128, 1.25, 2.45)
 
   return {

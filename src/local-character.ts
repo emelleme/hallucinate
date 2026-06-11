@@ -6,9 +6,10 @@ import {
   smoothAngle,
 } from './math.ts'
 import { findPath } from './pathfinding.ts'
-import { collideLoftRoom, collideRoom, isOutside, roomAt, seatAt, seatById, walkHeight, walkLoftHeight } from './scene.ts'
-import type { Seat } from './scene.ts'
 import { outsideRooftop, upstairsWallHeight } from './scene-data.ts'
+import { collideLoftRoom, collideRoom, isOutside, roomAt, seatAt, seatById, walkHeight,
+  walkLoftHeight } from './scene.ts'
+import type { Seat } from './scene.ts'
 import { createTurnBasisCache } from './turn-basis.ts'
 import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 

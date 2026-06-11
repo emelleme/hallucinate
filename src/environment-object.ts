@@ -5,13 +5,12 @@ import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideSideLightZs, landscapeBounds,
   outsideBounds, outsideCouches, outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools,
-  outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairs,
-  outsideRooftopStairRiseAtZ, outsideScheduleWall, outsideStage, outsideToiletDoor, outsideToilets,
-  outsideTShirtStands, outsideVideoScreenWall,
-  roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle,
-  tentVideoWall, upstairsBar, upstairsBarCounterRail, upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches,
-  upstairsDjBooth, upstairsDjSpeakers, upstairsDoor, upstairsVideoWall, upstairsWallHeight,
-  type TShirtStand } from './scene-data.ts'
+  outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairRiseAtZ,
+  outsideRooftopStairs, outsideScheduleWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStands,
+  outsideVideoScreenWall, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle,
+  tentPole, tentVideoAngle, tentVideoWall, type TShirtStand, upstairsBar, upstairsBarCounterRail,
+  upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches, upstairsDjBooth, upstairsDjSpeakers, upstairsDoor,
+  upstairsVideoWall, upstairsWallHeight } from './scene-data.ts'
 import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
@@ -98,10 +97,13 @@ function addWallBrace(target: Vertex[], x: number, z: number, top: number, botto
   const backX = x - 0.92
   const half = 0.055
 
-  addQuad(target, [backX, bottom, z - half], [backX, bottom, z + half], [x, top, z + half], [x, top, z - half],
-    brace, 0)
-  addQuad(target, [backX + 0.12, bottom, z + half], [backX + 0.12, bottom, z - half], [x + 0.12, top, z - half],
-    [x + 0.12, top, z + half], brace, 0)
+  addQuad(target, [backX, bottom, z - half], [backX, bottom, z + half], [x, top, z + half], [x, top, z - half], brace,
+    0)
+  addQuad(target, [backX + 0.12, bottom, z + half], [backX + 0.12, bottom, z - half], [x + 0.12, top, z - half], [
+    x + 0.12,
+    top,
+    z + half,
+  ], brace, 0)
 }
 
 function addDoorPerimeterStripes(target: Vertex[]) {
@@ -206,10 +208,9 @@ function addOutsideRooftop(target: Vertex[], floor: number) {
   addQuad(target, [left, y, front], [right, y, front], [right, y, back], [left, y, back], surface, 0)
   addBox(target, outsideRooftop.x, y + 0.015, roomBounds.back - 0.06, outsideRooftop.width, 0.05, 0.12, edge, 0)
   addBox(target, outsideRooftop.x, y + 0.015, roomBounds.front + 0.06, outsideRooftop.width, 0.05, 0.12, edge, 0)
-  addBox(target, roomBounds.left - 0.06, y + 0.015, (back + landingBack) / 2, 0.12, 0.05, landingBack - back,
-    edge, 0)
-  addBox(target, roomBounds.left - 0.06, y + 0.015, (landingFront + front) / 2, 0.12, 0.05, front - landingFront,
-    edge, 0)
+  addBox(target, roomBounds.left - 0.06, y + 0.015, (back + landingBack) / 2, 0.12, 0.05, landingBack - back, edge, 0)
+  addBox(target, roomBounds.left - 0.06, y + 0.015, (landingFront + front) / 2, 0.12, 0.05, front - landingFront, edge,
+    0)
   addBox(target, roomBounds.right + 0.06, y + 0.015, outsideRooftop.z, 0.12, 0.05, outsideRooftop.depth, edge, 0)
   addUpstairsRoom(target, y)
 }
@@ -242,17 +243,15 @@ function addUpstairsRoom(target: Vertex[], floor: number) {
   addBox(target, left - 0.06, floor + upstairsDoor.height + (upstairsWallHeight - upstairsDoor.height) / 2,
     upstairsDoor.z, 0.12, upstairsWallHeight - upstairsDoor.height, upstairsDoor.width, wall, 0)
   addUpstairsOutsideWallFaces(target, floor, outsideWall, doorBack, doorFront)
-  addQuad(target, [left - 0.045, floor + 0.02, doorFront], [left - 0.045, floor + 0.02, doorBack],
-    [left - 0.045, floor + upstairsDoor.height, doorBack], [left - 0.045, floor + upstairsDoor.height, doorFront],
-    [0.001, 0.001, 0.001], 0, 9002)
-  addQuad(target, [left - 0.004, coverBottom, coverFront], [left - 0.004, coverBottom, coverBack],
-    [left - 0.004, coverTop, coverBack], [left - 0.004, coverTop, coverFront],
-    [0.001, 0.001, 0.001], 0)
-  addQuad(target, [left - 0.016, coverBottom, coverBack], [left - 0.016, coverBottom, coverFront],
-    [left - 0.016, coverTop, coverFront], [left - 0.016, coverTop, coverBack],
-    [0.001, 0.001, 0.001], 0)
-  addBox(target, left - 0.24, floor + upstairsDoor.height / 2, doorBack - 0.04, 0.09, upstairsDoor.height, 0.09,
-    accent, 2.2)
+  addQuad(target, [left - 0.045, floor + 0.02, doorFront], [left - 0.045, floor + 0.02, doorBack], [left - 0.045,
+    floor + upstairsDoor.height, doorBack], [left - 0.045, floor + upstairsDoor.height, doorFront], [0.001, 0.001,
+    0.001], 0, 9002)
+  addQuad(target, [left - 0.004, coverBottom, coverFront], [left - 0.004, coverBottom, coverBack], [left - 0.004,
+    coverTop, coverBack], [left - 0.004, coverTop, coverFront], [0.001, 0.001, 0.001], 0)
+  addQuad(target, [left - 0.016, coverBottom, coverBack], [left - 0.016, coverBottom, coverFront], [left - 0.016,
+    coverTop, coverFront], [left - 0.016, coverTop, coverBack], [0.001, 0.001, 0.001], 0)
+  addBox(target, left - 0.24, floor + upstairsDoor.height / 2, doorBack - 0.04, 0.09, upstairsDoor.height, 0.09, accent,
+    2.2)
   addBox(target, left - 0.24, floor + upstairsDoor.height / 2, doorFront + 0.04, 0.09, upstairsDoor.height, 0.09,
     accent, 2.2)
   addBox(target, left - 0.24, floor + upstairsDoor.height + 0.04, upstairsDoor.z, 0.09, 0.08, upstairsDoor.width + 0.18,
@@ -261,8 +260,8 @@ function addUpstairsRoom(target: Vertex[], floor: number) {
     accent, 2.2)
   addBox(target, left + 0.045, floor + upstairsDoor.height / 2, doorFront + 0.04, 0.09, upstairsDoor.height, 0.09,
     accent, 2.2)
-  addBox(target, left + 0.045, floor + upstairsDoor.height + 0.04, upstairsDoor.z, 0.09, 0.08, upstairsDoor.width + 0.18,
-    accent, 2.2)
+  addBox(target, left + 0.045, floor + upstairsDoor.height + 0.04, upstairsDoor.z, 0.09, 0.08,
+    upstairsDoor.width + 0.18, accent, 2.2)
 
   addUpstairsVideoBackdrop(target)
   addDjBoothAt(target, upstairsDjBooth, upstairsDjSpeakers, -1, [0.04, 0.75, 1], 3.1, floor)
@@ -273,7 +272,9 @@ function addUpstairsRoom(target: Vertex[], floor: number) {
   }
 }
 
-function addUpstairsOutsideWallFaces(target: Vertex[], floor: number, color: Vec3, doorBack: number, doorFront: number) {
+function addUpstairsOutsideWallFaces(target: Vertex[], floor: number, color: Vec3, doorBack: number,
+  doorFront: number)
+{
   const left = roomBounds.left
   const right = roomBounds.right
   const back = roomBounds.back
@@ -283,18 +284,18 @@ function addUpstairsOutsideWallFaces(target: Vertex[], floor: number, color: Vec
   const doorTop = floor + upstairsDoor.height + 0.04
   const e = 0.128
 
-  addQuad(target, [left, bottom, front + e], [right, bottom, front + e], [right, top, front + e],
-    [left, top, front + e], color, 0)
-  addQuad(target, [right, bottom, back - e], [left, bottom, back - e], [left, top, back - e],
-    [right, top, back - e], color, 0)
-  addQuad(target, [right + e, bottom, front], [right + e, bottom, back], [right + e, top, back],
-    [right + e, top, front], color, 0)
-  addQuad(target, [left - e, bottom, back], [left - e, bottom, doorBack], [left - e, top, doorBack],
-    [left - e, top, back], color, 0)
-  addQuad(target, [left - e, bottom, doorFront], [left - e, bottom, front], [left - e, top, front],
-    [left - e, top, doorFront], color, 0)
-  addQuad(target, [left - e, doorTop, doorBack], [left - e, doorTop, doorFront], [left - e, top, doorFront],
-    [left - e, top, doorBack], color, 0)
+  addQuad(target, [left, bottom, front + e], [right, bottom, front + e], [right, top, front + e], [left, top,
+    front + e], color, 0)
+  addQuad(target, [right, bottom, back - e], [left, bottom, back - e], [left, top, back - e], [right, top, back - e],
+    color, 0)
+  addQuad(target, [right + e, bottom, front], [right + e, bottom, back], [right + e, top, back], [right + e, top,
+    front], color, 0)
+  addQuad(target, [left - e, bottom, back], [left - e, bottom, doorBack], [left - e, top, doorBack], [left - e, top,
+    back], color, 0)
+  addQuad(target, [left - e, bottom, doorFront], [left - e, bottom, front], [left - e, top, front], [left - e, top,
+    doorFront], color, 0)
+  addQuad(target, [left - e, doorTop, doorBack], [left - e, doorTop, doorFront], [left - e, top, doorFront], [left - e,
+    top, doorBack], color, 0)
 }
 
 function addUpstairsVideoBackdrop(target: Vertex[]) {
@@ -327,10 +328,10 @@ function addUpstairsBar(target: Vertex[], floor: number) {
   addBox(target, upstairsBar.x + upstairsBar.width / 2 - rail / 2, floor + 0.44, upstairsBar.z, rail, 0.88, centerDepth,
     body, 0)
 
-  addBox(target, upstairsBar.x, floor + 0.93, upstairsBar.z - upstairsBar.depth / 2 + rail / 2, upstairsBar.width + 0.28,
-    0.14, rail + 0.24, top, 0)
-  addBox(target, upstairsBar.x, floor + 0.93, upstairsBar.z + upstairsBar.depth / 2 - rail / 2, upstairsBar.width + 0.28,
-    0.14, rail + 0.24, top, 0)
+  addBox(target, upstairsBar.x, floor + 0.93, upstairsBar.z - upstairsBar.depth / 2 + rail / 2,
+    upstairsBar.width + 0.28, 0.14, rail + 0.24, top, 0)
+  addBox(target, upstairsBar.x, floor + 0.93, upstairsBar.z + upstairsBar.depth / 2 - rail / 2,
+    upstairsBar.width + 0.28, 0.14, rail + 0.24, top, 0)
   addBox(target, upstairsBar.x - upstairsBar.width / 2 + rail / 2, floor + 0.93, upstairsBar.z, rail + 0.24, 0.14,
     centerDepth, top, 0)
   addBox(target, upstairsBar.x + upstairsBar.width / 2 - rail / 2, floor + 0.93, upstairsBar.z, rail + 0.24, 0.14,
@@ -340,17 +341,26 @@ function addUpstairsBar(target: Vertex[], floor: number) {
     0.07, 0.06, neon, 3.0)
   addBox(target, upstairsBar.x, floor + 1.12, upstairsBar.z + upstairsBar.depth / 2 + 0.08, upstairsBar.width - 0.65,
     0.07, 0.06, [0.96, 0.08, 0.62], 3.0)
-  addBox(target, upstairsBarDrinkCounter.x, floor + 0.42, upstairsBarDrinkCounter.z, upstairsBarDrinkCounter.width, 0.84,
-    upstairsBarDrinkCounter.depth, body, 0)
-  addBox(target, upstairsBarDrinkCounter.x, floor + 0.89, upstairsBarDrinkCounter.z, upstairsBarDrinkCounter.width + 0.22,
-    0.12, upstairsBarDrinkCounter.depth + 0.22, top, 0)
-  addBox(target, upstairsBarDrinkCounter.x, floor + 1.02, upstairsBarDrinkCounter.z - upstairsBarDrinkCounter.depth / 2 - 0.08,
-    upstairsBarDrinkCounter.width, 0.06, 0.05, [0.96, 0.72, 0.08], 2.6)
-  addBox(target, upstairsBarDrinkCounter.x, floor + 1.02, upstairsBarDrinkCounter.z + upstairsBarDrinkCounter.depth / 2 + 0.08,
-    upstairsBarDrinkCounter.width, 0.06, 0.05, [0.05, 0.9, 0.8], 2.6)
+  addBox(target, upstairsBarDrinkCounter.x, floor + 0.42, upstairsBarDrinkCounter.z, upstairsBarDrinkCounter.width,
+    0.84, upstairsBarDrinkCounter.depth, body, 0)
+  addBox(target, upstairsBarDrinkCounter.x, floor + 0.89, upstairsBarDrinkCounter.z,
+    upstairsBarDrinkCounter.width + 0.22, 0.12, upstairsBarDrinkCounter.depth + 0.22, top, 0)
+  addBox(target, upstairsBarDrinkCounter.x, floor + 1.02,
+    upstairsBarDrinkCounter.z - upstairsBarDrinkCounter.depth / 2 - 0.08, upstairsBarDrinkCounter.width, 0.06, 0.05, [
+    0.96,
+    0.72,
+    0.08,
+  ], 2.6)
+  addBox(target, upstairsBarDrinkCounter.x, floor + 1.02,
+    upstairsBarDrinkCounter.z + upstairsBarDrinkCounter.depth / 2 + 0.08, upstairsBarDrinkCounter.width, 0.06, 0.05, [
+    0.05,
+    0.9,
+    0.8,
+  ], 2.6)
 
   for (let i = 0; i < 16; i++) {
-    const x = upstairsBarDrinkCounter.x - upstairsBarDrinkCounter.width * 0.36 + (i % 8) * upstairsBarDrinkCounter.width * 0.1
+    const x = upstairsBarDrinkCounter.x - upstairsBarDrinkCounter.width * 0.36
+      + (i % 8) * upstairsBarDrinkCounter.width * 0.1
     const z = upstairsBarDrinkCounter.z - upstairsBarDrinkCounter.depth * 0.24
       + Math.floor(i / 8) * upstairsBarDrinkCounter.depth * 0.48
     const color = bottleColors[i % bottleColors.length]!
@@ -386,8 +396,8 @@ function addOutsideRooftopStairs(target: Vertex[], floor: number) {
 
   addStairSideRail(target, landingSideRailX, floor, front, back, rail)
 
-  addBox(target, landing.x, floor + landing.height - 0.04 + landingLift, landing.z, landing.width, 0.08,
-    landing.depth, tread, 0)
+  addBox(target, landing.x, floor + landing.height - 0.04 + landingLift, landing.z, landing.width, 0.08, landing.depth,
+    tread, 0)
   addRooftopLandingSideRail(target, floor, landing, landingSideRailX, landing.z - landing.depth / 2, back, rail)
   addRooftopLandingEndRail(target, floor, landing, landingSideRailX, rail)
 }
@@ -395,8 +405,8 @@ function addOutsideRooftopStairs(target: Vertex[], floor: number) {
 function addStairSideRail(target: Vertex[], x: number, floor: number, front: number, back: number, color: Vec3) {
   const height = outsideRooftopStairRiseAtZ(back)
 
-  addQuad(target, [x, floor + 0.32, front], [x, floor + 0.86, front], [x, floor + height + 0.86, back],
-    [x, floor + height + 0.32, back], color, 0.32)
+  addQuad(target, [x, floor + 0.32, front], [x, floor + 0.86, front], [x, floor + height + 0.86, back], [x,
+    floor + height + 0.32, back], color, 0.32)
 }
 
 function addRooftopLandingSideRail(
@@ -410,8 +420,7 @@ function addRooftopLandingSideRail(
 ) {
   const y = floor + landing.height
 
-  addQuad(target, [x, y + 0.32, front], [x, y + 0.86, front], [x, y + 0.86, back],
-    [x, y + 0.32, back], color, 0.32)
+  addQuad(target, [x, y + 0.32, front], [x, y + 0.86, front], [x, y + 0.86, back], [x, y + 0.32, back], color, 0.32)
 }
 
 function addRooftopLandingEndRail(
@@ -425,8 +434,8 @@ function addRooftopLandingEndRail(
   const back = landing.z - landing.depth / 2
   const right = landing.x + landing.width / 2
 
-  addQuad(target, [right, y + 0.32, back], [left, y + 0.32, back], [left, y + 0.86, back], [right, y + 0.86, back], color,
-    0.32)
+  addQuad(target, [right, y + 0.32, back], [left, y + 0.32, back], [left, y + 0.86, back], [right, y + 0.86, back],
+    color, 0.32)
 }
 
 function addOutsideToilets(target: Vertex[], floor: number) {
@@ -1115,8 +1124,8 @@ function addUpstairsLightStrips(target: Vertex[], startId: number) {
   let id = startId
 
   addDjBoothStrip(target, upstairsDjBooth, -1, colors[0]!, 3.2, floor)
-  addBox(target, upstairsBar.x, floor + 1.12, upstairsBar.z - upstairsBar.depth * 0.5 - 0.08,
-    upstairsBar.width - 0.65, 0.07, 0.06, colors[1]!, 3.0, id++)
+  addBox(target, upstairsBar.x, floor + 1.12, upstairsBar.z - upstairsBar.depth * 0.5 - 0.08, upstairsBar.width - 0.65,
+    0.07, 0.06, colors[1]!, 3.0, id++)
 
   for (const z of [-21.4, -16.9, -12.4, -7.9, -3.4, 1.1]) {
     if (z < upstairsDoor.z - upstairsDoor.width / 2 || z > upstairsDoor.z + upstairsDoor.width / 2) {
@@ -1134,14 +1143,16 @@ function addUpstairsLightStrips(target: Vertex[], startId: number) {
   }
 }
 
-function addUpstairsSideStrip(target: Vertex[], x: number, z: number, low: number, high: number, color: Vec3, id: number) {
-  addQuad(target, [x, low, z - 0.32], [x, high, z - 0.32], [x, high, z + 0.32], [x, low, z + 0.32], color, 2.6,
-    id)
+function addUpstairsSideStrip(target: Vertex[], x: number, z: number, low: number, high: number, color: Vec3,
+  id: number)
+{
+  addQuad(target, [x, low, z - 0.32], [x, high, z - 0.32], [x, high, z + 0.32], [x, low, z + 0.32], color, 2.6, id)
 }
 
-function addUpstairsEndStrip(target: Vertex[], x: number, z: number, low: number, high: number, color: Vec3, id: number) {
-  addQuad(target, [x - 0.32, low, z], [x + 0.32, low, z], [x + 0.32, high, z], [x - 0.32, high, z], color, 2.6,
-    id)
+function addUpstairsEndStrip(target: Vertex[], x: number, z: number, low: number, high: number, color: Vec3,
+  id: number)
+{
+  addQuad(target, [x - 0.32, low, z], [x + 0.32, low, z], [x + 0.32, high, z], [x - 0.32, high, z], color, 2.6, id)
 }
 
 function addTentGlow(target: Vertex[]) {

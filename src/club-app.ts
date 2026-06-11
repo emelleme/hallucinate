@@ -356,6 +356,27 @@ const arcadeUi = createArcadeUi({
   onClose: exitArcadeMode,
 })
 const reactionSlotEmojis = loadReactionSlotEmojis()
+const introFruitEmojis = [
+  '🍎',
+  '🍏',
+  '🍐',
+  '🍊',
+  '🍋',
+  '🍋‍🟩',
+  '🍌',
+  '🍉',
+  '🍇',
+  '🍓',
+  '🫐',
+  '🍒',
+  '🍑',
+  '🥭',
+  '🍍',
+  '🥥',
+  '🥝',
+  '🥑',
+  '🥥',
+] as const
 const foodTruckEmojis = [
   '🍕',
   '🍔',
@@ -1642,7 +1663,7 @@ let lastOnlineSelfLabel = ''
 let lastOnlineText = ''
 let lastOnlineCountValue = -1
 let lastOnlineAdminView = false
-let introWaveSent = false
+let introReactionSent = false
 let profileSubmitted = false
 
 intro.addEventListener('touchmove', event => {
@@ -1680,9 +1701,9 @@ function startIntro() {
   if (!submitIntroProfile()) {
     throw new Error('Intro profile was not ready on enter')
   }
-  if (!introWaveSent) {
-    introWaveSent = true
-    sendChatMessage('👋')
+  if (!introReactionSent) {
+    introReactionSent = true
+    sendChatMessage(randomIntroFruitEmoji())
   }
   introStart.dataset.playing = 'true'
   enterIntro()
@@ -1690,6 +1711,10 @@ function startIntro() {
 
 function introReadyToEnter() {
   return characterRenderSystem.assetsLoaded && introNicknameInput.validity.valid && djVideoUi.canPlay()
+}
+
+function randomIntroFruitEmoji() {
+  return introFruitEmojis[Math.floor(Math.random() * introFruitEmojis.length)]!
 }
 
 function submitIntroProfile() {

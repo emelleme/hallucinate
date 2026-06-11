@@ -209,9 +209,9 @@ function createDomElements() {
   introPanel.append(introTrack, introProgress, introNicknameField, introInstagramField, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
-  document.body.prepend(canvas, djVideo, photoWall, scheduleWall, sunglassesOverlay, chatForm, chatBubble, onlineIndicator,
-    reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton, perspectiveButton,
-    photoButton, roomsButton, supportLink, merchCards, intro)
+  document.body.prepend(canvas, djVideo, photoWall, scheduleWall, sunglassesOverlay, chatForm, chatBubble,
+    onlineIndicator, reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton,
+    perspectiveButton, photoButton, roomsButton, supportLink, merchCards, intro)
 
   return {
     canvas,

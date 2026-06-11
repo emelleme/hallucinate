@@ -7,10 +7,10 @@ import {
   outsideFoodTruckTurn,
   outsideHut,
   outsideHutDeckHeight,
+  outsideRooftop,
   outsideRooftopStairs,
   outsideToiletDoor,
   outsideToilets,
-  outsideRooftop,
   roomBounds,
   tent,
   tentDoor,
@@ -188,18 +188,18 @@ const wallTextureWalls: GraffitiWall[] = [
     cutouts: [],
     sides: 'both',
   },
-  planeWall('z', roomBounds.front + 0.06, roomBounds.left, roomBounds.right, upstairsWallYMin, upstairsWallYMax,
-    [0, 0, 1], 'front'),
-  planeWall('z', roomBounds.back - 0.06, roomBounds.left, roomBounds.right, upstairsWallYMin, upstairsWallYMax,
-    [0, 0, -1], 'front'),
-  planeWall('x', roomBounds.right + 0.06, roomBounds.back, roomBounds.front, upstairsWallYMin, upstairsWallYMax,
-    [1, 0, 0], 'front'),
-  planeWall('x', roomBounds.left - 0.06, roomBounds.back, upstairsDoorBack, upstairsWallYMin, upstairsWallYMax,
-    [-1, 0, 0], 'front'),
-  planeWall('x', roomBounds.left - 0.06, upstairsDoorFront, roomBounds.front, upstairsWallYMin, upstairsWallYMax,
-    [-1, 0, 0], 'front'),
-  planeWall('x', roomBounds.left - 0.06, upstairsDoorBack, upstairsDoorFront, upstairsDoorTop, upstairsWallYMax,
-    [-1, 0, 0], 'front'),
+  planeWall('z', roomBounds.front + 0.06, roomBounds.left, roomBounds.right, upstairsWallYMin, upstairsWallYMax, [0, 0,
+    1], 'front'),
+  planeWall('z', roomBounds.back - 0.06, roomBounds.left, roomBounds.right, upstairsWallYMin, upstairsWallYMax, [0, 0,
+    -1], 'front'),
+  planeWall('x', roomBounds.right + 0.06, roomBounds.back, roomBounds.front, upstairsWallYMin, upstairsWallYMax, [1, 0,
+    0], 'front'),
+  planeWall('x', roomBounds.left - 0.06, roomBounds.back, upstairsDoorBack, upstairsWallYMin, upstairsWallYMax, [-1, 0,
+    0], 'front'),
+  planeWall('x', roomBounds.left - 0.06, upstairsDoorFront, roomBounds.front, upstairsWallYMin, upstairsWallYMax, [-1,
+    0, 0], 'front'),
+  planeWall('x', roomBounds.left - 0.06, upstairsDoorBack, upstairsDoorFront, upstairsDoorTop, upstairsWallYMax, [-1, 0,
+    0], 'front'),
   ...foodTruckGraffitiWalls(),
   ...stairGraffitiWalls(),
 ]
@@ -755,12 +755,9 @@ function addOrientedPlaneGraffitiWallSurface(
 ) {
   const [u0, v0, u1, v1] = graffitiWallTextureBounds(wallIndex)
 
-  addGraffitiQuad(target,
-    orientedPlanePoint(wall, wall.min, wall.yMin, side),
-    orientedPlanePoint(wall, wall.max, wall.yMin, side),
-    orientedPlanePoint(wall, wall.max, wall.yMax, side),
-    orientedPlanePoint(wall, wall.min, wall.yMax, side),
-    u0, v0, u1, v1)
+  addGraffitiQuad(target, orientedPlanePoint(wall, wall.min, wall.yMin, side),
+    orientedPlanePoint(wall, wall.max, wall.yMin, side), orientedPlanePoint(wall, wall.max, wall.yMax, side),
+    orientedPlanePoint(wall, wall.min, wall.yMax, side), u0, v0, u1, v1)
 }
 
 function orientedPlanePoint(wall: OrientedPlaneGraffitiWall, x: number, y: number, side: 1 | -1): Vec3 {
@@ -789,14 +786,12 @@ function addPlaneGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: 
     if (wall.axis === 'x') {
       const x = wall.value + wall.normal[0] * wallEpsilon * side
 
-      addGraffitiQuad(target, [x, wall.yMin, a], [x, wall.yMin, b], [x, top, b], [x, top, a],
-        left, topV, right, v1)
+      addGraffitiQuad(target, [x, wall.yMin, a], [x, wall.yMin, b], [x, top, b], [x, top, a], left, topV, right, v1)
     }
     else {
       const z = wall.value + wall.normal[2] * wallEpsilon * side
 
-      addGraffitiQuad(target, [a, wall.yMin, z], [b, wall.yMin, z], [b, top, z], [a, top, z],
-        left, topV, right, v1)
+      addGraffitiQuad(target, [a, wall.yMin, z], [b, wall.yMin, z], [b, top, z], [a, top, z], left, topV, right, v1)
     }
   }
 }
@@ -1167,10 +1162,8 @@ function stairGraffitiWalls(): PlaneGraffitiWall[] {
   const top = characterFloor + stairs.height
 
   return [
-    profilePlaneWall('x', left, back, front, wallYMin, top, [-1, 0, 0], 'front', stairs.steps,
-      stairSideYMaxAt),
-    profilePlaneWall('x', right, back, front, wallYMin, top, [1, 0, 0], 'front', stairs.steps,
-      stairSideYMaxAt),
+    profilePlaneWall('x', left, back, front, wallYMin, top, [-1, 0, 0], 'front', stairs.steps, stairSideYMaxAt),
+    profilePlaneWall('x', right, back, front, wallYMin, top, [1, 0, 0], 'front', stairs.steps, stairSideYMaxAt),
   ]
 }
 

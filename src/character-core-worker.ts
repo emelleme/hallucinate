@@ -1,3 +1,4 @@
+import type assimpjs from 'assimpjs'
 import { characterBones } from './character-data.ts'
 import { createHairMeshes } from './character-hair.ts'
 import {
@@ -8,7 +9,6 @@ import {
 import { normalizeIndex } from './math.ts'
 import { loadPackedAssimpScene } from './packed-assimp.ts'
 import type { AssimpScene, CharacterRig, HairMesh } from './types.ts'
-import type assimpjs from 'assimpjs'
 
 type CoreRequest = {
   id: number

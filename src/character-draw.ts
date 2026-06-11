@@ -374,8 +374,9 @@ function addRenderedCharacter(
   renderHair = true,
   poseOverride?: Vec3[],
 ) {
-  const pose = poseOverride ?? sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet,
-    groundJointIndices, characterScale, basePose, blendCache, placedPose, cacheFrame)
+  const pose = poseOverride
+    ?? sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet, groundJointIndices,
+      characterScale, basePose, blendCache, placedPose, cacheFrame)
   const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
   const localReflection = detailedHair
   const turn = characterTurnBasis(player, player.turn)

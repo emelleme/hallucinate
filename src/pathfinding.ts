@@ -45,7 +45,7 @@ export function findPath(from: Vec3, to: Vec3, outsideTree: CircleBounds) {
     }
 
     if (current.x === goal.x && current.z === goal.z) {
-        return smoothPath(readPath(current, y), outsideTree, y)
+      return smoothPath(readPath(current, y), outsideTree, y)
     }
 
     closed.add(current.key)

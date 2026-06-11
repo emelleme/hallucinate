@@ -1,6 +1,6 @@
+import type assimpjs from 'assimpjs'
 import { loadPackedAssimpScene } from './packed-assimp.ts'
 import type { AssimpScene } from './types.ts'
-import type assimpjs from 'assimpjs'
 
 type LoadRequest = {
   id: number

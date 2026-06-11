@@ -225,8 +225,9 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       const cameraUp = options.cameraUp
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
-      const faceBasis = firstPerson && options.face ? cameraBasisFromFace(options.face) : cameraBasis(characterTurn,
-        cameraUp)
+      const faceBasis = firstPerson && options.face
+        ? cameraBasisFromFace(options.face)
+        : cameraBasis(characterTurn, cameraUp)
       const followTurn = firstPerson ? cameraBasisTurn(faceBasis) : characterTurn
       const sideViewTurn = options.sideViewTurn
 
@@ -235,7 +236,9 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         return
       }
 
-      if (!firstPerson && holdingManualCamera && !dragging && !manualHold && performance.now() > manualCameraHoldUntil) {
+      if (!firstPerson && holdingManualCamera && !dragging && !manualHold
+        && performance.now() > manualCameraHoldUntil)
+      {
         holdingManualCamera = false
       }
 
@@ -535,7 +538,9 @@ function inOutsideRooftopStairsCameraZone(position: Vec3) {
     || inCameraBounds(position, outsideRooftopLanding, 0.35)
 }
 
-function inCameraBounds(position: Vec3, bounds: { x: number; z: number; width: number; depth: number }, padding: number) {
+function inCameraBounds(position: Vec3, bounds: { x: number; z: number; width: number; depth: number },
+  padding: number)
+{
   return position[0] > bounds.x - bounds.width / 2 - padding
     && position[0] < bounds.x + bounds.width / 2 + padding
     && position[2] > bounds.z - bounds.depth / 2 - padding

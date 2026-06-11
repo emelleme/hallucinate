@@ -165,8 +165,7 @@ export function renderClubFrame(options: {
   gl.viewport(0, 0, options.target.width, options.target.height)
   gl.enable(gl.DEPTH_TEST)
   gl.disable(gl.BLEND)
-  gl.clearBufferfv(gl.COLOR, 0, [options.sky ? 0.28 : 0.01, options.sky ? 0.55 : 0.01, options.sky ? 0.92 : 0.014,
-    0.0])
+  gl.clearBufferfv(gl.COLOR, 0, [options.sky ? 0.28 : 0.01, options.sky ? 0.55 : 0.01, options.sky ? 0.92 : 0.014, 0.0])
   gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 0])
   gl.clear(gl.DEPTH_BUFFER_BIT)
   gl.useProgram(options.program)
