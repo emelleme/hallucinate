@@ -23,8 +23,9 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       html {
-        background: #f7f8fb;
-        color: #17202a;
+        background: #080d12;
+        color: #edf5f7;
+        color-scheme: dark;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
@@ -46,7 +47,7 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
 
       header {
         align-items: end;
-        border-bottom: 1px solid #d7dee8;
+        border-bottom: 1px solid #23313a;
         display: flex;
         gap: 16px;
         justify-content: space-between;
@@ -62,7 +63,7 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       p {
-        color: #607084;
+        color: #91a5ad;
         margin: 6px 0 0;
       }
 
@@ -75,10 +76,10 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
 
       button {
         appearance: none;
-        background: #ffffff;
-        border: 1px solid #bdc7d4;
+        background: #111920;
+        border: 1px solid #31434d;
         border-radius: 6px;
-        color: #17202a;
+        color: #d9e8ec;
         cursor: pointer;
         font: inherit;
         font-size: 14px;
@@ -88,9 +89,9 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       button[aria-selected="true"] {
-        background: #17202a;
-        border-color: #17202a;
-        color: #ffffff;
+        background: #3fd6c6;
+        border-color: #3fd6c6;
+        color: #03100f;
       }
 
       #metrics {
@@ -100,15 +101,15 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       .metric {
-        background: #ffffff;
-        border: 1px solid #d7dee8;
+        background: #0f171e;
+        border: 1px solid #23313a;
         border-radius: 8px;
         min-width: 0;
         padding: 12px;
       }
 
       .metric span {
-        color: #607084;
+        color: #91a5ad;
         display: block;
         font-size: 12px;
         line-height: 1;
@@ -126,8 +127,8 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       #chart {
-        background: #ffffff;
-        border: 1px solid #d7dee8;
+        background: #0f171e;
+        border: 1px solid #23313a;
         border-radius: 8px;
         height: min(680px, calc(100dvh - 218px));
         min-height: 360px;
@@ -137,17 +138,18 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
       }
 
       #chart .uplot {
-        color: #17202a;
+        background: #0f171e;
+        color: #edf5f7;
         font-family: inherit;
       }
 
       #chart .u-axis {
-        color: #607084;
+        color: #91a5ad;
       }
 
       #chart .u-cursor-x,
       #chart .u-cursor-y {
-        border-color: #d85532;
+        border-color: #ff8a5c;
       }
 
       @media (max-width: 720px) {
@@ -180,8 +182,8 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
     <main>
       <header>
         <div>
-          <h1>Online Analytics</h1>
-          <p>Entered total</p>
+          <h1>Hallucinate Analytics</h1>
+          <p>Visitors count</p>
         </div>
         <nav aria-label="Time range">${buttons}
         </nav>
@@ -192,7 +194,7 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
           <strong id="current">0</strong>
         </div>
         <div class="metric">
-          <span>Latest average</span>
+          <span>Latest max</span>
           <strong id="latest">0</strong>
         </div>
         <div class="metric">
@@ -282,17 +284,17 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
             {
               font: '12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
               gap: 8,
-              grid: { stroke: '#e4e9f1', width: 1 },
+              grid: { stroke: '#223039', width: 1 },
               lineGap: 1.1,
               size: xAxisSize,
               space: xAxisSpace,
-              stroke: '#607084',
+              stroke: '#91a5ad',
               values: (_u, values) => values.map(axisText),
             },
             {
-              grid: { stroke: '#e4e9f1', width: 1 },
+              grid: { stroke: '#223039', width: 1 },
               size: 48,
-              stroke: '#607084',
+              stroke: '#91a5ad',
               values: (_u, values) => values.map(value => numberFormat.format(value)),
             },
           ],
@@ -301,7 +303,7 @@ export function analyticsHtml(ranges: AnalyticsRange[]) {
             {
               label: 'Online',
               points: { show: false },
-              stroke: '#146c6c',
+              stroke: '#3fd6c6',
               width: 2,
             },
           ],

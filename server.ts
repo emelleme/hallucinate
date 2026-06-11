@@ -2083,12 +2083,19 @@ function setupDb() {
       time INTEGER PRIMARY KEY,
       online_sum INTEGER NOT NULL,
       online_samples INTEGER NOT NULL,
-      online_average REAL NOT NULL
+      online_average REAL NOT NULL,
+      online_max INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS photos_created_at_index ON photos (created_at DESC, timestamp DESC);
     CREATE INDEX IF NOT EXISTS photos_ip_created_at_index ON photos (ip, created_at);
     CREATE INDEX IF NOT EXISTS photo_likes_timestamp_index ON photo_likes (timestamp);
   `)
+  const onlineAnalyticsColumns = db.query<{ name: string }, []>('PRAGMA table_info(online_analytics)').all()
+
+  if (!onlineAnalyticsColumns.some(column => column.name === 'online_max')) {
+    db.run('ALTER TABLE online_analytics ADD COLUMN online_max INTEGER')
+    db.run('UPDATE online_analytics SET online_max = CAST(ROUND(online_average) AS INTEGER)')
+  }
 }
 
 function loadJson<T>(key: string): T | undefined {
@@ -3683,13 +3690,14 @@ function recordOnlineAnalytics() {
   const time = onlineAnalyticsTime(Date.now())
 
   db.query(`
-    INSERT INTO online_analytics (time, online_sum, online_samples, online_average)
-    VALUES ($time, $online, 1, $online)
+    INSERT INTO online_analytics (time, online_sum, online_samples, online_average, online_max)
+    VALUES ($time, $online, 1, $online, $online)
     ON CONFLICT(time) DO UPDATE SET
       online_sum = online_sum + excluded.online_sum,
       online_samples = online_samples + excluded.online_samples,
       online_average = CAST(online_sum + excluded.online_sum AS REAL)
-        / (online_samples + excluded.online_samples)
+        / (online_samples + excluded.online_samples),
+      online_max = MAX(online_max, excluded.online_max)
   `).run({ time, online })
 }
 
@@ -3714,7 +3722,7 @@ function onlineAnalyticsPayload(range: typeof onlineAnalyticsRanges[number]) {
     online: number
     time: number
   }, { since: number }>(`
-    SELECT time, online_average AS online
+    SELECT time, online_max AS online
     FROM online_analytics
     WHERE time >= $since
     ORDER BY time
