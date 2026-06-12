@@ -56,10 +56,21 @@ export function restoreClubState(options: {
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
     options.styleController.bottomStyleIndex = normalizeIndex(state.bottomStyleIndex ?? state.pantsColorIndex
       ?? options.styleController.bottomStyleIndex, jewelPalette.length * 2)
-    options.setInputLayout(state.inputLayout ?? (state.alternativeInput ?? true ? 'wasd' : 'ijkl'))
+    options.setInputLayout(restoreInputLayout(state.inputLayout, state.alternativeInput))
     options.styleController.setTopStyle()
     options.styleController.setBottomStyle()
   }
+}
+
+/**
+ * Restores the new layout enum while preserving saves from the old two-layout boolean setting.
+ */
+function restoreInputLayout(value: unknown, alternativeInput: boolean | undefined): InputLayout {
+  if (value === 'wasd' || value === 'ijkl' || value === 'zqsd') {
+    return value
+  }
+
+  return alternativeInput ?? true ? 'wasd' : 'ijkl'
 }
 
 export function saveClubState(options: {
