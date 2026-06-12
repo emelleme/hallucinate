@@ -130,7 +130,7 @@ function alternativeActionRowForLayout(value: InputLayout): HelpKey[] {
   return [
     { keys: ['g'], label: 'sunglasses' },
     { keys: ['t'], label: 'view' },
-    { keys: [value === 'ijkl' ? ';' : 'f'], label: 'camera' },
+    { keys: [value === 'ijkl' ? 'o' : 'f'], label: 'camera' },
     { keys: ['y'], label: 'breakdance' },
   ]
 }
