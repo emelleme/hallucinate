@@ -641,7 +641,7 @@ function activePlayerTarget(player: Player, time: number, outsideTree: CircleBou
     return travelPathTarget(player, doorTarget(player), outsideTree)
   }
 
-  return travelPathTarget(player, travelTarget(player, time), outsideTree)
+  return activeTravelTarget(player, travelTarget(player, time), outsideTree)
 }
 
 function doorFlow(player: Player) {
@@ -739,7 +739,7 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
     return upstairsDoorTarget
   }
 
-  return travelPathTarget(player, travelTarget(player, time), outsideTree)
+  return travelTarget(player, time)
 }
 
 function downstairsTravelTarget(player: Player, time: number, outsideTree: CircleBounds) {
@@ -766,7 +766,13 @@ function downstairsTravelTarget(player: Player, time: number, outsideTree: Circl
     return travelPathTarget(player, doorTarget(player), outsideTree)
   }
 
-  return travelPathTarget(player, travelTarget(player, time), outsideTree)
+  return activeTravelTarget(player, travelTarget(player, time), outsideTree)
+}
+
+function activeTravelTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
+  return isOutside(player.position) && player.destination.outside
+    ? travelPathTarget(player, target, outsideTree)
+    : target
 }
 
 function upstairsStairClimbTarget(position: Vec3): Vec3 {
