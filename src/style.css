@@ -416,6 +416,7 @@ canvas {
 #photo-viewer-previous,
 #photo-viewer-next,
 #photo-viewer-like,
+#photo-viewer-delete,
 #photo-viewer-close,
 .photo-viewer-control {
   position: absolute;
@@ -461,12 +462,21 @@ canvas {
   font-size: 17px;
 }
 
+#photo-viewer-delete,
+.photo-viewer-delete {
+  left: calc(50% + 168px);
+  transform: translateX(-50%);
+  font-size: 18px;
+}
+
 #photo-viewer-previous:disabled,
 #photo-viewer-next:disabled,
 #photo-viewer-like:disabled,
+#photo-viewer-delete:disabled,
 .photo-viewer-previous:disabled,
 .photo-viewer-next:disabled,
-.photo-viewer-like:disabled {
+.photo-viewer-like:disabled,
+.photo-viewer-delete:disabled {
   cursor: default;
   opacity: 0.42;
 }

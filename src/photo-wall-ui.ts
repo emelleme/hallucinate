@@ -80,6 +80,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const viewerPrevious = document.createElement('button')
   const viewerNext = document.createElement('button')
   const viewerLike = document.createElement('button')
+  const viewerDelete = document.createElement('button')
   const viewerClose = document.createElement('button')
   const flightItem = document.createElement('div')
   const flightImage = document.createElement('img')
@@ -110,6 +111,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerPrevious.id = 'photo-viewer-previous'
   viewerNext.id = 'photo-viewer-next'
   viewerLike.id = 'photo-viewer-like'
+  viewerDelete.id = 'photo-viewer-delete'
   viewerClose.id = 'photo-viewer-close'
   flightItem.className = 'photo-wall-item'
   flightItem.dataset.photo = 'true'
@@ -119,6 +121,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerPrevious.className = 'photo-viewer-control photo-viewer-previous'
   viewerNext.className = 'photo-viewer-control photo-viewer-next'
   viewerLike.className = 'photo-viewer-control photo-viewer-like'
+  viewerDelete.className = 'photo-viewer-control photo-viewer-delete'
   viewerClose.className = 'photo-viewer-control photo-viewer-close'
   viewerImage.alt = 'photo'
   viewerImage.className = 'photo-viewer-image'
@@ -132,12 +135,16 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerNext.setAttribute('aria-label', 'next photo')
   viewerLike.type = 'button'
   viewerLike.setAttribute('aria-label', 'like photo')
+  viewerDelete.type = 'button'
+  viewerDelete.textContent = '🗑'
+  viewerDelete.hidden = true
+  viewerDelete.setAttribute('aria-label', 'delete photo')
   viewerClose.type = 'button'
   viewerClose.textContent = '✕'
   viewerClose.setAttribute('aria-label', 'close photo')
   flightItem.append(flightImage)
   panel.append(grid, flightGrid)
-  viewerPolaroid.append(viewerImage, viewerPrevious, viewerNext, viewerLike, viewerClose)
+  viewerPolaroid.append(viewerImage, viewerPrevious, viewerNext, viewerLike, viewerDelete, viewerClose)
   viewerStage.append(viewerPolaroid)
   viewer.append(viewerStage)
   element.append(panel)
@@ -159,6 +166,13 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }
 
     void likePhoto(viewedPhoto)
+  })
+  viewerDelete.addEventListener('click', () => {
+    if (!viewedPhoto) {
+      throw new Error('Missing viewed photo')
+    }
+
+    void deletePhoto(viewedPhoto)
   })
   viewer.addEventListener('keydown', event => {
     const key = event.key.toLowerCase()
@@ -218,6 +232,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       return openViewer(photo, page.photos.findIndex(item => item.timestamp === photo.timestamp), source)
     },
     syncAdmin() {
+      syncViewerAdmin()
       render()
     },
     update(camera: Camera, projector: WallProjector) {
@@ -676,6 +691,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     viewerPolaroid.style.setProperty('--photo-viewer-tilt', `${tilt}deg`)
     syncViewerNav(index)
     syncLikeButton(viewerLike, photo)
+    syncViewerAdmin()
     preloadNeighborPhotos(index)
     syncViewerSource(photo)
 
@@ -717,6 +733,42 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }
 
     return next
+  }
+
+  async function deletePhoto(photo: Photo) {
+    const { pass } = options.admin()
+    const response = await fetch(`/api/photos/${photo.timestamp}`, {
+      body: JSON.stringify({ pass }),
+      headers: { 'content-type': 'application/json' },
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Photo delete failed ${response.status}`)
+    }
+
+    await jsonApiResponse<{ ok: true }>(response, 'Photo delete')
+    removePhoto(photo)
+  }
+
+  function removePhoto(photo: Photo) {
+    const index = page.photos.findIndex(item => item.timestamp === photo.timestamp)
+    const next = page.photos[index + 1] ?? page.photos[index - 1]
+
+    page = {
+      ...page,
+      photos: page.photos.filter(item => item.timestamp !== photo.timestamp),
+      total: page.total - 1,
+    }
+    fullPhotoPreloads.delete(photo.url)
+    render(false, grid.scrollTop)
+
+    if (next) {
+      void openViewer(next, page.photos.findIndex(item => item.timestamp === next.timestamp), photoSource(next), false)
+      return
+    }
+
+    closeViewerNow()
   }
 
   function photoElement(photo: Photo) {
@@ -761,6 +813,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   function syncViewerNav(index: number) {
     viewerPrevious.disabled = loading || index <= 0
     viewerNext.disabled = loading || index + 1 >= page.total
+  }
+
+  function syncViewerAdmin() {
+    viewerDelete.hidden = !options.admin().enabled
   }
 
   function syncViewedPhoto() {
