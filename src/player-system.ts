@@ -97,6 +97,9 @@ const doorFlowInside = roomBounds.front - 1.65
 const doorFlowOutside = roomBounds.front + 1.95
 const doorClearInside = roomBounds.front - 2.05
 const doorClearOutside = roomBounds.front + 2.35
+const doorApproachInside = doorFlowInside + 0.2
+const doorApproachOutside = doorFlowOutside - 0.2
+const npcPathOptions = { clearance: 0.18 } as const
 const upstairsFloor = characterFloor + outsideRooftop.height
 const upstairsStairBottom: Vec3 = [
   outsideRooftopStairs.x,
@@ -624,21 +627,21 @@ function turnTowardDestination(player: Player, delta: number) {
 }
 
 function activePlayerTarget(player: Player, time: number, outsideTree: CircleBounds) {
+  const zone = roomAt(player.position)
+
   if (player.destination.zone === 'upstairs') {
     return upstairsTravelTarget(player, time, outsideTree)
   }
 
-  if (!doorFlow(player)) {
-    const target = travelTarget(player, time)
-
-    if (isOutside(player.position) && player.destination.outside) {
-      return travelPathTarget(player, target, outsideTree)
-    }
-
-    return target
+  if (zone === 'upstairs' || onUpstairsExitPath(player.position)) {
+    return downstairsTravelTarget(player, time, outsideTree)
   }
 
-  return doorTarget(player)
+  if (doorFlow(player)) {
+    return travelPathTarget(player, doorTarget(player), outsideTree)
+  }
+
+  return travelPathTarget(player, travelTarget(player, time), outsideTree)
 }
 
 function doorFlow(player: Player) {
@@ -648,6 +651,10 @@ function doorFlow(player: Player) {
 
 function destinationNeedsBackDoor(player: Player) {
   const zone = roomAt(player.position)
+
+  if (zone === 'upstairs') {
+    return player.destination.zone !== 'upstairs'
+  }
 
   return player.destination.zone === 'upstairs'
     ? zone === 'inside'
@@ -661,16 +668,26 @@ function inDoorFlow(position: Vec3) {
 }
 
 function doorTarget(player: Player) {
-  if (player.doorTarget) {
+  const z = doorTargetZ(player)
+
+  if (player.doorTarget?.[2] === z) {
     return player.doorTarget
   }
 
-  const lane = seededRange(player.seed, Math.floor(player.destinationUntil! * 5.3), -doorLaneRange, doorLaneRange)
-  const z = player.destination.outside || player.destination.zone === 'upstairs' ? doorClearOutside : doorClearInside
+  const x = player.doorTarget?.[0]
+    ?? backDoor.x + seededRange(player.seed, Math.floor(player.destinationUntil! * 5.3), -doorLaneRange, doorLaneRange)
 
-  player.doorTarget = [backDoor.x + lane, characterFloor, z]
+  player.doorTarget = [x, characterFloor, z]
 
   return player.doorTarget
+}
+
+function doorTargetZ(player: Player) {
+  if (inDoorFlow(player.position)) {
+    return player.destination.outside || player.destination.zone === 'upstairs' ? doorClearOutside : doorClearInside
+  }
+
+  return isOutside(player.position) ? doorApproachOutside : doorApproachInside
 }
 
 function travelTarget(player: Player, time: number) {
@@ -705,7 +722,7 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
   const zone = roomAt(player.position)
 
   if (zone === 'inside' || inDoorFlow(player.position)) {
-    return doorTarget(player)
+    return travelPathTarget(player, doorTarget(player), outsideTree)
   }
 
   if (player.position[1] < upstairsFloor - 0.7) {
@@ -725,11 +742,50 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
   return travelPathTarget(player, travelTarget(player, time), outsideTree)
 }
 
+function downstairsTravelTarget(player: Player, time: number, outsideTree: CircleBounds) {
+  const onStairs = onUpstairsStairPath(player.position)
+  const nearStairTop = distanceSq(player.position, upstairsStairTop) <= npcConfig.arrive.waypoint ** 2
+
+  if (player.position[1] > upstairsFloor - 0.7 || (onStairs && player.position[1] > characterFloor + 0.7)) {
+    if (!onStairs && !nearStairTop
+      && distanceSq(player.position, upstairsDoorTarget) > npcConfig.arrive.waypoint ** 2)
+    {
+      return upstairsDoorTarget
+    }
+
+    if (!onStairs && !nearStairTop
+      && distanceSq(player.position, upstairsStairTop) > npcConfig.arrive.waypoint ** 2)
+    {
+      return upstairsStairTop
+    }
+
+    return upstairsStairDescendTarget(player.position)
+  }
+
+  if (doorFlow(player)) {
+    return travelPathTarget(player, doorTarget(player), outsideTree)
+  }
+
+  return travelPathTarget(player, travelTarget(player, time), outsideTree)
+}
+
 function upstairsStairClimbTarget(position: Vec3): Vec3 {
   const stairBack = outsideRooftopStairs.z - outsideRooftopStairs.depth / 2
   const nextZ = Math.max(stairBack + 0.35, position[2] - 0.55)
 
   return nextZ <= stairBack + 0.4 ? upstairsStairTop : [outsideRooftopStairs.x, position[1], nextZ]
+}
+
+function upstairsStairDescendTarget(position: Vec3): Vec3 {
+  const stairFront = outsideRooftopStairs.z + outsideRooftopStairs.depth / 2
+  const nextZ = Math.min(stairFront - 0.35, position[2] + 0.55)
+
+  return nextZ >= stairFront - 0.4 ? upstairsStairBottom : [outsideRooftopStairs.x, position[1], nextZ]
+}
+
+function onUpstairsExitPath(position: Vec3) {
+  return position[1] > upstairsFloor - 0.7
+    || (onUpstairsStairPath(position) && position[1] > characterFloor + 0.7)
 }
 
 function onUpstairsStairPath(position: Vec3) {
@@ -741,7 +797,7 @@ function onUpstairsStairPath(position: Vec3) {
 
 function travelPathTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
   if (!player.travelPathTarget || !samePoint(player.travelPathTarget, target)) {
-    player.travelPath = findPath(player.position, target, outsideTree)
+    player.travelPath = findPath(player.position, target, outsideTree, npcPathOptions)
     player.travelPathTarget = target
   }
 

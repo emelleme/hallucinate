@@ -87,6 +87,9 @@ type CollisionOptions = {
 type HeightOptions = {
   couches?: boolean
 }
+type WalkableOptions = {
+  clearance?: number
+}
 type PaddedPlatform = {
   bounds: PaddedBounds
   top: number
@@ -531,56 +534,66 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   }
 }
 
-export function isWalkable(x: number, z: number, outsideTree: CircleBounds, y = characterFloor) {
+export function isWalkable(
+  x: number,
+  z: number,
+  outsideTree: CircleBounds,
+  y = characterFloor,
+  options?: WalkableOptions,
+) {
   const point: Vec3 = [x, y, z]
+  const clearance = options?.clearance ?? 0
 
   if (isUpstairs(point)) {
-    return x >= roomBounds.left + 0.55
-      && x <= roomBounds.right - 0.55
-      && z >= roomBounds.back + 0.55
-      && z <= roomBounds.front - 0.55
-      && !inPaddedBounds(x, z, upstairsDjBoothCollision)
-      && upstairsDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && upstairsBarCounterCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && !inPaddedBounds(x, z, upstairsBarDrinkCounterCollision)
-      && upstairsBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && upstairsCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+    return x >= roomBounds.left + 0.55 + clearance
+      && x <= roomBounds.right - 0.55 - clearance
+      && z >= roomBounds.back + 0.55 + clearance
+      && z <= roomBounds.front - 0.55 - clearance
+      && !inPaddedBounds(x, z, upstairsDjBoothCollision, clearance)
+      && upstairsDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && upstairsBarCounterCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && !inPaddedBounds(x, z, upstairsBarDrinkCounterCollision, clearance)
+      && upstairsBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && upstairsCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
   }
 
   if (isOutside(point)) {
-    return x >= outsideBounds.left && x <= outsideBounds.right && z >= outsideBounds.back && z <= outsideBounds.front
-      && !inBuildingWall(x, z, 0.45)
-      && !inTentWall(x, z, 0.35)
-      && !inCircle(x, z, tentPole)
-      && !inCircle(x, z, outsideTree)
-      && !inCircle(x, z, outsidePalmTree)
-      && !inCircle(x, z, outsideBuddha)
-      && !inPaddedBounds(x, z, outsideDjBoothCollision)
-      && !inPaddedBounds(x, z, outsideStageCollision)
-      && !inPaddedBounds(x, z, tentDjBoothCollision)
-      && !inPaddedBounds(x, z, outsideHutBarCollision)
-      && !inOrientedBounds(x, z, outsideFoodTruckCollision, 0.28)
-      && outsideTShirtStandCollisions.every(stand => !inOrientedBounds(x, z, stand.bounds, 0.12))
-      && !inPaddedBounds(x, z, outsidePhotoWallCollision)
-      && !inPaddedBounds(x, z, outsideScheduleWallCollision)
-      && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && outsideStageRockCollisions.every(rock => !inPaddedBounds(x, z, rock.bounds))
-      && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && outsideHutPostCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-      && outsideToiletWallCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+    return x >= outsideBounds.left + clearance
+      && x <= outsideBounds.right - clearance
+      && z >= outsideBounds.back + clearance
+      && z <= outsideBounds.front - clearance
+      && !inBuildingWall(x, z, 0.45 + clearance)
+      && !inTentWall(x, z, 0.35, clearance)
+      && !inCircle(x, z, tentPole, clearance)
+      && !inCircle(x, z, outsideTree, clearance)
+      && !inCircle(x, z, outsidePalmTree, clearance)
+      && !inCircle(x, z, outsideBuddha, clearance)
+      && !inPaddedBounds(x, z, outsideDjBoothCollision, clearance)
+      && !inPaddedBounds(x, z, outsideStageCollision, clearance)
+      && !inPaddedBounds(x, z, tentDjBoothCollision, clearance)
+      && !inPaddedBounds(x, z, outsideHutBarCollision, clearance)
+      && !inOrientedBounds(x, z, outsideFoodTruckCollision, 0.34 + clearance)
+      && outsideTShirtStandCollisions.every(stand => !inOrientedBounds(x, z, stand.bounds, 0.12 + clearance))
+      && !inPaddedBounds(x, z, outsidePhotoWallCollision, clearance)
+      && !inPaddedBounds(x, z, outsideScheduleWallCollision, clearance)
+      && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && outsideStageRockCollisions.every(rock => !inPaddedBounds(x, z, rock.bounds, clearance))
+      && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && outsideHutPostCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && outsideToiletWallCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
   }
 
-  return x >= insideLeft && x <= insideRight
-    && z >= insideBack
-    && (z <= insideFront || isAtBackDoor(point))
+  return x >= insideLeft + clearance && x <= insideRight - clearance
+    && z >= insideBack + clearance
+    && (z <= insideFront - clearance || isAtBackDoor(point, clearance))
     && z <= roomBounds.front + 0.45
-    && !inPaddedBounds(x, z, djBoothCollision)
-    && !inPaddedBounds(x, z, bartenderBarCollision)
-    && !inOrientedBounds(x, z, insideArcadeCollision, 0.28)
-    && bartenderStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
-    && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+    && !inPaddedBounds(x, z, djBoothCollision, clearance)
+    && !inPaddedBounds(x, z, bartenderBarCollision, clearance)
+    && !inOrientedBounds(x, z, insideArcadeCollision, 0.28 + clearance)
+    && bartenderStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+    && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
 }
 
 export function nearInsideArcade(position: Vec3, padding = 0.44) {
@@ -611,13 +624,13 @@ function collideTentWalls(position: Vec3, padding: number) {
   position[2] = tent.z + dz / distance * radius
 }
 
-function inTentWall(x: number, z: number, padding: number) {
+function inTentWall(x: number, z: number, padding: number, clearance = 0) {
   const dx = x - tent.x
   const dz = z - tent.z
   const distance = Math.sqrt(dx * dx + dz * dz)
 
-  return distance < tent.radius + padding && distance > tent.radius - 0.62
-    && !isAtTentDoor([x, characterFloor, z], padding)
+  return distance < tent.radius + padding + clearance && distance > tent.radius - 0.62 - clearance
+    && !isAtTentDoor([x, characterFloor, z], padding + clearance)
 }
 
 export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.46, includeOccupied = false,
@@ -1363,8 +1376,9 @@ function onPaddedPlatform(position: Vec3, bounds: PaddedBounds, height: number) 
   return position[1] > height - platformStep && inPaddedBounds(position[0], position[2], bounds)
 }
 
-function inPaddedBounds(x: number, z: number, bounds: PaddedBounds) {
-  return x > bounds.left && x < bounds.right && z > bounds.back && z < bounds.front
+function inPaddedBounds(x: number, z: number, bounds: PaddedBounds, clearance = 0) {
+  return x > bounds.left - clearance && x < bounds.right + clearance
+    && z > bounds.back - clearance && z < bounds.front + clearance
 }
 
 function inOrientedBounds(x: number, z: number, bounds: OrientedBounds, padding = 0) {
@@ -1484,10 +1498,10 @@ function collideCircle(position: Vec3, bounds: CircleBounds, padding = 0.28) {
   }
 }
 
-function inCircle(x: number, z: number, bounds: CircleBounds) {
+function inCircle(x: number, z: number, bounds: CircleBounds, clearance = 0) {
   const dx = x - bounds.x
   const dz = z - bounds.z
-  const radius = bounds.radius + 0.28
+  const radius = bounds.radius + 0.28 + clearance
 
   return dx * dx + dz * dz < radius * radius
 }
