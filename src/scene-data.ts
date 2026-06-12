@@ -3,7 +3,9 @@ import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 import { characterFloor } from './character-data.ts'
 
 export type TShirtStand = Bounds & { height: number; turn: number }
-export type StageRock = Bounds & { height: number; meshIndex: number; turn: number }
+export type StageDuck = Bounds & { height: number; kind: 'duck'; platformHeight: number; turn: number }
+export type StageRock = Bounds & { height: number; kind: 'rock'; meshIndex: number; turn: number }
+export type StageProp = StageDuck | StageRock
 export type Couch = Bounds & { color: Vec3; face: 'east' | 'north' | 'south' | 'west' }
 
 export const djBooth: Bounds = { x: 0, z: -21.55, width: 3.6, depth: 1.24 }
@@ -36,17 +38,29 @@ export const outsideDjSpeakers: Bounds[] = [
 const outsideStageRockWidth = 1.48
 const outsideStageRockDepth = 1.32
 const outsideStageRockZ = outsideDjBooth.z - outsideDjBooth.depth / 2 - outsideStageRockDepth / 2 + 0.28
-export const outsideStageRocks: StageRock[] = outsideDjSpeakers.map((speaker, index) => {
+export const outsideStageProps: StageProp[] = outsideDjSpeakers.map((speaker, index) => {
   const side = Math.sign(speaker.x)
-
-  return {
+  const base: Bounds & { height: number; turn: number } = {
     x: speaker.x + side * 1.45 + (side > 0 ? 2.5 : 0),
     z: (outsideStageRockZ + outsideTreeStart.z) * 0.45,
     width: outsideStageRockWidth,
     depth: outsideStageRockDepth,
-    height: index === 0 ? 1.08 : 1,
-    meshIndex: index === 0 ? 8 : 2,
+    height: index === 0 ? 2.16 : 1,
     turn: side * 0.42,
+  }
+
+  if (index === 0) {
+    return {
+      ...base,
+      kind: 'duck',
+      platformHeight: 1.08,
+    }
+  }
+
+  return {
+    ...base,
+    kind: 'rock',
+    meshIndex: 2,
   }
 })
 export const outsideBuddha: CircleBounds = { x: 11.5, z: 27.9, radius: 1.05 }

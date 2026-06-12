@@ -11,7 +11,7 @@ const defaultTreeShadowLight = normalize([-0.55, -1, -0.7])
 
 export function createTreeMeshes(
   scene: AssimpScene,
-  name = 'trees.fbx',
+  name = 'trees',
   height = 12.9,
   color: TreeMeshColor = treeMeshColor,
   sourceUp: SourceUp = 'z',

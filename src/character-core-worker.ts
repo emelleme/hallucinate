@@ -7,7 +7,7 @@ import {
   validateCharacterRig,
 } from './character-rig.ts'
 import { normalizeIndex } from './math.ts'
-import { loadPackedAssimpScene } from './packed-assimp.ts'
+import { loadPackedAssimpScene, packedAssimpAssetPath } from './packed-assimp.ts'
 import type { AssimpScene, CharacterRig, HairMesh } from './types.ts'
 
 type CoreRequest = {
@@ -33,13 +33,13 @@ type CoreErrorResponse = {
 }
 
 const coreFiles = [
-  { path: '/stand.fbx', name: 'stand.fbx' },
-  { path: '/run.fbx', name: 'run.fbx' },
-  { path: '/jump.fbx', name: 'jump.fbx' },
-  { path: '/wave.fbx', name: 'wave.fbx' },
-  { path: '/breakdance.fbx', name: 'breakdance.fbx' },
-  { path: '/man-hair.fbx', name: 'man-hair.fbx' },
-  { path: '/woman-hair.fbx', name: 'woman-hair.fbx' },
+  { path: packedAssimpAssetPath('stand'), name: 'stand' },
+  { path: packedAssimpAssetPath('run'), name: 'run' },
+  { path: packedAssimpAssetPath('jump'), name: 'jump' },
+  { path: packedAssimpAssetPath('wave'), name: 'wave' },
+  { path: packedAssimpAssetPath('breakdance'), name: 'breakdance' },
+  { path: packedAssimpAssetPath('man-hair'), name: 'man-hair' },
+  { path: packedAssimpAssetPath('woman-hair'), name: 'woman-hair' },
 ] as const
 
 let assimp: Promise<Awaited<ReturnType<typeof assimpjs>>> | undefined
@@ -68,18 +68,18 @@ async function loadCore(request: CoreRequest): Promise<CoreLoadedResponse> {
   }
 
   const [stand, run, jump, wave, breakdance, manHair, womanHair] = scenes
-  const standClip = createCharacterClip(stand!, 'stand.fbx')
-  const waveClip = createCharacterClip(wave!, 'wave.fbx')
+  const standClip = createCharacterClip(stand!, 'stand')
+  const waveClip = createCharacterClip(wave!, 'wave')
   const rig: CharacterRig = {
     root: stand!.rootnode,
     nodes: createRigNodes(stand!.rootnode),
     clips: {
       stand: standClip,
-      run: createCharacterClip(run!, 'run.fbx'),
-      jump: createCharacterClip(jump!, 'jump.fbx'),
+      run: createCharacterClip(run!, 'run'),
+      jump: createCharacterClip(jump!, 'jump'),
       wave: waveClip,
       waveOut: waveClip,
-      breakdance: createCharacterClip(breakdance!, 'breakdance.fbx'),
+      breakdance: createCharacterClip(breakdance!, 'breakdance'),
       manSitting: standClip,
       womanSitting: standClip,
       dances: [],

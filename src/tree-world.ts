@@ -36,9 +36,9 @@ export async function loadOutsideTree(
   options: OutsideTreeOptions = {
     color: index => treeMeshColor(index),
     height: 12.9,
-    name: 'trees.fbx',
+    name: 'trees',
     nodeTransforms: false,
-    path: '/trees.fbx',
+    path: '/packed/trees.json',
     shadow: true,
     sourceUp: 'z',
   },

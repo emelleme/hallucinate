@@ -7,32 +7,33 @@ import {
   validateCharacterRig,
 } from './character-rig.ts'
 import { normalizeIndex } from './math.ts'
+import { packedAssimpAssetPath } from './packed-assimp.ts'
 import { afterNextPaint } from './startup.ts'
 import type { CharacterRig } from './types.ts'
 
 type LoadProgress = () => void
 
-export const idleClipNames = ['stand.fbx', ...Array.from({ length: 19 }, (_, i) => `dance${i + 1}.fbx`)]
+export const idleClipNames = ['stand', ...Array.from({ length: 19 }, (_, i) => `dance${i + 1}`)]
 const danceClipFiles = [
-  { name: 'dance1.fbx', size: 769744 },
-  { name: 'dance2.fbx', size: 1446560 },
-  { name: 'dance3.fbx', size: 1976080 },
-  { name: 'dance4.fbx', size: 2214176 },
-  { name: 'dance5.fbx', size: 515344 },
-  { name: 'dance6.fbx', size: 767728 },
-  { name: 'dance7.fbx', size: 1873360 },
-  { name: 'dance8.fbx', size: 1576560 },
-  { name: 'dance9.fbx', size: 1083520 },
-  { name: 'dance10.fbx', size: 1493488 },
-  { name: 'dance11.fbx', size: 1556096 },
-  { name: 'dance12.fbx', size: 2497456 },
-  { name: 'dance13.fbx', size: 1643456 },
-  { name: 'dance14.fbx', size: 806704 },
-  { name: 'dance15.fbx', size: 610384 },
-  { name: 'dance16.fbx', size: 589312 },
-  { name: 'dance17.fbx', size: 541264 },
-  { name: 'dance18.fbx', size: 2024016 },
-  { name: 'dance19.fbx', size: 1234000 },
+  { name: 'dance1', size: 504964 },
+  { name: 'dance2', size: 1814212 },
+  { name: 'dance3', size: 2726176 },
+  { name: 'dance4', size: 2895454 },
+  { name: 'dance5', size: 274763 },
+  { name: 'dance6', size: 708862 },
+  { name: 'dance7', size: 2444241 },
+  { name: 'dance8', size: 2012670 },
+  { name: 'dance9', size: 1189908 },
+  { name: 'dance10', size: 1875056 },
+  { name: 'dance11', size: 1889325 },
+  { name: 'dance12', size: 3447648 },
+  { name: 'dance13', size: 2099605 },
+  { name: 'dance14', size: 736089 },
+  { name: 'dance15', size: 343541 },
+  { name: 'dance16', size: 285425 },
+  { name: 'dance17', size: 317935 },
+  { name: 'dance18', size: 2649014 },
+  { name: 'dance19', size: 1496898 },
 ]
 const cheapDanceClipCount = 5
 const danceClipFilesBySize = [...danceClipFiles].sort((a, b) => a.size - b.size)
@@ -45,24 +46,24 @@ export const characterCoreChunkCount = 7
 
 export async function loadCharacterAssets(onProgress?: LoadProgress) {
   const [stand, run, jump, wave, breakdance] = await Promise.all([
-    loadCharacterAsset('/stand.fbx', 'stand.fbx', onProgress),
-    loadCharacterAsset('/run.fbx', 'run.fbx', onProgress),
-    loadCharacterAsset('/jump.fbx', 'jump.fbx', onProgress),
-    loadCharacterAsset('/wave.fbx', 'wave.fbx', onProgress),
-    loadCharacterAsset('/breakdance.fbx', 'breakdance.fbx', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('stand'), 'stand', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('run'), 'run', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('jump'), 'jump', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('wave'), 'wave', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('breakdance'), 'breakdance', onProgress),
   ])
-  const standClip = createCharacterClip(stand!, 'stand.fbx')
-  const waveClip = createCharacterClip(wave!, 'wave.fbx')
+  const standClip = createCharacterClip(stand!, 'stand')
+  const waveClip = createCharacterClip(wave!, 'wave')
   const rig: CharacterRig = {
     root: stand!.rootnode,
     nodes: createRigNodes(stand!.rootnode),
     clips: {
       stand: standClip,
-      run: createCharacterClip(run!, 'run.fbx'),
-      jump: createCharacterClip(jump!, 'jump.fbx'),
+      run: createCharacterClip(run!, 'run'),
+      jump: createCharacterClip(jump!, 'jump'),
       wave: waveClip,
       waveOut: waveClip,
-      breakdance: createCharacterClip(breakdance!, 'breakdance.fbx'),
+      breakdance: createCharacterClip(breakdance!, 'breakdance'),
       manSitting: standClip,
       womanSitting: standClip,
       dances: [],
@@ -82,8 +83,8 @@ export async function loadCharacterHair(
   onProgress?: LoadProgress,
 ) {
   const [manHair, womanHair] = await Promise.all([
-    loadCharacterAsset('/man-hair.fbx', 'man-hair.fbx', onProgress),
-    loadCharacterAsset('/woman-hair.fbx', 'woman-hair.fbx', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('man-hair'), 'man-hair', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('woman-hair'), 'woman-hair', onProgress),
   ])
   const hairMeshes = [...createHairMeshes(manHair!, 'man'), ...createHairMeshes(womanHair!, 'woman')]
 
@@ -100,13 +101,13 @@ export async function loadCharacterHair(
 
 export async function loadCharacterDetails(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig']) {
   const [manSitting, womanSitting] = await loadAssimpScenes([
-    { path: '/man-sitting.fbx', name: 'man-sitting.fbx' },
-    { path: '/woman-sitting.fbx', name: 'woman-sitting.fbx' },
+    { path: packedAssimpAssetPath('man-sitting'), name: 'man-sitting' },
+    { path: packedAssimpAssetPath('woman-sitting'), name: 'woman-sitting' },
   ])
 
   await afterNextPaint()
-  rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting.fbx')
-  rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting.fbx')
+  rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting')
+  rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting')
 }
 
 async function loadCharacterAsset(path: string, name: string, onProgress?: LoadProgress) {
@@ -134,7 +135,7 @@ export async function loadCharacterDance(rig: Awaited<ReturnType<typeof loadChar
     return
   }
 
-  const dance = await loadAssimpScene(`/${name}`, name)
+  const dance = await loadAssimpScene(packedAssimpAssetPath(name), name)
 
   await afterNextPaint()
   rig.clips.dances[idleClipIndex - 1] = createCharacterClip(dance, name)

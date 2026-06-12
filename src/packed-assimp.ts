@@ -1,5 +1,9 @@
 import type { AssimpScene } from './types.ts'
 
+export function packedAssimpAssetPath(name: string) {
+  return `/packed/${name}.json`
+}
+
 export function packedAssimpPath(path: string) {
   const file = path.split('/').pop()
 
@@ -7,7 +11,7 @@ export function packedAssimpPath(path: string) {
     throw new Error(`Invalid Assimp path ${path}`)
   }
 
-  return `/packed/${file.replace(/\.fbx$/i, '.json')}`
+  return path.endsWith('.json') ? path : packedAssimpAssetPath(file.replace(/\.fbx$/i, ''))
 }
 
 export async function loadPackedAssimpScene(path: string): Promise<AssimpScene | undefined> {

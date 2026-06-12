@@ -32,7 +32,7 @@ import {
   outsideRooftopStairs,
   outsideScheduleWall,
   outsideStage,
-  outsideStageRocks,
+  outsideStageProps,
   outsideToiletDoor,
   outsideToilets,
   outsideTShirtStands,
@@ -177,9 +177,9 @@ const outsideRooftopStairSideInset = 0.24
 const outsideRooftopStairWalkLift = 0.12
 const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outsideRooftopLanding.width / 2
   - (outsideRooftop.x - outsideRooftop.width / 2) + 0.05
-const outsideStageRockCollisions: PaddedPlatform[] = outsideStageRocks.map(rock => ({
-  bounds: paddedBounds(rock, 0.18),
-  top: characterFloor + rock.height - 0.1,
+const outsideStagePropCollisions: PaddedPlatform[] = outsideStageProps.map(prop => ({
+  bounds: paddedBounds(prop, 0.18),
+  top: characterFloor + ('platformHeight' in prop ? prop.platformHeight : prop.height - 0.1),
 }))
 const emptySeats = new Set<string>()
 
@@ -316,9 +316,9 @@ export function collideRoom(
         collidePaddedBounds(position, speaker)
       }
     }
-    for (const rock of outsideStageRockCollisions) {
-      if (!onPaddedPlatform(position, rock.bounds, rock.top)) {
-        collidePaddedBounds(position, rock.bounds)
+    for (const prop of outsideStagePropCollisions) {
+      if (!onPaddedPlatform(position, prop.bounds, prop.top)) {
+        collidePaddedBounds(position, prop.bounds)
       }
     }
     for (const speaker of tentDjSpeakerCollisions) {
@@ -520,8 +520,8 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   for (const speaker of outsideDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
   }
-  for (const rock of outsideStageRockCollisions) {
-    collideSpherePaddedBounds(position, radius, rock.bounds, rock.top)
+  for (const prop of outsideStagePropCollisions) {
+    collideSpherePaddedBounds(position, radius, prop.bounds, prop.top)
   }
   for (const speaker of tentDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
@@ -584,7 +584,7 @@ export function isWalkable(
       && !inPaddedBounds(x, z, outsidePhotoWallCollision, clearance)
       && !inPaddedBounds(x, z, outsideScheduleWallCollision, clearance)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
-      && outsideStageRockCollisions.every(rock => !inPaddedBounds(x, z, rock.bounds, clearance))
+      && outsideStagePropCollisions.every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
@@ -1356,10 +1356,10 @@ function platformHeight(x: number, z: number, outside: boolean) {
       return speakerTop
     }
 
-    const stageRock = outsideStageRockCollisions.find(rock => inPaddedBounds(x, z, rock.bounds))
+    const stageProp = outsideStagePropCollisions.find(prop => inPaddedBounds(x, z, prop.bounds))
 
-    if (stageRock) {
-      return stageRock.top
+    if (stageProp) {
+      return stageProp.top
     }
 
     if (inPaddedBounds(x, z, outsideHutBarCollision)) {

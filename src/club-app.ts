@@ -57,7 +57,7 @@ import {
   outsideHutDrinkWall,
   outsidePalmTree,
   outsideRooftop,
-  outsideStageRocks,
+  outsideStageProps,
   outsideToilets,
   outsideTreeStart,
   outsideTShirtStands,
@@ -1479,6 +1479,17 @@ function arcadeMeshColor(index: number): Vec3 {
   return arcadeMeshColors[index]!
 }
 
+const duckMeshColors: Vec3[] = [
+  [0.69, 0.49, 0.014],
+  [0.6, 0.1, 0.008],
+  [0.01, 0.008, 0.006],
+  [0.8, 0.8, 0.72],
+]
+
+function duckMeshColor(index: number): Vec3 {
+  return duckMeshColors[index]!
+}
+
 function outsidePlantPlacements() {
   const meshIndices = [0, 1, 4, 5, 6, 7]
   const placements: Array<{
@@ -1514,18 +1525,43 @@ function outsidePlantPlacements() {
   return placements
 }
 
-function rockPlacements() {
-  const placements: Array<{
-    height: number
-    meshIndex: number
-    position: [number, number, number]
-    turn: number
-  }> = outsideStageRocks.map(rock => ({
-    height: rock.height,
-    meshIndex: rock.meshIndex,
-    position: [rock.x, characterFloor, rock.z] as [number, number, number],
-    turn: rock.turn,
-  }))
+type OutsideStaticPropPlacement = {
+  color: Vec3 | ((meshIndex: number) => Vec3)
+  height: number
+  meshIndex?: number
+  nodeTransforms?: boolean
+  path: string
+  position: [number, number, number]
+  sourceUp: 'y' | 'z'
+  triangleAreaSquaredMin?: number
+  turn: number
+}
+
+function outsideStaticPropPlacements() {
+  const placements: OutsideStaticPropPlacement[] = outsideStageProps.map(prop => {
+    if (prop.kind === 'duck') {
+      return {
+        color: duckMeshColor,
+        height: prop.height,
+        nodeTransforms: true,
+        path: '/packed/duck.json',
+        position: [prop.x, characterFloor, prop.z],
+        sourceUp: 'y',
+        triangleAreaSquaredMin: 0.0000000001,
+        turn: prop.turn,
+      }
+    }
+
+    return {
+      color: [0.29, 0.27, 0.24],
+      height: prop.height,
+      meshIndex: prop.meshIndex,
+      path: '/packed/rocks.json',
+      position: [prop.x, characterFloor, prop.z],
+      sourceUp: 'z',
+      turn: prop.turn,
+    }
+  })
   const count = 92
   const inset = 1.15
 
@@ -1555,9 +1591,12 @@ function rockPlacements() {
     }
 
     placements.push({
+      color: [0.29, 0.27, 0.24],
       height: mix(0.28, 0.9, seededRockRandom(i, 5)),
       meshIndex: Math.floor(seededRockRandom(i, 6) * 24),
+      path: '/packed/rocks.json',
       position,
+      sourceUp: 'z',
       turn: seededRockRandom(i, 7) * Math.PI * 2,
     })
   }
@@ -4823,9 +4862,9 @@ function loadMainWorldOnce() {
         loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
           color: palmTreeMeshColor,
           height: 5.94,
-          name: 'palmtree.fbx',
+          name: 'palmtree',
           nodeTransforms: true,
-          path: '/palmtree.fbx',
+          path: '/packed/palmtree.json',
           shadow: true,
           sourceUp: 'y',
         })
@@ -4841,7 +4880,7 @@ function loadMainWorldOnce() {
           color: arcadeMeshColor,
           height: insideArcade.height,
           lightBounds: { x: insideArcade.x, z: insideArcade.z, radius: 1.2, nightUplight: 4.8 },
-          path: '/arcade.fbx',
+          path: '/packed/arcade.json',
           position: [insideArcade.x, characterFloor, insideArcade.z],
           sourceUp: 'y',
           turn: insideArcade.turn,
@@ -4856,7 +4895,7 @@ function loadMainWorldOnce() {
           color: [1, 1, 1],
           height: 2.9,
           lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95, nightUplight: 7.2 },
-          path: '/buddha.fbx',
+          path: '/packed/buddha.json',
           position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
           sourceUp: 'z',
           texture: true,
@@ -4873,7 +4912,7 @@ function loadMainWorldOnce() {
           color: [0.72, 0.72, 0.68],
           height: 2.4,
           lightBounds: outsideFoodTruck,
-          path: '/foodtruck.fbx',
+          path: '/packed/foodtruck.json',
           position: [outsideFoodTruck.x, characterFloor, outsideFoodTruck.z],
           sourceUp: 'z',
           trianglePattern: foodTruckGraffitiTriangle,
@@ -4885,15 +4924,9 @@ function loadMainWorldOnce() {
           .catch((error: unknown) => {
             console.error(error)
           }),
-        loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
-          color: [0.29, 0.27, 0.24],
-          height: rock.height,
-          lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
-          meshIndex: rock.meshIndex,
-          path: '/rocks.fbx',
-          position: rock.position,
-          sourceUp: 'z',
-          turn: rock.turn,
+        loadStaticFbxObjects(vertices, outsideStaticPropPlacements().map(prop => ({
+          ...prop,
+          lightBounds: { x: prop.position[0], z: prop.position[2], radius: 0.7 },
         })), addSunLitTriangle)
           .then(() => {
             rocksLoaded = true
@@ -4902,13 +4935,13 @@ function loadMainWorldOnce() {
           .catch((error: unknown) => {
             console.error(error)
           }),
-        loadStaticFbxObjects(vertices, '/plants.fbx', outsidePlantPlacements().map(plant => ({
+        loadStaticFbxObjects(vertices, outsidePlantPlacements().map(plant => ({
           color: outsidePlantMeshColor,
           height: plant.height,
           lightBounds: { x: plant.position[0], z: plant.position[2], radius: 0.92 },
           meshIndex: plant.meshIndex,
           nodeTransforms: true,
-          path: '/plants.fbx',
+          path: '/packed/plants.json',
           position: plant.position,
           sourceUp: 'y',
           turn: plant.turn,
@@ -5020,13 +5053,13 @@ let loftStatuesLoad: Promise<void> | undefined
 function loadLoftStatuesOnce() {
   loftStatuesLoad ??= Promise.all(loftCornerFigures.map((figure, index) =>
     loadStaticFbxObjectWithPose(loftVertices, {
-      animationPath: '/idle.fbx',
+      animationPath: '/packed/idle.json',
       animationTime: 0,
       color: [0.82, 0.82, 0.78],
       height: 2.55,
       lightBounds: figure,
       nodeTransforms: true,
-      path: index === 0 ? '/arissa.fbx' : '/medea.fbx',
+      path: index === 0 ? '/packed/arissa.json' : '/packed/medea.json',
       position: [figure.x, characterFloor + 0.43, figure.z],
       sourceUp: 'y',
       turn: Math.PI,
@@ -5043,12 +5076,12 @@ function loadLoftStatuesOnce() {
 }
 
 function loadLoftPlantsOnce() {
-  loftPlantsLoad ??= loadStaticFbxObjects(loftVertices, '/plant.fbx', loftPlants.map((plant, index) => ({
+  loftPlantsLoad ??= loadStaticFbxObjects(loftVertices, loftPlants.map((plant, index) => ({
     color: loftPlantMeshColor,
     height: 1.75,
     lightBounds: plant,
     nodeTransforms: true,
-    path: '/plant.fbx',
+    path: '/packed/plant.json',
     position: [plant.x, characterFloor, plant.z],
     sourceUp: 'y',
     turn: index === 0 ? 0.35 : -0.35,

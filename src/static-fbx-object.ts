@@ -33,6 +33,7 @@ type StaticObjectOptions = {
   position: Vec3
   sourceUp: 'y' | 'z'
   texture?: boolean
+  triangleAreaSquaredMin?: number
   trianglePattern?: (a: Vec3, b: Vec3, c: Vec3) => [number, number][] | undefined
   turn: number
 }
@@ -63,15 +64,32 @@ export async function loadStaticFbxObjectWithPose(
 
 export async function loadStaticFbxObjects(
   target: Vertex[],
-  path: string,
   options: StaticObjectOptions[],
   addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: SceneLightBounds) => void,
 ) {
-  const scene = await loadAssimpScene(path, path.slice(1))
+  const groups = new Map<string, StaticObjectOptions[]>()
 
   for (const option of options) {
-    await afterNextPaint()
-    addStaticFbxObject(target, scene, option, addSunLitTriangle)
+    const group = groups.get(option.path)
+
+    if (group) {
+      group.push(option)
+    }
+    else {
+      groups.set(option.path, [option])
+    }
+  }
+
+  const paths = [...groups.keys()]
+  const scenes = await loadAssimpScenes(paths.map(path => ({ path, name: path.slice(1) })))
+
+  for (let i = 0; i < paths.length; i++) {
+    const scene = scenes[i]!
+
+    for (const option of groups.get(paths[i]!)!) {
+      await afterNextPaint()
+      addStaticFbxObject(target, scene, option, addSunLitTriangle)
+    }
   }
 }
 
@@ -83,6 +101,7 @@ function addStaticFbxObject(
   pose?: AssimpScene,
 ) {
   const meshes = createStaticMeshes(scene, options, pose)
+  const triangleAreaSquaredMin = options.triangleAreaSquaredMin ?? 0.00000001
 
   for (const mesh of meshes) {
     for (const face of mesh.faces) {
@@ -90,7 +109,7 @@ function addStaticFbxObject(
       const b = add(options.position, mesh.points[face[1]!]!)
       const c = add(options.position, mesh.points[face[2]!]!)
 
-      if (triangleAreaSquared(a, b, c) > 0.00000001) {
+      if (triangleAreaSquared(a, b, c) > triangleAreaSquaredMin) {
         const index = target.length
         const pattern = mesh.uvs
           ? [mesh.uvs[face[0]!]!, mesh.uvs[face[1]!]!, mesh.uvs[face[2]!]!]
