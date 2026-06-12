@@ -189,7 +189,6 @@ const {
   sunglassesOverlay,
   sunglassesButton,
   perspectiveButton,
-  cameraButton,
   breakdanceButton,
   waveButton,
   bubbleButton,
@@ -483,7 +482,6 @@ function syncOnlineIndicator() {
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   sunglassesButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   perspectiveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
-  cameraButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1465,16 +1463,8 @@ function syncViewButton() {
   perspectiveButton.setAttribute('aria-pressed', String(active))
 }
 
-function syncCameraButton() {
-  const active = cameraController.freeMouse
-
-  cameraButton.dataset.active = String(active)
-  cameraButton.setAttribute('aria-pressed', String(active))
-}
-
 function syncCameraControls() {
   syncViewButton()
-  syncCameraButton()
 }
 
 function toggleView() {
@@ -3606,11 +3596,6 @@ sunglassesButton.addEventListener('click', () => {
 
 perspectiveButton.addEventListener('click', () => {
   toggleView()
-  canvas.focus()
-})
-
-cameraButton.addEventListener('click', () => {
-  toggleCameraControl()
   canvas.focus()
 })
 
