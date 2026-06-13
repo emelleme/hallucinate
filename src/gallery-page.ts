@@ -427,7 +427,7 @@ export function galleryHtml() {
       const preloads = new Map()
       const observer = new IntersectionObserver(entries => {
         if (entries.some(entry => entry.isIntersecting)) {
-          loadNextPage().catch(e => fail(e))
+          loadVisiblePages().catch(e => fail(e))
         }
       }, { rootMargin: '900px' })
 
@@ -527,6 +527,13 @@ export function galleryHtml() {
         loadingPage = appendNextPage()
         await loadingPage
         loadingPage = undefined
+      }
+
+      async function loadVisiblePages() {
+        while (offset < total && statusVisible()) {
+          await loadNextPage()
+          await animationFrame()
+        }
       }
 
       async function appendNextPage() {
@@ -764,6 +771,12 @@ export function galleryHtml() {
 
       function animationFrame() {
         return new Promise(resolve => requestAnimationFrame(resolve))
+      }
+
+      function statusVisible() {
+        const rect = status.getBoundingClientRect()
+
+        return rect.top < innerHeight + 900 && rect.bottom >= -900
       }
 
       async function likePhoto(photo) {
