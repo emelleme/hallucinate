@@ -197,6 +197,9 @@ bool sceneVisible() {
   if (renderZone == 3) {
     return upstairsPoint;
   }
+  if (renderZone == 4) {
+    return true;
+  }
 
   return (outsidePoint && !tentInterior) || (elevatedOutdoorPoint && !upstairsPoint)
     || (shell && light < 0.12) || door;
@@ -298,6 +301,9 @@ bool sceneVisible() {
   }
   if (renderZone == 3) {
     return upstairsPoint && !exteriorDoorCover;
+  }
+  if (renderZone == 4) {
+    return true;
   }
 
   return (outsidePoint && (!tentInterior || tentRoofShell || graffiti)) || (elevatedOutdoorPoint && !upstairsPoint)
@@ -591,6 +597,9 @@ bool sceneVisible() {
   if (renderZone == 3) {
     return upstairsPoint && !exteriorDoorCover;
   }
+  if (renderZone == 4) {
+    return true;
+  }
 
   return (outsidePoint && (!tentInterior || tentRoofShell || graffiti)) || (elevatedOutdoorPoint && !upstairsPoint)
     || (shell && light < 0.12) || door || doorCover;
@@ -642,7 +651,8 @@ bool sceneVisible() {
     && worldPosition.x > -5.75 && worldPosition.x < -3.75
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
-  return renderZone == 3 ? upstairsPoint
+  return renderZone == 4 ? true
+    : renderZone == 3 ? upstairsPoint
     : renderZone == 0 ? ((!outsidePoint && !elevatedOutdoorPoint) || door)
     : renderZone == 2 ? tentPoint
     : ((outsidePoint && !tentInterior) || (elevatedOutdoorPoint && !upstairsPoint));
@@ -750,7 +760,8 @@ bool sceneVisible() {
     && worldPosition.x > -5.75 && worldPosition.x < -3.75
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
-  return renderZone == 3 ? upstairsPoint
+  return renderZone == 4 ? true
+    : renderZone == 3 ? upstairsPoint
     : renderZone == 0 ? ((!outsidePoint && !elevatedOutdoorPoint) || door)
     : renderZone == 2 ? tentPoint
     : ((outsidePoint && !tentInterior) || (elevatedOutdoorPoint && !upstairsPoint) || door);

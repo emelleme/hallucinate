@@ -2055,7 +2055,7 @@ function roomIndex(zone: VideoZone) {
 
 function renderZoneIndex(zone: VideoZone) {
   if (zone === 'loft') {
-    return 3
+    return 4
   }
 
   return zone === 'inside' ? 0 : zone === 'tent' ? 2 : zone === 'upstairs' ? 3 : 1
@@ -4913,6 +4913,7 @@ function startIntroPreload() {
     ...(appSpace.kind === 'loft' ? [trackIntroPreload(loadLoftDecorOnce())] : []),
   ])
     .then(() => {
+      refreshRoomBuffer()
       introPreloadDone = true
     })
     .catch((error: unknown) => {
@@ -5103,6 +5104,7 @@ function loadMainWorldOnce() {
     .then(nextTree => {
       outsideTree = nextTree
       treeLoaded = true
+      refreshRoomBuffer()
     })
     .catch((error: unknown) => {
       console.error(error)
@@ -5121,9 +5123,11 @@ function loadMainWorldOnce() {
         })
           .then(() => {
             palmTreeLoaded = true
+            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
+            refreshRoomBuffer()
             throw error
           }),
         loadOutsideTree(gl, treeShadowMap, vertices, outsideLakePalmTree, addSunLitTriangle, {
@@ -5148,6 +5152,9 @@ function loadMainWorldOnce() {
           sourceUp: 'y',
           turn: insideArcade.turn,
         }, addSunLitTriangle)
+          .then(() => {
+            refreshRoomBuffer()
+          })
           .catch((error: unknown) => {
             console.error(error)
             throw error
@@ -5164,6 +5171,7 @@ function loadMainWorldOnce() {
         }, addSunLitTriangle)
           .then(() => {
             buddhaLoaded = true
+            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
@@ -5179,6 +5187,9 @@ function loadMainWorldOnce() {
           trianglePattern: foodTruckGraffitiTriangle,
           turn: outsideFoodTruckTurn,
         }, addSunLitTriangle)
+          .then(() => {
+            refreshRoomBuffer()
+          })
           .catch((error: unknown) => {
             console.error(error)
             throw error
@@ -5189,6 +5200,7 @@ function loadMainWorldOnce() {
         })), addSunLitTriangle)
           .then(() => {
             rocksLoaded = true
+            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
@@ -5205,15 +5217,16 @@ function loadMainWorldOnce() {
           sourceUp: 'y',
           turn: plant.turn,
         })), addOutsidePlantTriangle)
+          .then(() => {
+            refreshRoomBuffer()
+          })
           .catch((error: unknown) => {
             console.error(error)
             throw error
           }),
       ])
     )
-    .then(() => {
-      refreshRoomBuffer()
-    })
+    .then(() => undefined)
 
   return mainWorldLoad
 }
@@ -5324,7 +5337,9 @@ function loadLoftStatuesOnce() {
       turn: Math.PI,
     }, addLoftStatueTriangle)
   ))
-    .then(() => undefined)
+    .then(() => {
+      refreshRoomBuffer()
+    })
     .catch((error: unknown) => {
       console.error(error)
       throw error
@@ -5344,6 +5359,9 @@ function loadLoftPlantsOnce() {
     sourceUp: 'y',
     turn: index === 0 ? 0.35 : -0.35,
   })), addLoftPlantTriangle)
+    .then(() => {
+      refreshRoomBuffer()
+    })
     .catch((error: unknown) => {
       console.error(error)
       throw error
@@ -5356,7 +5374,5 @@ function loadLoftDecorOnce() {
   return Promise.all([
     loadLoftPlantsOnce(),
     loadLoftStatuesOnce(),
-  ]).then(() => {
-    refreshRoomBuffer()
-  })
+  ]).then(() => undefined)
 }
