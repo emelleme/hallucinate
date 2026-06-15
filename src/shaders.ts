@@ -934,6 +934,16 @@ vec3 bloomGlow(vec2 point) {
 }
 `
 
+const postDitherGlsl = `
+float outputNoise(vec2 point) {
+  return fract(sin(dot(point, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec3 ditherPostColor(vec3 color) {
+  return clamp(color + (outputNoise(gl_FragCoord.xy) - 0.5) / 255.0, 0.0, 1.0);
+}
+`
+
 export const postPlainFragment = `#version 300 es
 precision highp float;
 
@@ -946,6 +956,7 @@ in vec2 uv;
 out vec4 pixel;
 
 ${postBloomGlsl}
+${postDitherGlsl}
 
 void main() {
   vec3 base = texture(scene, uv).rgb;
@@ -954,7 +965,7 @@ void main() {
   color = vec3(1.0) - exp(-color * 1.05);
   color *= vec3(1.02, 0.98, 0.96);
 
-  pixel = vec4(pow(color, vec3(0.9)), 1.0);
+  pixel = vec4(ditherPostColor(pow(color, vec3(0.9))), 1.0);
 }
 `
 
@@ -983,6 +994,7 @@ in vec2 uv;
 out vec4 pixel;
 
 ${postBloomGlsl}
+${postDitherGlsl}
 
 float tripSfract(float n) {
   return smoothstep(0.0, 1.0, fract(n));
@@ -1387,6 +1399,6 @@ void main() {
     tripped = mix(tripped, painted * noise, amount * 0.78);
   }
 
-  pixel = vec4(tripped, 1.0);
+  pixel = vec4(ditherPostColor(tripped), 1.0);
 }
 `
