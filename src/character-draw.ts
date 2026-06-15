@@ -67,6 +67,11 @@ export type CharacterHeadBasis = {
   forward: Vec3
 }
 
+type CharacterBodyBasis = {
+  side: Vec3
+  forward: Vec3
+}
+
 type CachedNpcPose = {
   frame: number
   key: number
@@ -137,6 +142,8 @@ const skirtH: Vec3 = [0, 0, 0]
 const hairSide: Vec3 = [0, 0, 0]
 const hairUp: Vec3 = [0, 0, 0]
 const hairForward: Vec3 = [0, 0, 0]
+const bodySide: Vec3 = [0, 0, 0]
+const bodyForward: Vec3 = [0, 0, 0]
 const glowstickA: Vec3 = [0, 0, 0]
 const glowstickB: Vec3 = [0, 0, 0]
 const glowstickSide: Vec3 = [0, 0, 0]
@@ -156,6 +163,10 @@ const hairBasis: CharacterHeadBasis = {
   forward: hairForward,
   side: hairSide,
   up: hairUp,
+}
+const bodyBasis: CharacterBodyBasis = {
+  forward: bodyForward,
+  side: bodySide,
 }
 const cigaretteEmber: Vec3 = [1, 0.36, 0.05]
 const sprayCanNozzleSide: Vec3 = [0, 1, 0]
@@ -414,6 +425,7 @@ function addRenderedCharacter(
   const style = characterRenderStyle(player.resolvedStyle ?? resolvePlayerStyle(player.style), player)
   const localReflection = detailedHair
   const turn = characterTurnBasis(player, player.turn)
+  const body = characterBodyBasis(pose)
   const hideHead = player.hideHead === true
 
   if (renderAccessory && style.accessoryKind === 'cigarette') {
@@ -422,31 +434,31 @@ function addRenderedCharacter(
 
   for (const part of characterPartPlans) {
     if ((style.bottomMode === 'pants' || !part.part.bottom) && (!hideHead || part.toIndex !== headTopIndex)) {
-      addCharacterPart(target, boxInstances, pose, part, player, turn, style, options.light, localReflection)
+      addCharacterPart(target, boxInstances, pose, part, player, turn, body, style, options.light, localReflection)
     }
   }
 
   if (style.bottomMode === 'skirt') {
-    addCharacterSkirt(target, pose, player, turn, style, options.light, localReflection)
+    addCharacterSkirt(target, pose, player, body, style, options.light, localReflection)
   }
 
   if (style.topMode === 'chest') {
-    addCharacterChest(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+    addCharacterChest(target, boxInstances, pose, player, turn, body, style, options.light, localReflection)
   }
 
   if (inLakeShore(player.position[0], player.position[2])) {
-    addCharacterModestyPatch(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+    addCharacterModestyPatch(target, boxInstances, pose, player, turn, body, style, options.light, localReflection)
   }
 
   if (renderAccessory && style.accessory) {
     if (style.accessoryKind === 'glowstick') {
-      addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+      addGlowsticks(target, boxInstances, pose, player, body, style, options.light, localReflection)
     }
     else if (style.accessoryKind === 'cigarette') {
       addCigarette(target, boxInstances, pose, player, turn, style, options.light, localReflection, options.time)
     }
     else {
-      addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+      addSprayCan(target, boxInstances, pose, player, turn, body, style, options.light, localReflection)
     }
   }
 
@@ -588,16 +600,16 @@ function addGlowsticks(
   boxInstances: VertexWriter,
   pose: Vec3[],
   player: { turn: number },
-  turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
 ) {
   const torso = pose[spine2Index]!
 
-  addGlowstick(target, boxInstances, torso, pose[leftForeArmIndex]!, pose[leftHandIndex]!, player, turn, style, light,
+  addGlowstick(target, boxInstances, torso, pose[leftForeArmIndex]!, pose[leftHandIndex]!, player, body, style, light,
     localReflection)
-  addGlowstick(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style, light,
+  addGlowstick(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, body, style, light,
     localReflection)
 }
 
@@ -608,7 +620,7 @@ function addGlowstick(
   foreArm: Vec3,
   hand: Vec3,
   player: { turn: number },
-  turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -616,8 +628,8 @@ function addGlowstick(
   const dx = hand[0] - foreArm[0]
   const dy = hand[1] - foreArm[1]
   const dz = hand[2] - foreArm[2]
-  const sideX = turn.cos
-  const sideZ = -turn.sin
+  const sideX = body.side[0]
+  const sideZ = body.side[2]
   const handSide = handSideSign(hand, torso, sideX, sideZ)
   const crossX = -dy * sideZ
   const crossY = dz * sideX - dx * sideZ
@@ -641,7 +653,7 @@ function addGlowstick(
   glowstickSide[1] = 0
   glowstickSide[2] = sideZ * handSide
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.025, 0.025, style.accessory!, 1.4, player.turn,
-    localReflection, light, 0, turn.sin, turn.cos, { side: glowstickSide })
+    localReflection, light, 0, body.forward[0], body.forward[2], { side: glowstickSide })
 }
 
 function addSprayCan(
@@ -650,13 +662,14 @@ function addSprayCan(
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
 ) {
   const torso = pose[spine2Index]!
 
-  addSprayCanAtHand(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style,
+  addSprayCanAtHand(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, body, style,
     light, localReflection)
 }
 
@@ -668,6 +681,7 @@ function addSprayCanAtHand(
   hand: Vec3,
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -675,8 +689,8 @@ function addSprayCanAtHand(
   const dx = hand[0] - foreArm[0]
   const dy = hand[1] - foreArm[1]
   const dz = hand[2] - foreArm[2]
-  const sideX = turn.cos
-  const sideZ = -turn.sin
+  const sideX = body.side[0]
+  const sideZ = body.side[2]
   const handSide = handSideSign(hand, torso, sideX, sideZ)
   const centerX = hand[0] + sideX * handSide * 0.16 + dx * 0.04
   const centerY = hand[1] - 0.08 + dy * 0.04
@@ -693,9 +707,9 @@ function addSprayCanAtHand(
   glowstickSide[1] = 0
   glowstickSide[2] = sideZ * handSide
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.13, 0.13, color, 0.12, player.turn, localReflection,
-    light, 0, turn.sin, turn.cos, { side: glowstickSide })
+    light, 0, body.forward[0], body.forward[2], { side: glowstickSide })
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.145, 0.035, color, 0.12, player.turn, localReflection,
-    light, 0, turn.sin, turn.cos, { side: glowstickSide })
+    light, 0, body.forward[0], body.forward[2], { side: glowstickSide })
 
   sprayCanCapA[0] = centerX
   sprayCanCapA[1] = centerY + 0.12
@@ -704,7 +718,7 @@ function addSprayCanAtHand(
   sprayCanCapB[1] = centerY + 0.18
   sprayCanCapB[2] = centerZ
   addCharacterBox(target, boxInstances, sprayCanCapA, sprayCanCapB, 0.1, 0.1, color, 0.12, player.turn, localReflection,
-    light, 0, turn.sin, turn.cos, { side: glowstickSide })
+    light, 0, body.forward[0], body.forward[2], { side: glowstickSide })
 
   sprayCanNozzleA[0] = centerX + sideX * handSide * 0.035
   sprayCanNozzleA[1] = centerY + 0.19
@@ -713,7 +727,7 @@ function addSprayCanAtHand(
   sprayCanNozzleB[1] = centerY + 0.19
   sprayCanNozzleB[2] = centerZ + sideZ * handSide * 0.13
   addCharacterBox(target, boxInstances, sprayCanNozzleA, sprayCanNozzleB, 0.035, 0.035, color, 0.12, player.turn,
-    localReflection, light, 0, turn.sin, turn.cos, { side: sprayCanNozzleSide })
+    localReflection, light, 0, body.forward[0], body.forward[2], { side: sprayCanNozzleSide })
 }
 
 export function raisePoseCigaretteArm(pose: Vec3[], turn: TurnBasis, time: number) {
@@ -835,6 +849,7 @@ function addCharacterPart(
   plan: { part: CharacterPart; fromIndex: number; toIndex: number },
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -856,8 +871,8 @@ function addCharacterPart(
 
   if (part.armOffset) {
     const torso = pose[spine2Index]!
-    const sideX = turn.cos
-    const sideZ = -turn.sin
+    const sideX = body.side[0]
+    const sideZ = body.side[2]
     const centerX = (partA[0] + partB[0]) * 0.5 - torso[0]
     const centerZ = (partA[2] + partB[2]) * 0.5 - torso[2]
     const amount = Math.sign(centerX * sideX + centerZ * sideZ) * part.armOffset
@@ -876,7 +891,7 @@ function addCharacterPart(
   }
 
   addCharacterBox(target, boxInstances, partA, partB, part.width, part.depth, characterPartColor(part, style),
-    part.glow ?? 0.02, player.turn, localReflection, light, 0, turn.sin, turn.cos)
+    part.glow ?? 0.02, player.turn, localReflection, light, 0, turn.sin, turn.cos, { side: body.side })
 }
 
 function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
@@ -905,6 +920,7 @@ function addCharacterChest(
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -914,15 +930,15 @@ function addCharacterChest(
   const centerX = spine[0] + (neck[0] - spine[0]) * 0.32
   const centerY = spine[1] + (neck[1] - spine[1]) * 0.32
   const centerZ = spine[2] + (neck[2] - spine[2]) * 0.32
-  const sideX = turn.cos
-  const sideZ = -turn.sin
-  const forwardX = turn.sin
-  const forwardZ = turn.cos
+  const sideX = body.side[0]
+  const sideZ = body.side[2]
+  const forwardX = body.forward[0]
+  const forwardZ = body.forward[2]
 
   addCharacterChestSide(target, boxInstances, centerX, centerY, centerZ, sideX, sideZ, forwardX, forwardZ, -0.055,
-    player, turn, style, light, localReflection)
+    player, turn, body, style, light, localReflection)
   addCharacterChestSide(target, boxInstances, centerX, centerY, centerZ, sideX, sideZ, forwardX, forwardZ, 0.055,
-    player, turn, style, light, localReflection)
+    player, turn, body, style, light, localReflection)
 }
 
 function addCharacterChestSide(
@@ -938,6 +954,7 @@ function addCharacterChestSide(
   offset: number,
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -950,7 +967,7 @@ function addCharacterChestSide(
   chestB[2] = centerZ + sideZ * offset + forwardZ * 0.13
 
   addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, style.skin, 0.02, player.turn, localReflection,
-    light, 0, turn.sin, turn.cos)
+    light, 0, turn.sin, turn.cos, { side: body.side })
 }
 
 function addCharacterModestyPatch(
@@ -959,6 +976,7 @@ function addCharacterModestyPatch(
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -966,10 +984,10 @@ function addCharacterModestyPatch(
   const hips = pose[hipsIndex]!
   const leftUp = pose[leftUpLegIndex]!
   const rightUp = pose[rightUpLegIndex]!
-  const forwardX = turn.sin
-  const forwardZ = turn.cos
-  const sideX = turn.cos
-  const sideZ = -turn.sin
+  const forwardX = body.forward[0]
+  const forwardZ = body.forward[2]
+  const sideX = body.side[0]
+  const sideZ = body.side[2]
   const centerX = (hips[0] + leftUp[0] + rightUp[0]) / 3 + forwardX * 0.11
   const centerY = (hips[1] + leftUp[1] + rightUp[1]) / 3 - 0.055
   const centerZ = (hips[2] + leftUp[2] + rightUp[2]) / 3 + forwardZ * 0.11
@@ -993,7 +1011,7 @@ function addCharacterSkirt(
   target: VertexWriter,
   pose: Vec3[],
   player: { turn: number },
-  turn: TurnBasis,
+  body: CharacterBodyBasis,
   style: ResolvedPlayerStyle,
   light: CharacterLight,
   localReflection: boolean,
@@ -1009,10 +1027,10 @@ function addCharacterSkirt(
   const bottomX = (leftLeg[0] + rightLeg[0]) * 0.5
   const bottomY = (leftLeg[1] + rightLeg[1]) * 0.5
   const bottomZ = (leftLeg[2] + rightLeg[2]) * 0.5
-  const sideX = turn.cos
-  const sideZ = -turn.sin
-  const forwardX = turn.sin
-  const forwardZ = turn.cos
+  const sideX = body.side[0]
+  const sideZ = body.side[2]
+  const forwardX = body.forward[0]
+  const forwardZ = body.forward[2]
   const topWidth = 0.09
   const bottomWidth = 0.15
   const topDepth = 0.11
@@ -1142,6 +1160,27 @@ export function characterHeadBasisInto(pose: Vec3[], target: CharacterHeadBasis)
   target.forward[2] = target.side[0] * target.up[1] - target.side[1] * target.up[0]
 
   return target
+}
+
+function characterBodyBasis(pose: Vec3[]) {
+  const left = pose[leftArmIndex]!
+  const right = pose[rightArmIndex]!
+  const sideX = left[0] - right[0]
+  const sideZ = left[2] - right[2]
+  const sideLength = Math.sqrt(sideX * sideX + sideZ * sideZ)
+
+  if (sideLength === 0) {
+    throw new Error('Cannot build character body basis with zero side vector')
+  }
+
+  bodyBasis.side[0] = sideX / sideLength
+  bodyBasis.side[1] = 0
+  bodyBasis.side[2] = sideZ / sideLength
+  bodyBasis.forward[0] = -bodyBasis.side[2]
+  bodyBasis.forward[1] = 0
+  bodyBasis.forward[2] = bodyBasis.side[0]
+
+  return bodyBasis
 }
 
 function characterHairBasis(pose: Vec3[]) {
