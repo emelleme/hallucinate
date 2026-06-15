@@ -403,14 +403,27 @@ export function takeNpcSeat(
   occupiedSeats: Set<string>,
 ) {
   const player = players.find(player => player.seat === seat.id)
+    ?? players.find(player => player.seat && sameSeatGroup(player.seat, seat.id))
 
   if (!player) {
-    return
+    return undefined
   }
 
-  occupiedSeats.delete(player.seat!)
+  const seatId = player.seat!
+  const nextSeat = seatById(seatId)
+
+  occupiedSeats.delete(seatId)
   leaveSeat(player, time)
   choosePlayerDestination(player, time, outsideTree, occupiedSeats)
+
+  return nextSeat
+}
+
+function sameSeatGroup(a: string, b: string) {
+  const [aKind, aZone, aIndex] = a.split(':')
+  const [bKind, bZone, bIndex] = b.split(':')
+
+  return aKind === bKind && aZone === bZone && (aKind?.endsWith('couch') || aIndex === bIndex)
 }
 
 function leaveSeat(player: Player, time: number) {

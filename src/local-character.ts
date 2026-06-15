@@ -93,6 +93,9 @@ export function createLocalCharacter(keys: Set<string>) {
     get seat() {
       return seated ? seat : ''
     },
+    get targetSeat() {
+      return destinationSeat
+    },
     get jumping() {
       return jumpTime > 0
     },
@@ -215,7 +218,7 @@ export function createLocalCharacter(keys: Set<string>) {
       bottomMode: BottomMode,
       loft: boolean,
       occupiedSeats: Set<string>,
-      takeSeat: (seat: Seat) => void,
+      takeSeat: (seat: Seat) => Seat | undefined,
     ) {
       this.readInput()
       if (mode === 'breakdance') {
@@ -430,11 +433,14 @@ export function createLocalCharacter(keys: Set<string>) {
 
         position[0] += direction[0] * delta * 5
         position[2] += direction[2] * delta * 5
-        const foundSeat = !jumping && couchRelease <= 0 ? seatAt(position, occupiedSeats, 0.46, true, loft) : undefined
-        const nextSeat = foundSeat && (!hasDestination || foundSeat.id === destinationSeat) ? foundSeat : undefined
+        const emptySeat = !jumping && couchRelease <= 0 ? seatAt(position, occupiedSeats, 0.46, false, loft) : undefined
+        const foundSeat = emptySeat ?? (!jumping && couchRelease <= 0
+          ? seatAt(position, occupiedSeats, 0.46, true, loft)
+          : undefined)
+        const targetSeat = foundSeat && (!hasDestination || foundSeat.id === destinationSeat) ? foundSeat : undefined
+        const nextSeat = targetSeat ? takeSeat(targetSeat) : undefined
 
         if (nextSeat) {
-          takeSeat(nextSeat)
           seated = true
           hasDestination = false
           hasJumpTarget = false

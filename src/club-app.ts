@@ -4271,7 +4271,9 @@ const draw = (stamp: number) => {
   }
 
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
-    seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
+    seat => occupiedSeats.has(seat.id)
+      ? takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats)
+      : seat)
   if (isAtLoftExitDoor()) {
     enterMain(true)
     scheduleFrame()
@@ -4357,6 +4359,12 @@ const draw = (stamp: number) => {
   multiplayer.sendActionsIfChanged()
 
   if (!inLoft) {
+    const localSeat = localCharacter.seat || localCharacter.targetSeat
+    const reservedLocalSeat = Boolean(localSeat && !occupiedSeats.has(localSeat))
+
+    if (reservedLocalSeat) {
+      occupiedSeats.add(localSeat)
+    }
     syncNpcPopulation(stamp)
     updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats, {
       camera: cameraController.get(),
@@ -4364,6 +4372,9 @@ const draw = (stamp: number) => {
       height: canvas.height,
       width: canvas.width,
     })
+    if (reservedLocalSeat && localSeat === localCharacter.targetSeat && localSeat !== localCharacter.seat) {
+      occupiedSeats.delete(localSeat)
+    }
   }
   updateRemotePlayers(multiplayer.players.values(), delta, outsideTree)
   syncNicknameLabels()
