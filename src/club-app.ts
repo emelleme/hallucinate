@@ -3985,6 +3985,15 @@ function pauseGraphics() {
   cancelAnimationFrame(frameId)
 }
 
+function recoverGraphicsFocus() {
+  if (document.hidden) {
+    return
+  }
+
+  resumeGraphics()
+  canvas.focus()
+}
+
 function resumeGraphics() {
   if (!graphicsPaused) {
     return
@@ -5040,13 +5049,28 @@ addEventListener('focus', () => {
     resumeGraphics()
   }
 })
+addEventListener('pointerdown', event => {
+  const target = event.target as Element
+
+  if (!target.closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')) {
+    recoverGraphicsFocus()
+  }
+}, { capture: true })
+addEventListener('pointerup', event => {
+  const target = event.target as Element
+
+  if (!target.closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')) {
+    recoverGraphicsFocus()
+  }
+}, { capture: true })
+addEventListener('keydown', recoverGraphicsFocus, { capture: true })
 addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pauseGraphics()
     return
   }
 
-  resumeGraphics()
+  recoverGraphicsFocus()
 })
 
 const strobeLights = createStrobeLights()
