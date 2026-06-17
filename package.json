@@ -10,7 +10,9 @@
     "build": "tsc && vite build",
     "pack:assets": "bun scripts/pack-assimp-assets.ts",
     "start": "bun server.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pages:dev": "npx wrangler pages dev ./dist",
+    "pages:deploy": "npx wrangler pages deploy ./dist"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
