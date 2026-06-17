@@ -5,11 +5,9 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { analyticsHtml } from './src/analytics-page.ts'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
-import { galleryHtml } from './src/gallery-page.ts'
 import {
   graffitiColors,
   type GraffitiPaintContext,
@@ -336,11 +334,11 @@ const server = Bun.serve<SocketData>({
     }
 
     if (url.pathname === '/analytics' || url.pathname === '/analytics/') {
-      return handleAnalyticsPage(request)
+      return await handleAnalyticsPage(request)
     }
 
     if (url.pathname === '/gallery' || url.pathname === '/gallery/' || url.pathname.startsWith('/gallery/')) {
-      return handleGalleryPage(request)
+      return await handleGalleryPage(request)
     }
 
     if (url.pathname.startsWith('/analytics/')) {
@@ -687,7 +685,7 @@ async function serveStatic(request: Request) {
   return await fileResponse(join(dist, 'index.html'), request) ?? new Response('Not Found', { status: 404 })
 }
 
-function handleAnalyticsPage(request: Request) {
+async function handleAnalyticsPage(request: Request) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Method Not Allowed', {
       status: 405,
@@ -695,10 +693,10 @@ function handleAnalyticsPage(request: Request) {
     })
   }
 
-  return htmlResponse(analyticsHtml(onlineAnalyticsRanges), request.method)
+  return await fileResponse(join(dist, 'analytics.html'), request) ?? new Response('Not Found', { status: 404 })
 }
 
-function handleGalleryPage(request: Request) {
+async function handleGalleryPage(request: Request) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Method Not Allowed', {
       status: 405,
@@ -706,7 +704,7 @@ function handleGalleryPage(request: Request) {
     })
   }
 
-  return htmlResponse(galleryHtml(), request.method)
+  return await fileResponse(join(dist, 'gallery.html'), request) ?? new Response('Not Found', { status: 404 })
 }
 
 async function serveAnalyticsAsset(request: Request, url: URL) {

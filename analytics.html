@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Club Analytics</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Hallucinate Analytics</h1>
+          <p>Visitors count</p>
+        </div>
+        <nav aria-label="Time range" id="time-range-nav"></nav>
+      </header>
+      <section id="metrics" aria-live="polite">
+        <div class="metric">
+          <span>Current</span>
+          <strong id="current">0</strong>
+        </div>
+        <div class="metric">
+          <span>Latest max</span>
+          <strong id="latest">0</strong>
+        </div>
+        <div class="metric">
+          <span id="readout-label">Bucket</span>
+          <strong id="readout">-</strong>
+        </div>
+      </section>
+      <div id="chart"></div>
+    </main>
+    <script type="module" src="/src/analytics.ts"></script>
+  </body>
+</html>

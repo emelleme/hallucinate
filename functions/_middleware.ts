@@ -3,7 +3,7 @@ interface PagesContext {
   env: {
     BACKEND_URL?: string
   }
-  next: () => Promise<Response>
+  next: (request?: Request) => Promise<Response>
 }
 
 export const onRequest = async (context: PagesContext): Promise<Response> => {
@@ -15,11 +15,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     path.startsWith('/api/') ||
     path.startsWith('/graffiti/') ||
     path === '/photos' ||
-    path.startsWith('/photos/') ||
-    path === '/analytics' ||
-    path.startsWith('/analytics/') ||
-    path === '/gallery' ||
-    path.startsWith('/gallery/')
+    path.startsWith('/photos/')
 
   if (isWs || isBackendPath) {
     const backendUrl = context.env.BACKEND_URL || 'http://backend.hallucinate.stagas.com'
@@ -47,6 +43,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     } catch (e: any) {
       return new Response(`Proxy error: ${e?.message || String(e)}`, { status: 502 })
     }
+  }
+
+  // Rewrite gallery permalinks (e.g. /gallery/12345) to serve gallery.html
+  if (path.startsWith('/gallery/') && !path.endsWith('.js') && !path.endsWith('.css')) {
+    const rewriteUrl = new URL(url.toString())
+    rewriteUrl.pathname = '/gallery.html'
+    return context.next(new Request(rewriteUrl.toString(), context.request))
   }
 
   return context.next()

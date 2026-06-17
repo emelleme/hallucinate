@@ -17,6 +17,12 @@ export default defineConfig({
     },
   },
   build: {
-    // sourcemap: 'inline',
+    rollupOptions: {
+      input: {
+        main: './index.html',
+        gallery: './gallery.html',
+        analytics: './analytics.html',
+      },
+    },
   },
 })
