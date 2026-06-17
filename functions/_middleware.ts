@@ -22,7 +22,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     path.startsWith('/gallery/')
 
   if (isWs || isBackendPath) {
-    const backendUrl = context.env.BACKEND_URL || 'https://backend.hallucinate.stagas.com'
+    const backendUrl = context.env.BACKEND_URL || 'http://backend.hallucinate.stagas.com'
     const targetUrl = new URL(url.pathname + url.search, backendUrl)
 
     const headers = new Headers(context.request.headers)
@@ -42,7 +42,11 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       requestInit.body = context.request.body
     }
 
-    return fetch(targetUrl.toString(), requestInit)
+    try {
+      return await fetch(targetUrl.toString(), requestInit)
+    } catch (e: any) {
+      return new Response(`Proxy error: ${e?.message || String(e)}`, { status: 502 })
+    }
   }
 
   return context.next()

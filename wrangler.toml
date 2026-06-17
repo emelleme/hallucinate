@@ -4,4 +4,4 @@ compatibility_date = "2026-01-29"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-BACKEND_URL = "https://backend.hallucinate.stagas.com"
+BACKEND_URL = "http://backend.hallucinate.stagas.com"
