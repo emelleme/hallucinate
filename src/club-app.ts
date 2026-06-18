@@ -2048,6 +2048,8 @@ introHeartbadgeBtn.addEventListener('click', () => {
   heartbadgeLoginContainer.style.display = 'grid'
   heartbadgeEmailInput.style.display = 'block'
   heartbadgeCodeInput.style.display = 'none'
+  heartbadgeChoicesContainer.style.display = 'none'
+  heartbadgeSubmitBtn.style.display = 'block'
   heartbadgeEmailInput.value = ''
   heartbadgeCodeInput.value = ''
   heartbadgeSubmitBtn.textContent = 'Next'
@@ -2062,6 +2064,50 @@ heartbadgeCancelBtn.addEventListener('click', () => {
   introHeartbadgeBtn.style.display = 'block'
   heartbadgeLoginContainer.style.display = 'none'
   showHeartbadgeNotice('')
+})
+
+heartbadgePasskeyBtn.addEventListener('click', async () => {
+  showHeartbadgeNotice('Authenticating with Passkey...')
+  try {
+    await loginWithHeartbadgePasskey(heartbadgeLoginEmail)
+    await completeHeartbadgeLogin()
+  } catch (e: any) {
+    const errMsg = e.message || String(e)
+    showHeartbadgeNotice(errMsg.includes('cancel') ? 'Passkey cancelled.' : errMsg, true)
+  }
+})
+
+heartbadgeTotpBtn.addEventListener('click', () => {
+  heartbadgeChoicesContainer.style.display = 'none'
+  heartbadgeCodeInput.style.display = 'block'
+  heartbadgeSubmitBtn.style.display = 'block'
+  heartbadgeLoginStage = 'totp'
+  heartbadgeCodeInput.placeholder = '6-digit app code'
+  heartbadgeSubmitBtn.textContent = 'Verify App'
+  showHeartbadgeNotice('Enter code from authenticator app.')
+  heartbadgeCodeInput.value = ''
+  heartbadgeCodeInput.focus()
+})
+
+heartbadgeEmailBtn.addEventListener('click', async () => {
+  const maskedEmail = heartbadgeEmailBtn.dataset.maskedEmail || heartbadgeLoginEmail
+  showHeartbadgeNotice('Sending verification email...')
+  heartbadgeChoicesContainer.style.display = 'none'
+  
+  try {
+    await startAuth(heartbadgeLoginEmail)
+    heartbadgeCodeInput.style.display = 'block'
+    heartbadgeSubmitBtn.style.display = 'block'
+    heartbadgeLoginStage = 'code'
+    heartbadgeCodeInput.placeholder = '6-digit email code'
+    heartbadgeSubmitBtn.textContent = 'Verify Code'
+    showHeartbadgeNotice(`Code sent to ${maskedEmail}.`)
+    heartbadgeCodeInput.value = ''
+    heartbadgeCodeInput.focus()
+  } catch (e: any) {
+    showHeartbadgeNotice(e.message || 'Failed to send email.', true)
+    heartbadgeChoicesContainer.style.display = 'flex'
+  }
 })
 
 async function handleHeartbadgeSubmit() {
@@ -2079,46 +2125,15 @@ async function handleHeartbadgeSubmit() {
       heartbadgeLoginEmail = email
       const { methods, maskedEmail } = await queryAuthMethods(email)
       
-      if (methods.includes('passkey')) {
-        showHeartbadgeNotice('Authenticating with Passkey...')
-        try {
-          await loginWithHeartbadgePasskey(email)
-          await completeHeartbadgeLogin()
-          return
-        } catch (e: any) {
-          const errMsg = e.message || String(e)
-          if (errMsg.includes('NotAllowedError') || errMsg.includes('cancel')) {
-            showHeartbadgeNotice('Passkey cancelled. Trying code...', false)
-          } else {
-            showHeartbadgeNotice(errMsg, true)
-            heartbadgeSubmitBtn.disabled = false
-            return
-          }
-        }
-      }
+      heartbadgeEmailInput.style.display = 'none'
+      heartbadgeSubmitBtn.style.display = 'none'
+      heartbadgeChoicesContainer.style.display = 'flex'
+      showHeartbadgeNotice('Select login method:')
 
-      // Check other methods
-      if (methods.includes('totp')) {
-        heartbadgeLoginStage = 'totp'
-        heartbadgeEmailInput.style.display = 'none'
-        heartbadgeCodeInput.style.display = 'block'
-        heartbadgeCodeInput.placeholder = '6-digit app code'
-        heartbadgeSubmitBtn.textContent = 'Verify App'
-        showHeartbadgeNotice('Enter code from authenticator app.')
-        heartbadgeCodeInput.value = ''
-        heartbadgeCodeInput.focus()
-      } else {
-        showHeartbadgeNotice('Sending verification email...')
-        await startAuth(email)
-        heartbadgeLoginStage = 'code'
-        heartbadgeEmailInput.style.display = 'none'
-        heartbadgeCodeInput.style.display = 'block'
-        heartbadgeCodeInput.placeholder = '6-digit email code'
-        heartbadgeSubmitBtn.textContent = 'Verify Code'
-        showHeartbadgeNotice(`Code sent to ${maskedEmail || email}.`)
-        heartbadgeCodeInput.value = ''
-        heartbadgeCodeInput.focus()
-      }
+      heartbadgePasskeyBtn.style.display = methods.includes('passkey') ? 'block' : 'none'
+      heartbadgeTotpBtn.style.display = methods.includes('totp') ? 'block' : 'none'
+      heartbadgeEmailBtn.style.display = 'block'
+      heartbadgeEmailBtn.dataset.maskedEmail = maskedEmail || email
     } catch (e: any) {
       showHeartbadgeNotice(e.message || 'Verification failed.', true)
     } finally {
