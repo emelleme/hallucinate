@@ -33,6 +33,11 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       headers.set('x-real-ip', clientIp)
     }
 
+    // Pass Basic Auth credentials if targeting Cloudflare Pages preview environments
+    if (targetUrl.hostname.endsWith('.pages.dev') && !headers.has('Authorization')) {
+      headers.set('Authorization', 'Basic aGVhcnRiYWRnZTpwcmV2aWV3LWFjY2Vzcy0yMDI2')
+    }
+
     const requestInit: RequestInit = {
       method: context.request.method,
       headers,
@@ -44,7 +49,16 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     }
 
     try {
-      return await fetch(targetUrl.toString(), requestInit)
+      const response = await fetch(targetUrl.toString(), requestInit)
+      const responseHeaders = new Headers(response.headers)
+      // Strip WWW-Authenticate header to prevent native browser Sign In popup on 401
+      responseHeaders.delete('www-authenticate')
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      })
     } catch (e: any) {
       return new Response(`Proxy error: ${e?.message || String(e)}`, { status: 502 })
     }
