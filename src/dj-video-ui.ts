@@ -1,7 +1,7 @@
 import { createDomWallProjection } from './dom-wall.ts'
 import type { DomWall } from './dom-wall.ts'
 import type { WallProjector } from './projection.ts'
-import type { VideoSyncPacket } from './protocol.ts'
+import type { VideoSyncPacket, VideoSyncEntry } from './protocol.ts'
 import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall, upstairsVideoWall, videoPlaylists,
   videoStartTimes, videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
@@ -270,6 +270,22 @@ export function createDjVideoUi(
       pauseOtherVideos(zone, players, ready)
 
       return true
+    },
+    getSyncEntries(): VideoSyncEntry[] {
+      const entries: VideoSyncEntry[] = []
+      for (const area of videoZones()) {
+        const state = states[area]
+        if (state) {
+          entries.push({
+            zone: area,
+            currentId: state.currentId,
+            nextId: state.nextId,
+            startedAt: state.startedAt,
+            duration: state.duration,
+          })
+        }
+      }
+      return entries
     },
   }
 

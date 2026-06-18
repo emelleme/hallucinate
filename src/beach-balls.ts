@@ -122,7 +122,7 @@ export function writeBeachBallGeometry(target: VertexWriter, balls: BeachBall[],
 
   for (const ball of balls) {
     writeSphere(target, beachBallUnitSphereFor(ball, camera), ball.position[0], ball.position[1], ball.position[2],
-      beachBallRadius, palette[ball.id]!, glow)
+      beachBallRadius, palette[ball.id % palette.length]!, glow)
   }
 }
 

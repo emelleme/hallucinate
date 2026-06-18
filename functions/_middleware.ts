@@ -2,6 +2,7 @@ interface PagesContext {
   request: Request
   env: {
     BACKEND_URL?: string
+    HEARTBADGE_API_URL?: string
   }
   next: (request?: Request) => Promise<Response>
 }
@@ -12,13 +13,17 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
 
   const isWs = context.request.headers.get('upgrade')?.toLowerCase() === 'websocket'
   const isBackendPath =
-    path.startsWith('/api/') ||
+    (path.startsWith('/api/') ||
     path.startsWith('/graffiti/') ||
     path === '/photos' ||
-    path.startsWith('/photos/')
+    path.startsWith('/photos/')) &&
+    path !== '/api/ably-token'
 
   if (isWs || isBackendPath) {
-    const backendUrl = context.env.BACKEND_URL || 'http://backend.hallucinate.stagas.com'
+    const isMemberApi = path.startsWith('/api/member/')
+    const backendUrl = isMemberApi
+      ? (context.env.HEARTBADGE_API_URL || 'https://messagetest.heartbeat-landing.pages.dev')
+      : (context.env.BACKEND_URL || 'http://backend.hallucinate.stagas.com')
     const targetUrl = new URL(url.pathname + url.search, backendUrl)
 
     const headers = new Headers(context.request.headers)

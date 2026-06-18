@@ -1,5 +1,6 @@
 import {
   beachBallGeometrySignature,
+  beachBallRadius,
   createBeachBalls,
   hitBeachBalls,
   updateBeachBalls,
@@ -40,6 +41,14 @@ import { bindKeyboardInput, setInputLayout } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
+import {
+  checkHeartbadgeSession,
+  queryAuthMethods,
+  startAuth,
+  verifyAuth,
+  verifyTotpLogin,
+  loginWithHeartbadgePasskey,
+} from './heartbadge-auth.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
@@ -218,9 +227,18 @@ const {
   introNicknameInput,
   introProgress,
   introStart,
+  positionHud,
+  introHeartbadgeBtn,
+  heartbadgeLoginContainer,
+  heartbadgeEmailInput,
+  heartbadgeCodeInput,
+  heartbadgeSubmitBtn,
+  heartbadgeCancelBtn,
+  heartbadgeNotice,
 } = getDomElements()
 
 setIntroLoadProgress({ introBar, introProgress }, 4)
+void initHeartbadgeSession()
 await afterNextPaint()
 
 let resizeDirty = true
@@ -640,7 +658,7 @@ type ChatLogEntry = MessagePacket & {
 
 const chatLogRows = new Map<HTMLElement, ChatLogEntry[]>()
 
-function addChatLogMessage(packet: MessagePacket) {
+function addChatLogMessage(packet: MessagePacket, faded = false) {
   const color = chatMessageColor(packet)
   const emoji = emojiReactionFromMessage(packet.text)
   const last = chatLog.lastElementChild
@@ -680,6 +698,7 @@ function addChatLogMessage(packet: MessagePacket) {
 
   row.className = 'chat-log-message'
   row.style.color = color
+  row.style.opacity = faded ? '0.45' : '1'
   ban.type = 'button'
   ban.className = 'chat-ban-button'
   ban.textContent = 'ban'
@@ -1995,6 +2014,198 @@ introNicknameInput.addEventListener('change', () => syncNickname(introNicknameIn
 introNicknameInput.addEventListener('input', syncChatFormColor)
 introInstagramInput.addEventListener('change', () => syncInstagram(introInstagramInput.value))
 
+async function initHeartbadgeSession() {
+  const session = await checkHeartbadgeSession()
+  if (session) {
+    introNicknameInput.value = session.displayName || session.email.split('@')[0] || ''
+    introInstagramInput.value = ''
+    syncNickname(introNicknameInput.value)
+    syncInstagram(introInstagramInput.value)
+    introHeartbadgeBtn.textContent = 'Signed in with HeartBadge'
+    introHeartbadgeBtn.disabled = true
+    introHeartbadgeBtn.style.borderColor = 'rgb(0, 255, 100)'
+    introHeartbadgeBtn.style.color = 'rgb(0, 255, 100)'
+    introHeartbadgeBtn.style.textShadow = '0 0 6px rgba(0, 255, 100, 0.5)'
+  }
+}
+
+let heartbadgeLoginStage: 'email' | 'code' | 'totp' = 'email'
+let heartbadgeLoginEmail = ''
+
+function showHeartbadgeNotice(msg: string, isError = false) {
+  heartbadgeNotice.textContent = msg
+  heartbadgeNotice.style.color = isError ? 'rgb(255, 50, 80)' : 'rgb(0, 220, 255)'
+}
+
+introHeartbadgeBtn.addEventListener('click', () => {
+  introNicknameInput.parentElement!.style.display = 'none'
+  introInstagramInput.parentElement!.style.display = 'none'
+  introHeartbadgeBtn.style.display = 'none'
+  heartbadgeLoginContainer.style.display = 'grid'
+  heartbadgeEmailInput.style.display = 'block'
+  heartbadgeCodeInput.style.display = 'none'
+  heartbadgeEmailInput.value = ''
+  heartbadgeCodeInput.value = ''
+  heartbadgeSubmitBtn.textContent = 'Next'
+  heartbadgeLoginStage = 'email'
+  showHeartbadgeNotice('')
+  heartbadgeEmailInput.focus()
+})
+
+heartbadgeCancelBtn.addEventListener('click', () => {
+  introNicknameInput.parentElement!.style.display = 'grid'
+  introInstagramInput.parentElement!.style.display = 'grid'
+  introHeartbadgeBtn.style.display = 'block'
+  heartbadgeLoginContainer.style.display = 'none'
+  showHeartbadgeNotice('')
+})
+
+async function handleHeartbadgeSubmit() {
+  const email = heartbadgeEmailInput.value.trim().toLowerCase()
+  if (heartbadgeLoginStage === 'email') {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showHeartbadgeNotice('Enter a valid email address.', true)
+      return
+    }
+
+    heartbadgeSubmitBtn.disabled = true
+    showHeartbadgeNotice('Connecting...')
+
+    try {
+      heartbadgeLoginEmail = email
+      const { methods, maskedEmail } = await queryAuthMethods(email)
+      
+      if (methods.includes('passkey')) {
+        showHeartbadgeNotice('Authenticating with Passkey...')
+        try {
+          await loginWithHeartbadgePasskey(email)
+          await completeHeartbadgeLogin()
+          return
+        } catch (e: any) {
+          const errMsg = e.message || String(e)
+          if (errMsg.includes('NotAllowedError') || errMsg.includes('cancel')) {
+            showHeartbadgeNotice('Passkey cancelled. Trying code...', false)
+          } else {
+            showHeartbadgeNotice(errMsg, true)
+            heartbadgeSubmitBtn.disabled = false
+            return
+          }
+        }
+      }
+
+      // Check other methods
+      if (methods.includes('totp')) {
+        heartbadgeLoginStage = 'totp'
+        heartbadgeEmailInput.style.display = 'none'
+        heartbadgeCodeInput.style.display = 'block'
+        heartbadgeCodeInput.placeholder = '6-digit app code'
+        heartbadgeSubmitBtn.textContent = 'Verify App'
+        showHeartbadgeNotice('Enter code from authenticator app.')
+        heartbadgeCodeInput.value = ''
+        heartbadgeCodeInput.focus()
+      } else {
+        showHeartbadgeNotice('Sending verification email...')
+        await startAuth(email)
+        heartbadgeLoginStage = 'code'
+        heartbadgeEmailInput.style.display = 'none'
+        heartbadgeCodeInput.style.display = 'block'
+        heartbadgeCodeInput.placeholder = '6-digit email code'
+        heartbadgeSubmitBtn.textContent = 'Verify Code'
+        showHeartbadgeNotice(`Code sent to ${maskedEmail || email}.`)
+        heartbadgeCodeInput.value = ''
+        heartbadgeCodeInput.focus()
+      }
+    } catch (e: any) {
+      showHeartbadgeNotice(e.message || 'Verification failed.', true)
+    } finally {
+      heartbadgeSubmitBtn.disabled = false
+    }
+  } else if (heartbadgeLoginStage === 'code') {
+    const code = heartbadgeCodeInput.value.trim()
+    if (code.length !== 6) {
+      showHeartbadgeNotice('Enter a 6-digit code.', true)
+      return
+    }
+
+    heartbadgeSubmitBtn.disabled = true
+    showHeartbadgeNotice('Verifying code...')
+
+    try {
+      await verifyAuth(heartbadgeLoginEmail, code)
+      await completeHeartbadgeLogin()
+    } catch (e: any) {
+      showHeartbadgeNotice(e.message || 'Invalid code.', true)
+      heartbadgeSubmitBtn.disabled = false
+    }
+  } else if (heartbadgeLoginStage === 'totp') {
+    const code = heartbadgeCodeInput.value.trim()
+    if (code.length !== 6) {
+      showHeartbadgeNotice('Enter a 6-digit code.', true)
+      return
+    }
+
+    heartbadgeSubmitBtn.disabled = true
+    showHeartbadgeNotice('Verifying app code...')
+
+    try {
+      await verifyTotpLogin(heartbadgeLoginEmail, code)
+      await completeHeartbadgeLogin()
+    } catch (e: any) {
+      showHeartbadgeNotice(e.message || 'Invalid app code.', true)
+      heartbadgeSubmitBtn.disabled = false
+    }
+  }
+}
+
+async function completeHeartbadgeLogin() {
+  const session = await checkHeartbadgeSession()
+  if (session) {
+    introNicknameInput.value = session.displayName || session.email.split('@')[0] || ''
+    introInstagramInput.value = ''
+    syncNickname(introNicknameInput.value)
+    syncInstagram(introInstagramInput.value)
+
+    introNicknameInput.parentElement!.style.display = 'grid'
+    introInstagramInput.parentElement!.style.display = 'grid'
+    introHeartbadgeBtn.style.display = 'block'
+    heartbadgeLoginContainer.style.display = 'none'
+
+    introHeartbadgeBtn.textContent = 'Signed in with HeartBadge'
+    introHeartbadgeBtn.disabled = true
+    introHeartbadgeBtn.style.borderColor = 'rgb(0, 255, 100)'
+    introHeartbadgeBtn.style.color = 'rgb(0, 255, 100)'
+    introHeartbadgeBtn.style.textShadow = '0 0 6px rgba(0, 255, 100, 0.5)'
+
+    addChatLogMessage({
+      id: 0,
+      nick: 'SYSTEM',
+      insta: '',
+      photoTimestamp: 0,
+      text: `✓ HeartBadge identity verified! Logging in as ${introNicknameInput.value}.`,
+    })
+  } else {
+    throw new Error('Session validation failed after login.')
+  }
+}
+
+heartbadgeEmailInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    void handleHeartbadgeSubmit()
+  }
+})
+
+heartbadgeCodeInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    void handleHeartbadgeSubmit()
+  }
+})
+
+heartbadgeSubmitBtn.addEventListener('click', () => {
+  void handleHeartbadgeSubmit()
+})
+
 function handleIntroProfileKey(event: KeyboardEvent) {
   if (event.key !== 'Enter') {
     return
@@ -2597,6 +2808,10 @@ function connectMultiplayer(spaceSlug?: string) {
       skinColorIndex: styleController.skinColorIndex,
       accessoryIndex: styleController.accessoryIndex,
     }),
+    getGraffitiSplats: () => graffitiSplats,
+    getBeachBalls: () => beachBalls,
+    getDuckPose: () => duckPose(),
+    getVideoSyncEntries: () => djVideoUi.getSyncEntries(),
     initialRoom: activeRoom,
     spaceSlug,
     onRoomState: (room, state) => {
@@ -2623,20 +2838,38 @@ function connectMultiplayer(spaceSlug?: string) {
         return
       }
 
-      const position = message.id === multiplayer.selfId
+      const isSelf = message.id === multiplayer.selfId
+      const position = isSelf
         ? characterPosition
         : multiplayer.players.get(message.id)?.position
 
+      let distance = 0
+      if (position && !isSelf) {
+        const dx = characterPosition[0] - position[0]
+        const dy = characterPosition[1] - position[1]
+        const dz = characterPosition[2] - position[2]
+        distance = Math.hypot(dx, dy, dz)
+      }
+
+      const maxDist = 20
+      const clearDist = 8
+      if (position && !isSelf && distance > maxDist) {
+        return
+      }
+
+      const faded = position && !isSelf && distance > clearDist
+      const opacity = faded ? 0.45 : 1
+
       rememberPlayerProfile(message.id, message.nick, message.insta)
 
-      if (message.id !== multiplayer.selfId && graphicsPaused && mentionsNickname(message.text)) {
+      if (!isSelf && graphicsPaused && mentionsNickname(message.text)) {
         playMentionDing()
       }
 
-      const color = addChatLogMessage(message)
+      const color = addChatLogMessage(message, faded)
       if (position && message.text) {
         chatUi.show(message.id, message.text, position, performance.now(), color,
-          nicknameLabel(identityName(message.id, message.nick)))
+          nicknameLabel(identityName(message.id, message.nick)), opacity)
       }
     },
     onDeleteMessages: id => {
@@ -2673,14 +2906,22 @@ function connectMultiplayer(spaceSlug?: string) {
           continue
         }
 
-        const target = beachBalls[ball.id]!
-
-        target.position[0] = ball.position[0]
-        target.position[1] = ball.position[1]
-        target.position[2] = ball.position[2]
-        target.velocity[0] = ball.velocity[0]
-        target.velocity[1] = ball.velocity[1]
-        target.velocity[2] = ball.velocity[2]
+        let target = beachBalls[ball.id]
+        if (!target) {
+          target = {
+            id: ball.id,
+            position: [ball.position[0], ball.position[1], ball.position[2]],
+            velocity: [ball.velocity[0], ball.velocity[1], ball.velocity[2]],
+          }
+          beachBalls[ball.id] = target
+        } else {
+          target.position[0] = ball.position[0]
+          target.position[1] = ball.position[1]
+          target.position[2] = ball.position[2]
+          target.velocity[0] = ball.velocity[0]
+          target.velocity[1] = ball.velocity[1]
+          target.velocity[2] = ball.velocity[2]
+        }
         beachBallGeometryDirty = true
       }
     },
@@ -3563,6 +3804,43 @@ function graffitiKey(splat: GraffitiSplat) {
 }
 
 function sendChatMessage(message: string, photoTimestamp = 0) {
+  if (message.startsWith('/ball') || message.startsWith('/beachball')) {
+    const nextId = beachBalls.length
+    const ball = {
+      id: nextId,
+      position: [characterPosition[0], characterPosition[1] + 2, characterPosition[2]] as Vec3,
+      velocity: [Math.random() * 4 - 2, 5, Math.random() * 4 - 2] as Vec3,
+    }
+    beachBalls.push(ball)
+    beachBallGeometryDirty = true
+    multiplayer.sendBeachBalls(beachBalls)
+    addChatLogMessage({
+      id: 0,
+      nick: 'SYSTEM',
+      insta: '',
+      photoTimestamp: 0,
+      text: `🔴 Spawning beach ball #${nextId}! Type /ball to spawn more!`,
+    })
+    return
+  }
+
+  if (message.startsWith('/clearball') || message.startsWith('/resetballs')) {
+    beachBalls.length = 3
+    beachBalls[0] = { id: 0, position: [-2.6, characterFloor + beachBallRadius, 7.8], velocity: [0, 0, 0] }
+    beachBalls[1] = { id: 1, position: [0.2, characterFloor + beachBallRadius, 9.6], velocity: [0, 0, 0] }
+    beachBalls[2] = { id: 2, position: [2.9, characterFloor + beachBallRadius, 7.9], velocity: [0, 0, 0] }
+    beachBallGeometryDirty = true
+    multiplayer.sendBeachBalls(beachBalls)
+    addChatLogMessage({
+      id: 0,
+      nick: 'SYSTEM',
+      insta: '',
+      photoTimestamp: 0,
+      text: `🔴 Beach balls reset to default!`,
+    })
+    return
+  }
+
   const packet = multiplayer.sendMessage(message, photoTimestamp)
 
   if (packet) {
@@ -4289,6 +4567,33 @@ const draw = (stamp: number) => {
     seat => occupiedSeats.has(seat.id)
       ? takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats)
       : seat)
+  if (positionHud) {
+    const zone = inLoft ? 'loft' : roomAt(characterPosition)
+    const names: Record<string, string> = {
+      loft: 'LOFT LOUNGE',
+      inside: 'MAIN FLOOR',
+      outside: 'OUTSIDE YARD',
+      tent: 'CHILL TENT',
+      upstairs: 'VIP UPSTAIRS',
+    }
+    const label = names[zone] || 'UNKNOWN'
+    const x = characterPosition[0].toFixed(1)
+    const y = characterPosition[1].toFixed(1)
+    const z = characterPosition[2].toFixed(1)
+    const angle = localCharacter.turn
+    const degrees = (angle * 180 / Math.PI) % 360
+    const heading = (degrees + 360) % 360
+    const index = Math.round(heading / 45) % 8
+    const compass = ['S', 'SE', 'E', 'NE', 'N', 'NW', 'W', 'SW']
+    const direction = compass[index]!
+    const rounded = Math.round(heading)
+
+    positionHud.innerHTML = `
+      <div>ZONE: <span class="text-white">${label}</span></div>
+      <div>POS: <span class="text-white">X: ${x} Y: ${y} Z: ${z}</span></div>
+      <div>DIR: <span class="text-white">${direction} (${rounded}°)</span></div>
+    `
+  }
   if (isAtLoftExitDoor()) {
     enterMain(true)
     scheduleFrame()

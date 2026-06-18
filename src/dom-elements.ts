@@ -54,6 +54,16 @@ function createDomElements() {
   const introTrack = document.createElement('div')
   const introBar = document.createElement('div')
   const introProgress = document.createElement('div')
+  const positionHud = document.createElement('div')
+
+  // HeartBadge Auth Elements
+  const introHeartbadgeBtn = document.createElement('button')
+  const heartbadgeLoginContainer = document.createElement('div')
+  const heartbadgeEmailInput = document.createElement('input')
+  const heartbadgeCodeInput = document.createElement('input')
+  const heartbadgeSubmitBtn = document.createElement('button')
+  const heartbadgeCancelBtn = document.createElement('button')
+  const heartbadgeNotice = document.createElement('div')
 
   canvas.id = 'scene'
   canvas.className = 'block'
@@ -197,6 +207,8 @@ function createDomElements() {
   introGithubIcon.alt = ''
   introProgress.textContent = '0%'
 
+  positionHud.id = 'position-hud'
+
   chatForm.append(chatInput, chatSubmit)
   onlineCount.append(onlineSelf, onlineText)
   onlineIndicator.append(chatLog, onlineCount)
@@ -206,12 +218,61 @@ function createDomElements() {
   merchCards.append(maleTShirtLink, femaleTShirtLink)
   introNicknameField.append(introNicknameIcon, introNicknameInput)
   introInstagramField.append(introInstagramIcon, introInstagramInput)
-  introPanel.append(introTrack, introProgress, introNicknameField, introInstagramField, introStart)
+
+  introHeartbadgeBtn.id = 'intro-heartbadge-btn'
+  introHeartbadgeBtn.type = 'button'
+  introHeartbadgeBtn.textContent = 'Sign in with HeartBadge'
+
+  heartbadgeLoginContainer.id = 'heartbadge-login-container'
+  heartbadgeLoginContainer.style.display = 'none'
+
+  heartbadgeEmailInput.id = 'heartbadge-email-input'
+  heartbadgeEmailInput.placeholder = 'your-email@domain.com'
+  heartbadgeEmailInput.type = 'email'
+
+  heartbadgeCodeInput.id = 'heartbadge-code-input'
+  heartbadgeCodeInput.placeholder = '6-digit code'
+  heartbadgeCodeInput.type = 'text'
+  heartbadgeCodeInput.maxLength = 6
+  heartbadgeCodeInput.style.display = 'none'
+
+  heartbadgeSubmitBtn.id = 'heartbadge-submit-btn'
+  heartbadgeSubmitBtn.type = 'button'
+  heartbadgeSubmitBtn.textContent = 'Next'
+
+  heartbadgeCancelBtn.id = 'heartbadge-cancel-btn'
+  heartbadgeCancelBtn.type = 'button'
+  heartbadgeCancelBtn.textContent = 'Cancel'
+
+  heartbadgeNotice.id = 'heartbadge-notice'
+
+  const heartbadgeButtonsRow = document.createElement('div')
+  heartbadgeButtonsRow.style.display = 'grid'
+  heartbadgeButtonsRow.style.gridTemplateColumns = '1fr 1fr'
+  heartbadgeButtonsRow.style.gap = '8px'
+  heartbadgeButtonsRow.append(heartbadgeSubmitBtn, heartbadgeCancelBtn)
+
+  heartbadgeLoginContainer.append(
+    heartbadgeEmailInput,
+    heartbadgeCodeInput,
+    heartbadgeButtonsRow,
+    heartbadgeNotice
+  )
+
+  introPanel.append(
+    introTrack,
+    introProgress,
+    introNicknameField,
+    introInstagramField,
+    introHeartbadgeBtn,
+    heartbadgeLoginContainer,
+    introStart
+  )
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
   document.body.prepend(canvas, djVideo, photoWall, scheduleWall, sunglassesOverlay, chatForm, chatBubble,
     onlineIndicator, reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton,
-    perspectiveButton, photoButton, roomsButton, supportLink, merchCards, intro)
+    perspectiveButton, photoButton, roomsButton, supportLink, merchCards, intro, positionHud)
 
   return {
     canvas,
@@ -245,6 +306,14 @@ function createDomElements() {
     introNicknameInput,
     introProgress,
     introStart,
+    positionHud,
+    introHeartbadgeBtn,
+    heartbadgeLoginContainer,
+    heartbadgeEmailInput,
+    heartbadgeCodeInput,
+    heartbadgeSubmitBtn,
+    heartbadgeCancelBtn,
+    heartbadgeNotice,
   }
 }
 

@@ -98,7 +98,7 @@ export function createChatUi(
 
       return text
     },
-    show(id: number, text: string, bubblePosition: Vec3, stamp: number, color: string, labelText = '') {
+    show(id: number, text: string, bubblePosition: Vec3, stamp: number, color: string, labelText = '', opacity = 1) {
       const label = labels.get(id)
       const reaction = emojiReactionFromMessage(text)
       const bubbleText = labelText ? `${labelText} ${text}` : text
@@ -109,6 +109,7 @@ export function createChatUi(
         label.element.dataset.speaking = 'true'
         label.hideAt = stamp + bubbleDuration
         label.element.style.color = color
+        label.element.style.opacity = String(opacity)
         if (!reaction) {
           return
         }
@@ -123,6 +124,7 @@ export function createChatUi(
         bubble.element.textContent = bubbleText
         bubble.element.style.color = color
       }
+      bubble.element.style.opacity = String(opacity)
       bubble.position = bubblePosition
       bubble.shownAt = stamp
       bubble.hideAt = stamp + bubbleDuration
@@ -156,6 +158,7 @@ export function createChatUi(
       if (label) {
         renderLabel(label)
         label.element.dataset.speaking = 'false'
+        label.element.style.opacity = '1'
         label.hideAt = 0
       }
     },
@@ -240,6 +243,7 @@ export function createChatUi(
         if (label.hideAt > 0 && stamp > label.hideAt) {
           renderLabel(label)
           label.element.dataset.speaking = 'false'
+          label.element.style.opacity = '1'
           label.hideAt = 0
         }
 
