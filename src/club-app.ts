@@ -235,6 +235,10 @@ const {
   heartbadgeSubmitBtn,
   heartbadgeCancelBtn,
   heartbadgeNotice,
+  heartbadgeChoicesContainer,
+  heartbadgePasskeyBtn,
+  heartbadgeTotpBtn,
+  heartbadgeEmailBtn,
 } = getDomElements()
 
 setIntroLoadProgress({ introBar, introProgress }, 4)

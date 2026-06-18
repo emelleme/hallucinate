@@ -2418,3 +2418,24 @@ body[data-intro-visible="true"] #position-hud {
   word-break: break-word;
 }
 
+#heartbadge-passkey-btn,
+#heartbadge-totp-btn,
+#heartbadge-email-btn {
+  height: 28px;
+  border: 1px solid rgb(0 220 255 / 0.5);
+  border-radius: 5px;
+  background: rgb(0 100 150 / 0.3);
+  color: rgb(0 220 255);
+  font: 900 10px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  width: 100%;
+}
+
+#heartbadge-passkey-btn:hover,
+#heartbadge-totp-btn:hover,
+#heartbadge-email-btn:hover {
+  background: rgb(0 220 255 / 0.2);
+}
+

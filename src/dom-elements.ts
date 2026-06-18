@@ -246,6 +246,31 @@ function createDomElements() {
 
   heartbadgeNotice.id = 'heartbadge-notice'
 
+  const heartbadgeChoicesContainer = document.createElement('div')
+  const heartbadgePasskeyBtn = document.createElement('button')
+  const heartbadgeTotpBtn = document.createElement('button')
+  const heartbadgeEmailBtn = document.createElement('button')
+
+  heartbadgeChoicesContainer.id = 'heartbadge-choices-container'
+  heartbadgeChoicesContainer.style.display = 'none'
+  heartbadgeChoicesContainer.style.gridTemplateColumns = '1fr'
+  heartbadgeChoicesContainer.style.gap = '8px'
+  heartbadgeChoicesContainer.style.width = '100%'
+
+  heartbadgePasskeyBtn.id = 'heartbadge-passkey-btn'
+  heartbadgePasskeyBtn.type = 'button'
+  heartbadgePasskeyBtn.textContent = 'Sign in with Passkey'
+
+  heartbadgeTotpBtn.id = 'heartbadge-totp-btn'
+  heartbadgeTotpBtn.type = 'button'
+  heartbadgeTotpBtn.textContent = 'Use Authenticator App'
+
+  heartbadgeEmailBtn.id = 'heartbadge-email-btn'
+  heartbadgeEmailBtn.type = 'button'
+  heartbadgeEmailBtn.textContent = 'Send Email Code'
+
+  heartbadgeChoicesContainer.append(heartbadgePasskeyBtn, heartbadgeTotpBtn, heartbadgeEmailBtn)
+
   const heartbadgeButtonsRow = document.createElement('div')
   heartbadgeButtonsRow.style.display = 'grid'
   heartbadgeButtonsRow.style.gridTemplateColumns = '1fr 1fr'
@@ -255,6 +280,7 @@ function createDomElements() {
   heartbadgeLoginContainer.append(
     heartbadgeEmailInput,
     heartbadgeCodeInput,
+    heartbadgeChoicesContainer,
     heartbadgeButtonsRow,
     heartbadgeNotice
   )
@@ -314,6 +340,10 @@ function createDomElements() {
     heartbadgeSubmitBtn,
     heartbadgeCancelBtn,
     heartbadgeNotice,
+    heartbadgeChoicesContainer,
+    heartbadgePasskeyBtn,
+    heartbadgeTotpBtn,
+    heartbadgeEmailBtn,
   }
 }
 
