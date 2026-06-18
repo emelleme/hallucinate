@@ -22,7 +22,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
   if (isWs || isBackendPath) {
     const isMemberApi = path.startsWith('/api/member/')
     const backendUrl = isMemberApi
-      ? (context.env.HEARTBADGE_API_URL || 'https://messagetest.heartbeat-landing.pages.dev')
+      ? (context.env.HEARTBADGE_API_URL || 'https://heartbeat-landing.pages.dev')
       : (context.env.BACKEND_URL || 'http://backend.hallucinate.stagas.com')
     const targetUrl = new URL(url.pathname + url.search, backendUrl)
 
