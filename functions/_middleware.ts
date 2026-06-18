@@ -27,6 +27,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     const targetUrl = new URL(url.pathname + url.search, backendUrl)
 
     const headers = new Headers(context.request.headers)
+    headers.set('x-original-origin', url.origin)
     const clientIp = context.request.headers.get('cf-connecting-ip')
     if (clientIp) {
       headers.set('x-forwarded-for', clientIp)
