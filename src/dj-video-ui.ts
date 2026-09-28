@@ -166,6 +166,7 @@ export function createDjVideoUi(
               controls: 1,
               playsinline: 1,
               enablejsapi: 1,
+              origin: location.origin,
             },
             events: {
               onReady() {

@@ -2,15 +2,20 @@ export interface PartyProofSession {
   enabled?: boolean
   authenticated: boolean
   expiresAt?: number
+  unavailable?: boolean
 }
 
 export async function checkPartyProofSession(): Promise<PartyProofSession> {
-  const response = await fetch('/api/proof-pulse/session', {
-    credentials: 'same-origin',
-    cache: 'no-store',
-  })
-  if (!response.ok) return { authenticated: false }
-  return await response.json() as PartyProofSession
+  try {
+    const response = await fetch('/api/proof-pulse/session', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (!response.ok) return { authenticated: false, unavailable: true }
+    return await response.json() as PartyProofSession
+  } catch {
+    return { authenticated: false, unavailable: true }
+  }
 }
 
 export async function startPartyProof(): Promise<{ approvalUrl: string }> {

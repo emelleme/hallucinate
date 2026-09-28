@@ -88,6 +88,7 @@ function hashStringToInt(str: string): number {
 }
 
 export function createMultiplayer(options: {
+  canConnect?: () => boolean
   localPosition: Vec3
   localTurn: () => number
   localMoveAngle: () => number
@@ -139,6 +140,7 @@ export function createMultiplayer(options: {
   let heartbeat: any
   let reconnect: any
   let closed = false
+  let started = false
   let connectedOnce = false
   const pending: ArrayBuffer[] = []
   let selfId = 0
@@ -441,7 +443,10 @@ export function createMultiplayer(options: {
           credentials: 'same-origin',
           cache: 'no-store',
         }).then(async response => {
-          if (!response.ok) throw new Error('Membership proof is required.')
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('Membership proof is required.')
+          }
+          if (!response.ok) throw new Error('Party realtime is temporarily unavailable.')
           return await response.json()
         }).then(tokenRequest => callback(null, tokenRequest))
           .catch((error: unknown) => callback(
@@ -461,7 +466,7 @@ export function createMultiplayer(options: {
     })
 
     ablyClient.connection.on('failed', () => {
-      if (!connectedOnce && !closed) {
+      if (!connectedOnce && !closed && options.canConnect?.() !== false) {
         useAbly = false
         socket = connectWs()
       }
@@ -469,6 +474,8 @@ export function createMultiplayer(options: {
   }
 
   async function init() {
+    if (closed || started || options.canConnect?.() === false) return
+    started = true
     useAbly = true
     startAbly()
   }
@@ -977,6 +984,7 @@ export function createMultiplayer(options: {
     sendDuckPosition,
     sendGraffiti,
     sendMotionIfKeysChanged,
+    connect: init,
     close,
   }
 }

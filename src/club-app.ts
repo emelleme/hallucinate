@@ -225,7 +225,6 @@ const {
 } = getDomElements()
 
 setIntroLoadProgress({ introBar, introProgress }, 4)
-void initPartyProofSession()
 await afterNextPaint()
 
 let resizeDirty = true
@@ -1946,7 +1945,9 @@ function setIntroEffectPointer(event: PointerEvent) {
 
 let partyProofEnabled = true
 let partyProofAuthenticated = false
+let partyProofWasAuthenticated = false
 let partyProofRefreshTimer: ReturnType<typeof setInterval> | undefined
+let partyProofExpiryTimer: ReturnType<typeof setTimeout> | undefined
 let partyProofClickBound = false
 
 function startIntro() {
@@ -2014,8 +2015,37 @@ introInstagramInput.addEventListener('change', () => syncInstagram(introInstagra
 
 async function refreshPartyProofSession() {
   const session = await checkPartyProofSession()
+  if (session.unavailable) {
+    introHeartbadgeBtn.textContent = 'Membership verification unavailable'
+    introHeartbadgeBtn.disabled = true
+    introHeartbadgeBtn.setAttribute('aria-label', 'Membership verification unavailable')
+    introHeartbadgeBtn.title = 'The party could not check your HeartBadge session. Please retry shortly.'
+    return
+  }
+
+  const wasAuthenticated = partyProofAuthenticated
   partyProofEnabled = session.enabled !== false
   partyProofAuthenticated = partyProofEnabled && session.authenticated
+  if (partyProofAuthenticated) {
+    partyProofWasAuthenticated = true
+    if (partyProofExpiryTimer) clearTimeout(partyProofExpiryTimer)
+    if (typeof session.expiresAt === 'number' && Number.isFinite(session.expiresAt)) {
+      partyProofExpiryTimer = setTimeout(
+        () => location.reload(),
+        Math.max(0, session.expiresAt - Date.now()) + 100,
+      )
+    }
+    multiplayer?.connect()
+  } else if (!partyProofEnabled) {
+    if (partyProofExpiryTimer) clearTimeout(partyProofExpiryTimer)
+    multiplayer?.connect()
+  } else if (partyProofWasAuthenticated && wasAuthenticated) {
+    if (partyProofExpiryTimer) clearTimeout(partyProofExpiryTimer)
+    // A reload closes realtime transports; the next page remains disconnected
+    // because its session check will fail closed.
+    location.reload()
+    return
+  }
   if (!partyProofEnabled) {
     introHeartbadgeBtn.textContent = 'Membership verification unavailable'
     introHeartbadgeBtn.disabled = true
@@ -2640,6 +2670,7 @@ function connectMultiplayer(spaceSlug?: string) {
   hasMultiplayer = true
   resetServerState()
   multiplayer = createMultiplayer({
+    canConnect: () => !partyProofEnabled || partyProofAuthenticated,
     localPosition: characterPosition,
     localTurn: () => localCharacter.turn,
     localMoveAngle,
@@ -2838,6 +2869,7 @@ function connectMultiplayer(spaceSlug?: string) {
 }
 
 connectMultiplayer()
+void initPartyProofSession()
 
 type LoftRoomPayload = {
   claimed: boolean

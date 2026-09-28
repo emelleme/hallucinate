@@ -110,7 +110,7 @@ export type YouTubeConstructor = new(
       onReady: () => void
       onStateChange: (event: { data: number }) => void
     }
-    playerVars: Record<string, number>
+    playerVars: Record<string, number | string>
   },
 ) => YouTubePlayer
 
