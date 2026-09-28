@@ -87,8 +87,6 @@ function hashStringToInt(str: string): number {
   return Math.abs(hash) || 1
 }
 
-const ablyKey = (typeof localStorage !== 'undefined' && localStorage.getItem('ably_key')) || (import.meta.env && import.meta.env.VITE_ABLY_KEY)
-
 export function createMultiplayer(options: {
   localPosition: Vec3
   localTurn: () => number
@@ -435,20 +433,24 @@ export function createMultiplayer(options: {
     options.onRoomState(nextRoom, { selfChanged: false })
   }
 
-  function startAbly(key?: string, tokenRequest?: any) {
-    const opts: any = key ? { key } : {
-      authCallback: async (data: any, callback: any) => {
-        try {
-          const res = await fetch('/api/ably-token?clientId=' + encodeURIComponent(data.clientId || ''))
-          const req = await res.json()
-          callback(null, req)
-        } catch (err: any) {
-          callback(err, null)
-        }
-      }
-    }
-
-    ablyClient = new Ably.Realtime(opts)
+  function startAbly() {
+    const space = options.spaceSlug ? '?space=' + encodeURIComponent(options.spaceSlug) : ''
+    ablyClient = new Ably.Realtime({
+      authCallback: (_data, callback) => {
+        void fetch('/api/ably-token' + space, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        }).then(async response => {
+          if (!response.ok) throw new Error('Membership proof is required.')
+          return await response.json()
+        }).then(tokenRequest => callback(null, tokenRequest))
+          .catch((error: unknown) => callback(
+            error instanceof Error ? error.message : 'Realtime authorization failed.',
+            null,
+          ))
+      },
+      autoConnect: true,
+    })
 
     ablyClient.connection.on('connected', () => {
       connectedOnce = true
@@ -467,28 +469,8 @@ export function createMultiplayer(options: {
   }
 
   async function init() {
-    if (ablyKey) {
-      useAbly = true
-      startAbly(ablyKey)
-      return
-    }
-
-    try {
-      const res = await fetch('/api/ably-token?clientId=client_' + Math.random().toString(36).substring(2, 11))
-      if (res.ok) {
-        const tokenRequest = await res.json()
-        if (tokenRequest && !tokenRequest.error) {
-          useAbly = true
-          startAbly(undefined, tokenRequest)
-          return
-        }
-      }
-    } catch (e) {
-      // Ignore and fallback
-    }
-
-    useAbly = false
-    socket = connectWs()
+    useAbly = true
+    startAbly()
   }
 
   function connectWs() {

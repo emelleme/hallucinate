@@ -1,7 +1,7 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import type { Canvas } from '@napi-rs/canvas'
 import { Database } from 'bun:sqlite'
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -18,6 +18,7 @@ import {
   paintGraffitiSplats,
 } from './src/graffiti.ts'
 import { photoWallThumbnailHeight, photoWallThumbnailWidth } from './src/photo-wall-data.ts'
+import { verifyHpr1AssertionToken } from './src/proof-pulse-contract.ts'
 import {
   ACTIONS,
   ADMIN,
@@ -173,12 +174,17 @@ type SocketData = {
   ip: string
   protocolOk: boolean
   spaceKey: string
+  partySessionHash?: string
 }
 
 const port = Number(process.env.PORT ?? 3001)
 const dist = join(import.meta.dir, 'dist')
 const uplotDir = join(import.meta.dir, 'node_modules', 'uplot', 'dist')
 const clients = new Map<Bun.ServerWebSocket<SocketData>, Client>()
+const partyAuthTimers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setInterval>>()
+const partyGateEnabled = process.env.HALLUCINATE_PROOF_PULSE_ENABLED === 'true'
+const partySessionCookie = '__Host-hallucinate_party'
+const proofFlowCookie = '__Host-hallucinate_proof'
 const minuteMs = 60_000
 const hourMs = 60 * minuteMs
 const dayMs = 24 * hourMs
@@ -320,6 +326,14 @@ const server = Bun.serve<SocketData>({
   async fetch(request, server) {
     const ip = clientIp(request)
     const url = new URL(request.url)
+    const proofResponse = await handlePartyProofApi(request, url)
+    if (proofResponse) return proofResponse
+
+    const isWebSocket = request.headers.get('upgrade')?.toLowerCase() === 'websocket'
+    if (partyGateEnabled && isProtectedPartyRequest(url.pathname, isWebSocket)) {
+      const session = getPartySession(request)
+      if (!session) return new Response('Membership proof required', { status: 401, headers: { 'cache-control': 'no-store' } })
+    }
 
     if (url.pathname === '/api/rooms' || url.pathname.startsWith('/api/rooms/')) {
       return handleRoomApi(request, url)
@@ -375,6 +389,7 @@ const server = Bun.serve<SocketData>({
         ip,
         protocolOk: clientProtocolOk(url.searchParams.get('protocol')),
         spaceKey: websocketSpaceKey(url, ip),
+        partySessionHash: partyGateEnabled ? getPartySession(request)?.tokenHash : undefined,
       },
     })) {
       return
@@ -384,6 +399,18 @@ const server = Bun.serve<SocketData>({
   },
   websocket: {
     open(socket) {
+      if (partyGateEnabled) {
+        if (!socket.data.partySessionHash || !isPartySessionHashActive(socket.data.partySessionHash)) {
+          socket.close(1008, 'membership')
+          return
+        }
+        const authTimer = setInterval(() => {
+          if (!socket.data.partySessionHash || !isPartySessionHashActive(socket.data.partySessionHash)) {
+            socket.close(1008, 'membership')
+          }
+        }, 10_000)
+        partyAuthTimers.set(socket, authTimer)
+      }
       if (!socket.data.protocolOk) {
         socket.close(1012, 'version')
         return
@@ -446,7 +473,12 @@ const server = Bun.serve<SocketData>({
       broadcast(client, encodeSpawn(client.pose))
     },
     async message(socket, message) {
-      const client = clients.get(socket)!
+      if (partyGateEnabled && (!socket.data.partySessionHash || !isPartySessionHashActive(socket.data.partySessionHash))) {
+        socket.close(1008, 'membership')
+        return
+      }
+      const client = clients.get(socket)
+      if (!client) return
 
       try {
         const view = messageView(message)
@@ -591,6 +623,9 @@ const server = Bun.serve<SocketData>({
       }
     },
     close(socket) {
+      const authTimer = partyAuthTimers.get(socket)
+      if (authTimer) clearInterval(authTimer)
+      partyAuthTimers.delete(socket)
       const client = clients.get(socket)
 
       if (!client) {
@@ -2090,6 +2125,317 @@ async function currentVideoSync(space: SpaceState, now: number, zones?: Set<Vide
     }))
 }
 
+
+type PartySession = {
+  tokenHash: string
+  ablyClientId: string
+  expiresAt: number
+}
+
+function noStoreJson(body: unknown, status = 200, headers?: HeadersInit) {
+  const resultHeaders = new Headers(headers)
+  resultHeaders.set('content-type', 'application/json; charset=utf-8')
+  resultHeaders.set('cache-control', 'no-store, private')
+  resultHeaders.set('pragma', 'no-cache')
+  return new Response(JSON.stringify(body), { status, headers: resultHeaders })
+}
+
+function constantTimeEqual(left: string, right: string) {
+  const a = Buffer.from(left)
+  const b = Buffer.from(right)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function digest(value: string) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function proofStateHash(value: string) {
+  return createHmac('sha256', process.env.HALLUCINATE_PROOF_FLOW_SECRET || '').update(value).digest('hex')
+}
+
+function randomOpaque(bytes = 32) {
+  return randomBytes(bytes).toString('base64url')
+}
+
+function readCookie(request: Request, name: string) {
+  const cookie = request.headers.get('cookie') || ''
+  for (const part of cookie.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator < 0) continue
+    if (part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim()
+  }
+  return ''
+}
+
+function cookieHeader(name: string, value: string, maxAge: number) {
+  return name + '=' + value + '; Path=/; Max-Age=' + maxAge + '; Secure; HttpOnly; SameSite=Lax'
+}
+
+function redirectNoStore(location: string, cookies: string[]) {
+  const headers = new Headers({ location, 'cache-control': 'no-store' })
+  for (const cookie of cookies) headers.append('set-cookie', cookie)
+  return new Response(null, { status: 303, headers })
+}
+
+function partyOrigin() {
+  const configured = (process.env.HALLUCINATE_PUBLIC_ORIGIN || '').replace(/\/+$/, '')
+  try {
+    const url = new URL(configured)
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return ''
+    return configured
+  } catch {
+    return ''
+  }
+}
+
+function proofIssuer() {
+  const configured = (process.env.HEARTBADGE_PROOF_PULSE_ISSUER || '').replace(/\/+$/, '')
+  try {
+    const url = new URL(configured)
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return ''
+    return configured
+  } catch {
+    return ''
+  }
+}
+
+function getPartySession(request: Request): PartySession | null {
+  const token = readCookie(request, partySessionCookie)
+  if (!token || token.length < 32) return null
+  const tokenHash = digest(token)
+  const row = db.query<{ token_hash: string; ably_client_id: string; expires_at: number }, { token_hash: string; now: number }>(
+    `SELECT token_hash, ably_client_id, expires_at FROM party_sessions
+     WHERE token_hash = $token_hash AND revoked_at IS NULL AND expires_at > $now LIMIT 1`
+  ).get({ token_hash: tokenHash, now: Date.now() })
+  return row ? { tokenHash: row.token_hash, ablyClientId: row.ably_client_id, expiresAt: row.expires_at } : null
+}
+
+function isPartySessionHashActive(tokenHash: string) {
+  const row = db.query<{ active: number }, { token_hash: string; now: number }>(
+    `SELECT 1 AS active FROM party_sessions
+     WHERE token_hash = $token_hash AND revoked_at IS NULL AND expires_at > $now LIMIT 1`
+  ).get({ token_hash: tokenHash, now: Date.now() })
+  return Boolean(row)
+}
+
+function isProtectedPartyRequest(path: string, websocket: boolean) {
+  if (websocket) return true
+  if (path === '/api/proof-pulse/start' || path === '/api/proof-pulse/callback'
+    || path === '/api/proof-pulse/session' || path === '/api/proof-pulse/logout'
+    || path === '/api/proof-pulse/realtime') return false
+  return path.startsWith('/api/') || path.startsWith('/photos/') || path === '/photos'
+    || path.startsWith('/graffiti/') || path.startsWith('/gallery') || path.startsWith('/analytics')
+    || path === '/gallery.html' || path === '/analytics.html'
+}
+
+async function handlePartyProofApi(request: Request, url: URL): Promise<Response | null> {
+  if (!url.pathname.startsWith('/api/proof-pulse/')) return null
+  if (url.pathname === '/api/proof-pulse/session' && request.method === 'GET') {
+    if (!partyGateEnabled) return noStoreJson({ enabled: false, authenticated: false })
+    const session = getPartySession(request)
+    return noStoreJson(session
+      ? { enabled: true, authenticated: true, expiresAt: session.expiresAt }
+      : { enabled: true, authenticated: false })
+  }
+  if (!partyGateEnabled) return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 503)
+  const issuer = proofIssuer()
+  const publicOrigin = partyOrigin()
+  const clientId = process.env.HEARTBADGE_HPR1_CLIENT_ID || 'hallucinate'
+  const clientSecret = process.env.HEARTBADGE_HPR1_CLIENT_SECRET || ''
+  const redirectUri = process.env.HALLUCINATE_HPR1_REDIRECT_URI || (publicOrigin ? publicOrigin + '/api/proof-pulse/callback' : '')
+  const flowSecret = process.env.HALLUCINATE_PROOF_FLOW_SECRET || ''
+  let callback: URL | null = null
+  try { callback = new URL(redirectUri) } catch { callback = null }
+  if (!issuer || !publicOrigin || !callback || callback.origin !== publicOrigin
+    || callback.pathname !== '/api/proof-pulse/callback' || callback.search || callback.hash
+    || !flowSecret || flowSecret.length < 32 || !clientSecret || clientId !== 'hallucinate') {
+    return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 503)
+  }
+
+  if (url.pathname === '/api/proof-pulse/start' && request.method === 'POST') {
+    if (request.headers.get('origin') !== publicOrigin) return noStoreJson({ error: 'invalid_origin' }, 403)
+    const state = randomOpaque()
+    const nonce = randomOpaque()
+    const context = randomOpaque(24)
+    try {
+      const start = await fetch(issuer + '/api/proof-pulse/hpr1/requests', {
+        method: 'POST',
+        headers: {
+          authorization: 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          predicate: 'PROGRAM_ELIGIBILITY',
+          policy: 'hallucinate_party_entry',
+          redirect_uri: redirectUri,
+          nonce,
+          context,
+          state,
+        }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!start.ok) return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 503)
+      const result = await start.json() as { requestId?: string; approvalUrl?: string }
+      if (!result.requestId || !result.approvalUrl) return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 503)
+      const approvalUrl = new URL(result.approvalUrl)
+      if (approvalUrl.origin !== issuer || approvalUrl.pathname !== '/proof-of-pulse/hpr1/' + encodeURIComponent(result.requestId)) {
+        return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 502)
+      }
+      db.query(`DELETE FROM party_proof_requests WHERE expires_at <= $now`).run({ now: Date.now() })
+      db.query(
+        `INSERT INTO party_proof_requests
+          (request_id, state_hash, nonce, proof_context, created_at, expires_at, consumed_at)
+          VALUES ($request_id, $state_hash, $nonce, $proof_context, $created_at, $expires_at, NULL)`
+      ).run({
+        request_id: result.requestId,
+        state_hash: proofStateHash(state),
+        nonce,
+        proof_context: context,
+        created_at: Date.now(),
+        expires_at: Date.now() + 5 * 60_000,
+      })
+      return noStoreJson({ approvalUrl: approvalUrl.toString() }, 201, {
+        'set-cookie': cookieHeader(proofFlowCookie, state, 300),
+      })
+    } catch {
+      return noStoreJson({ error: 'proof_of_pulse_unavailable' }, 503)
+    }
+  }
+
+  if (url.pathname === '/api/proof-pulse/logout' && request.method === 'POST') {
+    if (request.headers.get('origin') !== publicOrigin) return noStoreJson({ error: 'invalid_origin' }, 403)
+    const session = getPartySession(request)
+    if (session) db.query('UPDATE party_sessions SET revoked_at = $now WHERE token_hash = $hash AND revoked_at IS NULL')
+      .run({ now: Date.now(), hash: session.tokenHash })
+    return noStoreJson({ ok: true }, 200, { 'set-cookie': cookieHeader(partySessionCookie, '', 0) })
+  }
+
+  if (url.pathname === '/api/proof-pulse/realtime' && request.method === 'GET') {
+    const internal = process.env.HALLUCINATE_INTERNAL_TOKEN || ''
+    const presented = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
+    if (!internal || !constantTimeEqual(internal, presented) || request.headers.get('origin') !== publicOrigin) {
+      return noStoreJson({ error: 'forbidden' }, 403)
+    }
+    const session = getPartySession(request)
+    if (!session) return noStoreJson({ error: 'membership_proof_required' }, 401)
+    const space = url.searchParams.get('space') || 'default'
+    let channels: string[]
+    if (space === 'default') {
+      channels = Array.from({ length: roomCount }, (_, index) => 'default:room:' + index)
+    } else {
+      if (!loftSlugPattern.test(space)) return noStoreJson({ error: 'invalid_space' }, 400)
+      const loft = db.query<{ slug: string; expires_at: number }, { slug: string; now: number }>(
+        'SELECT slug, expires_at FROM loft_rooms WHERE slug = $slug AND expires_at > $now LIMIT 1'
+      ).get({ slug: space, now: Date.now() })
+      if (!loft) return noStoreJson({ error: 'invalid_space' }, 404)
+      channels = Array.from({ length: roomCount }, (_, index) => space + ':room:' + index)
+    }
+    return noStoreJson({ clientId: session.ablyClientId, channels })
+  }
+
+  if (url.pathname === '/api/proof-pulse/callback' && request.method === 'GET') {
+    const state = url.searchParams.get('state') || ''
+    const cookieState = readCookie(request, proofFlowCookie)
+    const code = url.searchParams.get('code') || ''
+    if (!state || !cookieState || !constantTimeEqual(state, cookieState)) {
+      return noStoreJson({ error: 'invalid_proof_response' }, 400, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+    }
+    if (url.searchParams.has('error') || !code) {
+      return redirectNoStore(publicOrigin + '/?proof=denied', [cookieHeader(proofFlowCookie, '', 0)])
+    }
+    const pending = db.query<{
+      request_id: string; nonce: string; proof_context: string; expires_at: number
+    }, { state_hash: string; now: number }>(
+      `SELECT request_id, nonce, proof_context, expires_at FROM party_proof_requests
+       WHERE state_hash = $state_hash AND consumed_at IS NULL AND expires_at > $now LIMIT 1`
+    ).get({ state_hash: proofStateHash(state), now: Date.now() })
+    if (!pending) return noStoreJson({ error: 'invalid_proof_response' }, 400, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+
+    try {
+      const exchange = await fetch(issuer + '/api/proof-pulse/hpr1/exchange', {
+        method: 'POST',
+        headers: {
+          authorization: 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ code, nonce: pending.nonce, context: pending.proof_context }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!exchange.ok) return noStoreJson({ error: 'membership_proof_failed' }, 403, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+      const result = await exchange.json() as { assertion?: string }
+      if (!result.assertion) return noStoreJson({ error: 'membership_proof_failed' }, 403, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+      const assertion = await verifyHpr1Assertion(result.assertion, {
+        issuer,
+        requestId: pending.request_id,
+        nonce: pending.nonce,
+        contextHash: digest(pending.proof_context),
+      })
+      if (!assertion) return noStoreJson({ error: 'membership_proof_failed' }, 403, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+
+      const sessionToken = randomOpaque()
+      const tokenHash = digest(sessionToken)
+      const ablyClientId = 'party_' + randomOpaque(18)
+      const expiresAt = Date.now() + 45 * 60_000
+      let committed = false
+      try {
+        const commit = db.transaction(() => {
+          const consumed = db.query(
+            `UPDATE party_proof_requests SET consumed_at = $now
+             WHERE request_id = $request_id AND state_hash = $state_hash
+               AND consumed_at IS NULL AND expires_at > $now`
+          ).run({ now: Date.now(), request_id: pending.request_id, state_hash: proofStateHash(state) })
+          if (consumed.changes !== 1) throw new Error('proof request already consumed')
+          const seen = db.query(
+            'INSERT OR IGNORE INTO hpr1_assertion_ids (assertion_id, expires_at) VALUES ($id, $exp)'
+          ).run({ id: assertion.jti, exp: assertion.exp * 1000 })
+          if (seen.changes !== 1) throw new Error('assertion replay')
+          db.query(
+            `INSERT INTO party_sessions
+              (token_hash, ably_client_id, issued_at, expires_at, revoked_at)
+              VALUES ($token_hash, $ably_client_id, $issued_at, $expires_at, NULL)`
+          ).run({
+            token_hash: tokenHash,
+            ably_client_id: ablyClientId,
+            issued_at: Date.now(),
+            expires_at: expiresAt,
+          })
+        })
+        commit()
+        committed = true
+      } catch {
+        committed = false
+      }
+      if (!committed) return noStoreJson({ error: 'membership_proof_failed' }, 409, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+      return redirectNoStore(publicOrigin + '/?proof=verified', [
+        cookieHeader(proofFlowCookie, '', 0),
+        cookieHeader(partySessionCookie, sessionToken, Math.floor((expiresAt - Date.now()) / 1000)),
+      ])
+    } catch {
+      return noStoreJson({ error: 'membership_proof_failed' }, 503, { 'set-cookie': cookieHeader(proofFlowCookie, '', 0) })
+    }
+  }
+  return noStoreJson({ error: 'not_found' }, 404)
+}
+
+async function verifyHpr1Assertion(
+  token: string,
+  expected: { issuer: string; requestId: string; nonce: string; contextHash: string },
+): Promise<{ jti: string; exp: number } | null> {
+  try {
+    const response = await fetch(expected.issuer + '/connect/hpr1-jwks', {
+      headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) return null
+    const jwks = await response.json() as { keys?: Array<JsonWebKey & { kid?: string; alg?: string; use?: string }> }
+    return verifyHpr1AssertionToken(token, jwks, expected)
+  } catch {
+    return null
+  }
+}
+
 function setupDb() {
   db.run('PRAGMA journal_mode = WAL;')
   db.run(`
@@ -2157,6 +2503,28 @@ function setupDb() {
       online_average REAL NOT NULL,
       online_max INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS party_sessions (
+      token_hash TEXT PRIMARY KEY,
+      ably_client_id TEXT NOT NULL UNIQUE,
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS party_proof_requests (
+      request_id TEXT PRIMARY KEY,
+      state_hash TEXT NOT NULL UNIQUE,
+      nonce TEXT NOT NULL,
+      proof_context TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      consumed_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS hpr1_assertion_ids (
+      assertion_id TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS party_sessions_expiry_index ON party_sessions (expires_at);
+    CREATE INDEX IF NOT EXISTS party_proof_expiry_index ON party_proof_requests (expires_at);
     CREATE INDEX IF NOT EXISTS photos_created_at_index ON photos (created_at DESC, timestamp DESC);
     CREATE INDEX IF NOT EXISTS photos_ip_created_at_index ON photos (ip, created_at);
     CREATE INDEX IF NOT EXISTS photo_likes_timestamp_index ON photo_likes (timestamp);

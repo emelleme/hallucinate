@@ -41,14 +41,7 @@ import { bindKeyboardInput, setInputLayout } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
-import {
-  checkHeartbadgeSession,
-  queryAuthMethods,
-  startAuth,
-  verifyAuth,
-  verifyTotpLogin,
-  loginWithHeartbadgePasskey,
-} from './heartbadge-auth.ts'
+import { checkPartyProofSession, startPartyProof } from './proof-pulse-auth.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
@@ -229,20 +222,10 @@ const {
   introStart,
   positionHud,
   introHeartbadgeBtn,
-  heartbadgeLoginContainer,
-  heartbadgeEmailInput,
-  heartbadgeCodeInput,
-  heartbadgeSubmitBtn,
-  heartbadgeCancelBtn,
-  heartbadgeNotice,
-  heartbadgeChoicesContainer,
-  heartbadgePasskeyBtn,
-  heartbadgeTotpBtn,
-  heartbadgeEmailBtn,
 } = getDomElements()
 
 setIntroLoadProgress({ introBar, introProgress }, 4)
-void initHeartbadgeSession()
+void initPartyProofSession()
 await afterNextPaint()
 
 let resizeDirty = true
@@ -1961,8 +1944,19 @@ function setIntroEffectPointer(event: PointerEvent) {
     (event.clientY - bounds.top) / bounds.height)
 }
 
+let partyProofEnabled = true
+let partyProofAuthenticated = false
+let partyProofRefreshTimer: ReturnType<typeof setInterval> | undefined
+let partyProofClickBound = false
+
 function startIntro() {
   if (introHidden) {
+    return
+  }
+
+  if (partyProofEnabled && !partyProofAuthenticated) {
+    introHeartbadgeBtn.focus()
+    introHeartbadgeBtn.title = 'Prove your HeartBadge membership before entering the party.'
     return
   }
 
@@ -2018,212 +2012,52 @@ introNicknameInput.addEventListener('change', () => syncNickname(introNicknameIn
 introNicknameInput.addEventListener('input', syncChatFormColor)
 introInstagramInput.addEventListener('change', () => syncInstagram(introInstagramInput.value))
 
-async function initHeartbadgeSession() {
-  const session = await checkHeartbadgeSession()
-  if (session) {
-    introNicknameInput.value = session.displayName || session.email.split('@')[0] || ''
-    introInstagramInput.value = ''
-    syncNickname(introNicknameInput.value)
-    syncInstagram(introInstagramInput.value)
-    introHeartbadgeBtn.textContent = 'Signed in with HeartBadge'
+async function refreshPartyProofSession() {
+  const session = await checkPartyProofSession()
+  partyProofEnabled = session.enabled !== false
+  partyProofAuthenticated = partyProofEnabled && session.authenticated
+  if (!partyProofEnabled) {
+    introHeartbadgeBtn.textContent = 'Membership verification unavailable'
     introHeartbadgeBtn.disabled = true
-    introHeartbadgeBtn.style.borderColor = 'rgb(0, 255, 100)'
-    introHeartbadgeBtn.style.color = 'rgb(0, 255, 100)'
-    introHeartbadgeBtn.style.textShadow = '0 0 6px rgba(0, 255, 100, 0.5)'
+    introHeartbadgeBtn.setAttribute('aria-label', 'Membership verification unavailable')
+    return
   }
-}
-
-let heartbadgeLoginStage: 'email' | 'code' | 'totp' = 'email'
-let heartbadgeLoginEmail = ''
-
-function showHeartbadgeNotice(msg: string, isError = false) {
-  heartbadgeNotice.textContent = msg
-  heartbadgeNotice.style.color = isError ? 'rgb(255, 50, 80)' : 'rgb(0, 220, 255)'
-}
-
-introHeartbadgeBtn.addEventListener('click', () => {
-  introNicknameInput.parentElement!.style.display = 'none'
-  introInstagramInput.parentElement!.style.display = 'none'
-  introHeartbadgeBtn.style.display = 'none'
-  heartbadgeLoginContainer.style.display = 'grid'
-  heartbadgeEmailInput.style.display = 'block'
-  heartbadgeCodeInput.style.display = 'none'
-  heartbadgeChoicesContainer.style.display = 'none'
-  heartbadgeSubmitBtn.style.display = 'block'
-  heartbadgeEmailInput.value = ''
-  heartbadgeCodeInput.value = ''
-  heartbadgeSubmitBtn.textContent = 'Next'
-  heartbadgeLoginStage = 'email'
-  showHeartbadgeNotice('')
-  heartbadgeEmailInput.focus()
-})
-
-heartbadgeCancelBtn.addEventListener('click', () => {
-  introNicknameInput.parentElement!.style.display = 'grid'
-  introInstagramInput.parentElement!.style.display = 'grid'
-  introHeartbadgeBtn.style.display = 'block'
-  heartbadgeLoginContainer.style.display = 'none'
-  showHeartbadgeNotice('')
-})
-
-heartbadgePasskeyBtn.addEventListener('click', async () => {
-  showHeartbadgeNotice('Authenticating with Passkey...')
-  try {
-    await loginWithHeartbadgePasskey(heartbadgeLoginEmail)
-    await completeHeartbadgeLogin()
-  } catch (e: any) {
-    const errMsg = e.message || String(e)
-    showHeartbadgeNotice(errMsg.includes('cancel') ? 'Passkey cancelled.' : errMsg, true)
-  }
-})
-
-heartbadgeTotpBtn.addEventListener('click', () => {
-  heartbadgeChoicesContainer.style.display = 'none'
-  heartbadgeCodeInput.style.display = 'block'
-  heartbadgeSubmitBtn.style.display = 'block'
-  heartbadgeLoginStage = 'totp'
-  heartbadgeCodeInput.placeholder = '6-digit app code'
-  heartbadgeSubmitBtn.textContent = 'Verify App'
-  showHeartbadgeNotice('Enter code from authenticator app.')
-  heartbadgeCodeInput.value = ''
-  heartbadgeCodeInput.focus()
-})
-
-heartbadgeEmailBtn.addEventListener('click', async () => {
-  const maskedEmail = heartbadgeEmailBtn.dataset.maskedEmail || heartbadgeLoginEmail
-  showHeartbadgeNotice('Sending verification email...')
-  heartbadgeChoicesContainer.style.display = 'none'
-  
-  try {
-    await startAuth(heartbadgeLoginEmail)
-    heartbadgeCodeInput.style.display = 'block'
-    heartbadgeSubmitBtn.style.display = 'block'
-    heartbadgeLoginStage = 'code'
-    heartbadgeCodeInput.placeholder = '6-digit email code'
-    heartbadgeSubmitBtn.textContent = 'Verify Code'
-    showHeartbadgeNotice(`Code sent to ${maskedEmail}.`)
-    heartbadgeCodeInput.value = ''
-    heartbadgeCodeInput.focus()
-  } catch (e: any) {
-    showHeartbadgeNotice(e.message || 'Failed to send email.', true)
-    heartbadgeChoicesContainer.style.display = 'flex'
-  }
-})
-
-async function handleHeartbadgeSubmit() {
-  const email = heartbadgeEmailInput.value.trim().toLowerCase()
-  if (heartbadgeLoginStage === 'email') {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showHeartbadgeNotice('Enter a valid email address.', true)
-      return
-    }
-
-    heartbadgeSubmitBtn.disabled = true
-    showHeartbadgeNotice('Connecting...')
-
-    try {
-      heartbadgeLoginEmail = email
-      const { methods, maskedEmail } = await queryAuthMethods(email)
-      
-      heartbadgeEmailInput.style.display = 'none'
-      heartbadgeSubmitBtn.style.display = 'none'
-      heartbadgeChoicesContainer.style.display = 'flex'
-      showHeartbadgeNotice('Select login method:')
-
-      heartbadgePasskeyBtn.style.display = methods.includes('passkey') ? 'block' : 'none'
-      heartbadgeTotpBtn.style.display = methods.includes('totp') ? 'block' : 'none'
-      heartbadgeEmailBtn.style.display = 'block'
-      heartbadgeEmailBtn.dataset.maskedEmail = maskedEmail || email
-    } catch (e: any) {
-      showHeartbadgeNotice(e.message || 'Verification failed.', true)
-    } finally {
-      heartbadgeSubmitBtn.disabled = false
-    }
-  } else if (heartbadgeLoginStage === 'code') {
-    const code = heartbadgeCodeInput.value.trim()
-    if (code.length !== 6) {
-      showHeartbadgeNotice('Enter a 6-digit code.', true)
-      return
-    }
-
-    heartbadgeSubmitBtn.disabled = true
-    showHeartbadgeNotice('Verifying code...')
-
-    try {
-      await verifyAuth(heartbadgeLoginEmail, code)
-      await completeHeartbadgeLogin()
-    } catch (e: any) {
-      showHeartbadgeNotice(e.message || 'Invalid code.', true)
-      heartbadgeSubmitBtn.disabled = false
-    }
-  } else if (heartbadgeLoginStage === 'totp') {
-    const code = heartbadgeCodeInput.value.trim()
-    if (code.length !== 6) {
-      showHeartbadgeNotice('Enter a 6-digit code.', true)
-      return
-    }
-
-    heartbadgeSubmitBtn.disabled = true
-    showHeartbadgeNotice('Verifying app code...')
-
-    try {
-      await verifyTotpLogin(heartbadgeLoginEmail, code)
-      await completeHeartbadgeLogin()
-    } catch (e: any) {
-      showHeartbadgeNotice(e.message || 'Invalid app code.', true)
-      heartbadgeSubmitBtn.disabled = false
-    }
-  }
-}
-
-async function completeHeartbadgeLogin() {
-  const session = await checkHeartbadgeSession()
-  if (session) {
-    introNicknameInput.value = session.displayName || session.email.split('@')[0] || ''
-    introInstagramInput.value = ''
-    syncNickname(introNicknameInput.value)
-    syncInstagram(introInstagramInput.value)
-
-    introNicknameInput.parentElement!.style.display = 'grid'
-    introInstagramInput.parentElement!.style.display = 'grid'
-    introHeartbadgeBtn.style.display = 'block'
-    heartbadgeLoginContainer.style.display = 'none'
-
-    introHeartbadgeBtn.textContent = 'Signed in with HeartBadge'
+  if (partyProofAuthenticated) {
+    introHeartbadgeBtn.textContent = 'Membership verified'
     introHeartbadgeBtn.disabled = true
-    introHeartbadgeBtn.style.borderColor = 'rgb(0, 255, 100)'
-    introHeartbadgeBtn.style.color = 'rgb(0, 255, 100)'
-    introHeartbadgeBtn.style.textShadow = '0 0 6px rgba(0, 255, 100, 0.5)'
-
-    addChatLogMessage({
-      id: 0,
-      nick: 'SYSTEM',
-      insta: '',
-      photoTimestamp: 0,
-      text: `✓ HeartBadge identity verified! Logging in as ${introNicknameInput.value}.`,
+    introHeartbadgeBtn.setAttribute('aria-label', 'HeartBadge membership verified')
+    introHeartbadgeBtn.removeAttribute('title')
+    return
+  }
+  introHeartbadgeBtn.textContent = 'Prove membership'
+  introHeartbadgeBtn.disabled = false
+  introHeartbadgeBtn.setAttribute('aria-label', 'Prove HeartBadge membership')
+  if (!partyProofClickBound) {
+    partyProofClickBound = true
+    introHeartbadgeBtn.addEventListener('click', async () => {
+      introHeartbadgeBtn.disabled = true
+      introHeartbadgeBtn.textContent = 'Connecting to HeartBadge…'
+      try {
+        const result = await startPartyProof()
+        location.assign(result.approvalUrl)
+      } catch (error) {
+        introHeartbadgeBtn.disabled = false
+        introHeartbadgeBtn.textContent = 'Prove membership'
+        const message = error instanceof Error ? error.message : 'Could not start membership proof.'
+        introHeartbadgeBtn.title = message
+      }
     })
-  } else {
-    throw new Error('Session validation failed after login.')
   }
 }
 
-heartbadgeEmailInput.addEventListener('keydown', event => {
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    void handleHeartbadgeSubmit()
-  }
-})
-
-heartbadgeCodeInput.addEventListener('keydown', event => {
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    void handleHeartbadgeSubmit()
-  }
-})
-
-heartbadgeSubmitBtn.addEventListener('click', () => {
-  void handleHeartbadgeSubmit()
-})
+async function initPartyProofSession() {
+  await refreshPartyProofSession()
+  if (partyProofRefreshTimer) clearInterval(partyProofRefreshTimer)
+  partyProofRefreshTimer = setInterval(() => { void refreshPartyProofSession() }, 30_000)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshPartyProofSession()
+  })
+}
 
 function handleIntroProfileKey(event: KeyboardEvent) {
   if (event.key !== 'Enter') {
