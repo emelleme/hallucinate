@@ -313,11 +313,7 @@ const mainSpace = createSpace(mainSpaceKey, 'main', roomCount)
 
 mainSpace.videoQueues = await loadVideoQueues(mainSpace)
 mainSpace.videoPlaylistOrders = await loadVideoPlaylists(mainSpace)
-await syncVideoPlaylistsFromSources(mainSpace, Date.now()).catch((e: unknown) => console.error(e))
 spaces.set(mainSpace.key, mainSpace)
-if (await initializeVideoQueuesFromPlaylists(mainSpace, Date.now())) {
-  await saveVideoQueues(mainSpace)
-}
 
 let nextId = loadMaxChatHistoryId() + 1
 
@@ -701,6 +697,9 @@ function clientProtocolOk(protocol: string | null) {
 }
 
 console.log(JSON.stringify({ service: 'hallucinate', event: 'server_started', port: server.port, dataDir }))
+void initializeVideoSourceState().catch((error: unknown) => {
+  console.error(JSON.stringify({ service: 'hallucinate', event: 'video_startup_failed', error: String(error) }))
+})
 
 const backgroundTimers = [
   setInterval(syncRooms, heartbeatInterval),
@@ -3354,12 +3353,30 @@ async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[])
   }
 }
 
+async function initializeVideoSourceState() {
+  try {
+    await syncVideoPlaylistsFromSources(mainSpace, Date.now())
+  }
+  catch (error) {
+    console.error(JSON.stringify({ service: 'hallucinate', event: 'video_playlist_startup_sync_failed', error: String(error) }))
+  }
+
+  const changed = await initializeVideoQueuesFromPlaylists(mainSpace, Date.now())
+  if (changed) saveVideoQueues(mainSpace)
+  if (mainSpace.videoPlaylistOrders.length > 0) saveVideoPlaylists(mainSpace)
+}
+
 async function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   let changed = false
 
   for (const entry of space.videoPlaylistOrders) {
-    if (await ensureVideoQueueFromPlaylist(space, entry.zone, now)) {
-      changed = true
+    try {
+      if (await ensureVideoQueueFromPlaylist(space, entry.zone, now)) {
+        changed = true
+      }
+    }
+    catch (error) {
+      console.error(JSON.stringify({ service: 'hallucinate', event: 'video_queue_initialization_failed', zone: entry.zone, error: String(error) }))
     }
   }
 
