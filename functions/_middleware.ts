@@ -47,6 +47,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     }
     try {
       const response = await fetch(targetUrl.toString(), requestInit)
+      if (isWs) return response
       const responseHeaders = new Headers(response.headers)
       responseHeaders.delete('www-authenticate')
       responseHeaders.set('cache-control', 'no-store')

@@ -178,6 +178,8 @@ type SocketData = {
 }
 
 const port = Number(process.env.PORT ?? 3001)
+const production = process.env.NODE_ENV === 'production'
+const dataDir = resolve(process.env.DATA_DIR ?? join(import.meta.dir, 'data'))
 const dist = join(import.meta.dir, 'dist')
 const uplotDir = join(import.meta.dir, 'node_modules', 'uplot', 'dist')
 const clients = new Map<Bun.ServerWebSocket<SocketData>, Client>()
@@ -216,17 +218,17 @@ const maxClientStep = 1.2
 const maxHairIndex = 32
 const memoryAssetMaxSize = 3 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
-const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
-const graffitiLayerDir = join(import.meta.dir, 'data', 'graffiti', 'layers')
+const dbPath = process.env.CLUB_DB ?? join(dataDir, 'club.sqlite')
+const graffitiLayerDir = join(dataDir, 'graffiti', 'layers')
 const graffitiLayerExtension = '.webp'
 const graffitiPackLog = '[graffiti:pack]'
 const graffitiPackPaintChunk = 25
 const graffitiPackQuality = 100
 const graffitiPackSize = 1000
-const graffitiSnapshotDir = join(import.meta.dir, 'data', 'graffiti', 'snapshots')
+const graffitiSnapshotDir = join(dataDir, 'graffiti', 'snapshots')
 const graffitiSnapshotExtension = '.webp'
 const graffitiSnapshotMigrationKey = 'graffiti:snapshot-migration:1000:1'
-const photoDir = join(import.meta.dir, 'data', 'photos')
+const photoDir = join(dataDir, 'photos')
 const photoExtension = '.webp'
 const photoExtensions = [photoExtension, '.jpg'] as const
 const photoContentType = 'image/webp'
@@ -239,6 +241,49 @@ const photoWebpQuality = 94
 const photoThumbnailMigrationKey = `photos:thumbnail-migration:${photoWallThumbnailWidth}x${photoWallThumbnailHeight}:1`
 const photoThumbnailMigrationLog = '[photos:thumbnail-migration]'
 const photoThumbnailQuality = 82
+
+function validateProductionConfig() {
+  if (!production) return
+  if (!partyGateEnabled) throw new Error('HALLUCINATE_PROOF_PULSE_ENABLED must be true in production')
+
+  const required = [
+    'HALLUCINATE_PUBLIC_ORIGIN',
+    'HEARTBADGE_PROOF_PULSE_ISSUER',
+    'HEARTBADGE_HPR1_CLIENT_SECRET',
+    'HALLUCINATE_PROOF_FLOW_SECRET',
+    'HALLUCINATE_INTERNAL_TOKEN',
+  ] as const
+  const missing = required.filter(name => !process.env[name])
+  if (missing.length > 0) throw new Error(`Missing production configuration: ${missing.join(', ')}`)
+
+  const origin = process.env.HALLUCINATE_PUBLIC_ORIGIN!
+  const issuer = process.env.HEARTBADGE_PROOF_PULSE_ISSUER!
+  const validHttpsOrigin = (value: string) => {
+    try {
+      const url = new URL(value)
+      return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash && url.origin === value
+    } catch {
+      return false
+    }
+  }
+  if (!validHttpsOrigin(origin) || !validHttpsOrigin(issuer)) {
+    throw new Error('HALLUCINATE_PUBLIC_ORIGIN and HEARTBADGE_PROOF_PULSE_ISSUER must be HTTPS origins')
+  }
+
+  const callback = process.env.HALLUCINATE_HPR1_REDIRECT_URI ?? `${origin}/api/proof-pulse/callback`
+  if (callback !== `${origin}/api/proof-pulse/callback`) {
+    throw new Error('HALLUCINATE_HPR1_REDIRECT_URI must use the production party callback')
+  }
+  if ((process.env.HEARTBADGE_HPR1_CLIENT_ID ?? 'hallucinate') !== 'hallucinate') {
+    throw new Error('HEARTBADGE_HPR1_CLIENT_ID must be hallucinate')
+  }
+  for (const name of ['HEARTBADGE_HPR1_CLIENT_SECRET', 'HALLUCINATE_PROOF_FLOW_SECRET', 'HALLUCINATE_INTERNAL_TOKEN']) {
+    if (process.env[name]!.length < 32) throw new Error(`${name} must contain at least 32 characters`)
+  }
+}
+
+validateProductionConfig()
+await mkdir(dataDir, { recursive: true })
 const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
 await migratePhotosToWebp()
@@ -326,6 +371,18 @@ const server = Bun.serve<SocketData>({
   async fetch(request, server) {
     const ip = clientIp(request)
     const url = new URL(request.url)
+    if (request.method === 'GET' && url.pathname === '/healthz') {
+      return new Response('ok', { headers: { 'cache-control': 'no-store' } })
+    }
+    if (request.method === 'GET' && url.pathname === '/readyz') {
+      try {
+        db.query('SELECT 1').get()
+        return noStoreJson({ status: 'ready' })
+      } catch (error) {
+        console.error(JSON.stringify({ service: 'hallucinate', event: 'readiness_failed', error: String(error) }))
+        return noStoreJson({ status: 'not_ready' }, 503)
+      }
+    }
     const proofResponse = await handlePartyProofApi(request, url)
     if (proofResponse) return proofResponse
 
@@ -643,15 +700,36 @@ function clientProtocolOk(protocol: string | null) {
   return version === String(protocolVersion)
 }
 
-console.log(`[server]: ws://localhost:${server.port}`)
-console.log(`[server]: http://localhost:${server.port}`)
+console.log(JSON.stringify({ service: 'hallucinate', event: 'server_started', port: server.port, dataDir }))
 
-setInterval(syncRooms, heartbeatInterval)
-setInterval(() => {
-  syncVideoSchedules().catch((e: unknown) => console.error(e))
-}, videoScheduleSyncInterval)
-setInterval(logStats, minuteMs)
-setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval)
+const backgroundTimers = [
+  setInterval(syncRooms, heartbeatInterval),
+  setInterval(() => {
+    syncVideoSchedules().catch((e: unknown) => console.error(e))
+  }, videoScheduleSyncInterval),
+  setInterval(logStats, minuteMs),
+  setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval),
+]
+let shuttingDown = false
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(JSON.stringify({ service: 'hallucinate', event: 'shutdown_started', signal }))
+  for (const timer of backgroundTimers) clearInterval(timer)
+  for (const [socket, timer] of partyAuthTimers) {
+    clearInterval(timer)
+    socket.close(1001, 'server restarting')
+  }
+  for (const socket of clients.keys()) socket.close(1001, 'server restarting')
+  await server.stop()
+  await graffitiSaveQueue
+  db.close()
+  console.log(JSON.stringify({ service: 'hallucinate', event: 'shutdown_complete', signal }))
+}
+
+process.once('SIGTERM', () => void shutdown('SIGTERM'))
+process.once('SIGINT', () => void shutdown('SIGINT'))
 
 function clientIp(request: Request) {
   return request.headers.get('cf-connecting-ip')

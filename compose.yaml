@@ -1,0 +1,60 @@
+name: hallucinate
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATA_DIR: /data
+      CLUB_DB: /data/club.sqlite
+      HALLUCINATE_PROOF_PULSE_ENABLED: "true"
+      HALLUCINATE_PUBLIC_ORIGIN: ${HALLUCINATE_PUBLIC_ORIGIN:?Set HALLUCINATE_PUBLIC_ORIGIN}
+      HEARTBADGE_PROOF_PULSE_ISSUER: ${HEARTBADGE_PROOF_PULSE_ISSUER:?Set HEARTBADGE_PROOF_PULSE_ISSUER}
+      HEARTBADGE_HPR1_CLIENT_ID: hallucinate
+      HEARTBADGE_HPR1_CLIENT_SECRET: ${HEARTBADGE_HPR1_CLIENT_SECRET:?Set HEARTBADGE_HPR1_CLIENT_SECRET}
+      HALLUCINATE_PROOF_FLOW_SECRET: ${HALLUCINATE_PROOF_FLOW_SECRET:?Set HALLUCINATE_PROOF_FLOW_SECRET}
+      HALLUCINATE_INTERNAL_TOKEN: ${HALLUCINATE_INTERNAL_TOKEN:?Set HALLUCINATE_INTERNAL_TOKEN}
+      HALLUCINATE_HPR1_REDIRECT_URI: ${HALLUCINATE_HPR1_REDIRECT_URI:-https://party.alta.live/api/proof-pulse/callback}
+      ADMIN_PASS: ${ADMIN_PASS:-}
+    volumes:
+      - hallucinate-data:/data
+    expose:
+      - "3001"
+    networks:
+      - private
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:3001/readyz'); if (!r.ok) process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN}"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - private
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  private:
+    driver: bridge
+
+volumes:
+  hallucinate-data:
