@@ -1961,6 +1961,11 @@ function startIntro() {
     return
   }
 
+  if (introPreloadFailed) {
+    location.reload()
+    return
+  }
+
   if (!introReadyToEnter()) {
     return
   }
@@ -2016,13 +2021,15 @@ introInstagramInput.addEventListener('change', () => syncInstagram(introInstagra
 async function refreshPartyProofSession() {
   const session = await checkPartyProofSession()
   if (session.unavailable) {
-    introHeartbadgeBtn.textContent = 'Membership verification unavailable'
-    introHeartbadgeBtn.disabled = true
-    introHeartbadgeBtn.setAttribute('aria-label', 'Membership verification unavailable')
-    introHeartbadgeBtn.title = 'The party could not check your HeartBadge session. Please retry shortly.'
+    introHeartbadgeBtn.textContent = 'Verification offline · Tap to retry'
+    introHeartbadgeBtn.disabled = false
+    introHeartbadgeBtn.setAttribute('aria-label', 'Retry HeartBadge membership verification')
+    introHeartbadgeBtn.title = 'Unable to reach the membership service. Tap to check again.'
+    introHeartbadgeBtn.onclick = () => { void refreshPartyProofSession() }
     return
   }
 
+  introHeartbadgeBtn.onclick = null
   const wasAuthenticated = partyProofAuthenticated
   partyProofEnabled = session.enabled !== false
   partyProofAuthenticated = partyProofEnabled && session.authenticated
@@ -5144,22 +5151,25 @@ function startIntroPreload() {
 
   introPreloadStarted = true
   introPreloadComplete = 0
-  introPreloadTotal = appSpace.kind === 'loft' ? 5 : 4
+  introPreloadTotal = appSpace.kind === 'loft' ? 4 : 3
 
   Promise.all([
     trackIntroPreload(characterRenderSystem.loadDetailsOnce()),
     trackIntroPreload(loadCurrentDance()),
     trackIntroPreload(loadMainWorldOnce()),
-    trackIntroPreload(characterRenderSystem.loadRemainingDancesIdle()),
     ...(appSpace.kind === 'loft' ? [trackIntroPreload(loadLoftDecorOnce())] : []),
   ])
     .then(() => {
       refreshRoomBuffer()
       introPreloadDone = true
+      void characterRenderSystem.loadRemainingDancesIdle().catch(error => console.error('Optional dance preload failed', error))
     })
     .catch((error: unknown) => {
       introPreloadFailed = true
-      console.error(error)
+      console.error('Intro preload failed', error)
+      introStart.textContent = 'Retry loading'
+      introStart.dataset.ready = 'true'
+      document.body.dataset.introReady = 'true'
     })
 }
 
@@ -5179,7 +5189,7 @@ function loadCurrentDance() {
 
 function refreshIntro() {
   const coreProgress = characterRenderSystem.coreProgress
-  const startReady = introReadyToEnter()
+  const startReady = introPreloadFailed || introReadyToEnter()
   const progress = introPreloadDone ? 100 : introPreloadStarted
     ? 45 + coreProgress * 25 + (introPreloadComplete / introPreloadTotal) * 30
     : introLoadProgressValue()
